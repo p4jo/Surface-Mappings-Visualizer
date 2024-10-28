@@ -1,0 +1,3 @@
+[submodule "Assets/Unity-Nurbs"]
+	path = Assets/Unity-Nurbs
+	url = https://github.com/komietty/unity-nurbs
