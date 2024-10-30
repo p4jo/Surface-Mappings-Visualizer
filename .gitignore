@@ -53,3 +53,4 @@ crashlytics-build.properties
 .idea/
 *.sln.iml
 .vsconfig
+/Assets/.vs

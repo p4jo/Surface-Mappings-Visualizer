@@ -4,20 +4,20 @@ using kmty.NURBS;
 using UnityEngine;
 
 // TODO: also implement with starting vector or some combination, optimizing
-public abstract class Geodesic: CurveSegment
+public abstract class GeodesicSegment: CurveSegment
 {
     public readonly Vector3 start, end;
 
-    protected Geodesic(Vector3 end, Vector3 start)
+    protected GeodesicSegment(Vector3 end, Vector3 start)
     {
         this.end = end;
         this.start = start;
     }
 }
 
-public class FlatGeodesic: Geodesic
+public class FlatGeodesicSegment: GeodesicSegment
 {
-    public FlatGeodesic(Vector3 start, Vector3 end)
+    public FlatGeodesicSegment(Vector3 start, Vector3 end)
         : base(start, end)
     {    }
 
@@ -25,9 +25,9 @@ public class FlatGeodesic: Geodesic
         new CP[] { new(start, 1), new(end, 1) };
 }
 
-public class HyperbolicGeodesic : Geodesic
+public class HyperbolicGeodesicSegment : GeodesicSegment
 {
-    public HyperbolicGeodesic(Vector3 start, Vector3 end)
+    public HyperbolicGeodesicSegment(Vector3 start, Vector3 end)
         : base(start, end)
     {    }
 
@@ -36,9 +36,9 @@ public class HyperbolicGeodesic : Geodesic
         new CP[] { new(start, 1), new(end, 1) };
 }
 
-public class SphericalGeodesic : Geodesic
+public class SphericalGeodesicSegment : GeodesicSegment
 {
-    public SphericalGeodesic(Vector3 start, Vector3 end)
+    public SphericalGeodesicSegment(Vector3 start, Vector3 end)
         : base(start, end)
     {    }
 

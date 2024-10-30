@@ -4,14 +4,16 @@ using UnityEngine;
 
 public abstract class DrawingSurface : MonoBehaviour, ITooltipOnHover
 {
-    public new readonly string name;
-    public readonly int genus;
+    public string Name { get; protected set; }
+    public int Genus { get; protected set; }
     public readonly List<Vector3> punctures = new();
+    public readonly bool is2D;
 
-    protected DrawingSurface(string name, int genus)
+    protected DrawingSurface(string name, int genus, bool is2D)
     {
-        this.name = name;
-        this.genus = genus;
+        this.Name = name;
+        this.Genus = genus;
+        this.is2D = is2D;
     }
 
     public event Action<Vector3?> MouseHover;
@@ -23,22 +25,3 @@ public abstract class DrawingSurface : MonoBehaviour, ITooltipOnHover
     public virtual float hoverTime => 0;
 }
 
-
-public readonly struct Homeomorphism
-{
-    public readonly DrawingSurface source, target; // relatively unnecessary
-    private readonly Func<Vector3, Vector3> f;
-    public Vector3? F(Vector3? pos) => pos == null ? null : f((Vector3) pos);
-
-    public Homeomorphism(DrawingSurface source, DrawingSurface target, Func<Vector3, Vector3> f)
-    {
-        this.source = source;
-        this.target = target;
-        this.f = f;
-    }
-    
-    public static Homeomorphism operator *(Homeomorphism f, Homeomorphism g)
-    {
-        return new Homeomorphism(g.source, f.target, x => f.f(g.f(x)));
-    }
-}

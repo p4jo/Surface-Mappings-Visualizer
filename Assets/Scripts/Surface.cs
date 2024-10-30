@@ -32,7 +32,7 @@ public class Surface
     
     public void AddDrawingSurface(DrawingSurface drawingSurface)
     {
-        drawingSurfaces.Add(drawingSurface.name, drawingSurface);
+        drawingSurfaces.Add(drawingSurface.Name, drawingSurface);
         drawingSurface.MouseHover += point => UpdatePoint(point, drawingSurface);
         
     }
