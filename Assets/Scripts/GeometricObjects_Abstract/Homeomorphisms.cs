@@ -70,6 +70,19 @@ public readonly struct Homeomorphism
             return Vector3.Lerp(start, end, t);
         }
         
-        return new(new ModelSurface(surface));
+        var halfWidth = new Vector2(imageHalfWidth, 0);
+        var halfHeight = new Vector2(0, imageHalfHeight);
+        var boundaries = new ModelSurface.PolygonSide[]
+        {
+            new("a",  imageCenter + halfWidth - halfHeight, imageCenter + halfWidth + halfHeight, false),
+            new("a", imageCenter - halfWidth - halfHeight, imageCenter - halfWidth + halfHeight, true),
+            new("b", imageCenter - halfWidth + halfHeight, imageCenter + halfWidth + halfHeight, true),
+            new("b", imageCenter - halfWidth - halfHeight, imageCenter + halfWidth - halfHeight, false) 
+            // todo: give names that haven't been used yet
+        };
+        var newBaseSurface = surface.Copy();
+        newBaseSurface.InsertBoundaries(1, 0, boundaries);
+        var newTargetSurface = target; //  new DrawingSurface(newBaseSurface); // todo: implement
+        return new(newBaseSurface, newBaseSurface, v => NewEmbedding(v));
     }
 }

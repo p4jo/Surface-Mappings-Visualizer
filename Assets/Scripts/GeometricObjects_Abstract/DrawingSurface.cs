@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public abstract class DrawingSurface : MonoBehaviour, ITooltipOnHover
+public abstract class DrawingSurface : ITooltipOnHover
 {
     public string Name { get; protected set; }
     public int Genus { get; protected set; }
