@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: cef8fa60c53cf8c4280cbeb7e0c3333e
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Core/Materials/MMMat.mat
+  uploadId: 558511

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 79613e40ac585414eb85f8a78a65aeca
+VisualEffectImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Core/VFX/SurfaceSwarm.vfx
+  uploadId: 558511

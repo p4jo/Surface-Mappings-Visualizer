@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 09a11d4131d18ed4f99a3c3e4cf35a6c
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Core/Prefabs/Mesh_Swarm.prefab
+  uploadId: 558511

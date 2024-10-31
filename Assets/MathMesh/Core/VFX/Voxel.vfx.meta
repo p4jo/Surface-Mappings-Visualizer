@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 79d2495e8dfa03744915d935dfa3c6a2
+VisualEffectImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Core/VFX/Voxel.vfx
+  uploadId: 558511

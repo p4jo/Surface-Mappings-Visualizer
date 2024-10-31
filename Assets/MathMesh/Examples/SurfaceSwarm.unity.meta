@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: f13e1449209ed77459d034d8667d5164
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Examples/SurfaceSwarm.unity
+  uploadId: 558511

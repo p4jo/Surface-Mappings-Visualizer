@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: c255b73097e3e7040bd206459a7cc9cf
+AssemblyDefinitionReferenceImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Assembly/FBXRef.asmref
+  uploadId: 558511

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: da09088c00fd3f445822110fee992b16
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Examples/WireFrame.unity
+  uploadId: 558511

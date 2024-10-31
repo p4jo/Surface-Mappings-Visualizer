@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 643588f57cbbc9c4ca10b692666cddfa
+VisualEffectImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Core/VFX/Wireframe.vfx
+  uploadId: 558511

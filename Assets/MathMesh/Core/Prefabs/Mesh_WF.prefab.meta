@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: eece3a049ee6cf841baecd4608ced537
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Core/Prefabs/Mesh_WF.prefab
+  uploadId: 558511

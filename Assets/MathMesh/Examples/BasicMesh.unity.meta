@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: f72d87bf3fe27cf428b67546f32fe3b3
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Examples/BasicMesh.unity
+  uploadId: 558511

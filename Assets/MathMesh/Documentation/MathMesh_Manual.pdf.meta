@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 5ffca07b96bf5334994f000462ac753b
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Documentation/MathMesh_Manual.pdf
+  uploadId: 558511

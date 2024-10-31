@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 82b0f827646aa7241b600e69b0f4f475
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236109
+  packageName: MathMesh - Parametric Surface Generator
+  packageVersion: 1.1
+  assetPath: Assets/MathMesh/Examples/VoxelEffect.unity
+  uploadId: 558511
