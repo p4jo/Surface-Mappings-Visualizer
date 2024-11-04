@@ -111,7 +111,7 @@ namespace MathMesh
                 if (meshTypeProp.enumValueIndex != -1)
                 {
                     //Display additional vars
-                    for (int i = 0; i < MathMeshUtility.surfaceDict[(MeshType)meshTypeProp.enumValueIndex].parameters; i++)
+                    for (int i = 0; i < mg.CurrentSurface.parameters; i++)
                     {
                         EditorGUILayout.PropertyField(varsProp.GetArrayElementAtIndex(i), new GUIContent(varNames[i]));
                     }

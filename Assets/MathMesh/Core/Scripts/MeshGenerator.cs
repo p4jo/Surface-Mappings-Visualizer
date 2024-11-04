@@ -2,6 +2,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using JetBrains.Annotations;
 #if UNITY_EDITOR
 using UnityEditor;
 // using UnityEditor.Formats.Fbx.Exporter;
@@ -29,16 +30,13 @@ namespace MathMesh
         private Color[] colors;
 
 
-        private SurfaceData _surface;
-        public SurfaceData currentSurface
+        [CanBeNull] private SurfaceData customSurface = null;
+        public SurfaceData CurrentSurface
         {
-            get => _surface ?? MathMeshUtility.surfaceDict.GetValueOrDefault(meshType);
+            get => customSurface ?? MathMeshUtility.surfaceDict.GetValueOrDefault(meshType);
             set {
-                if (value != null)
-                {
-                    meshType = MeshType.Custom;
-                }
-                _surface = value;
+                if (value != null) meshType = MeshType.Custom;
+                customSurface = value;
             }
         }
 
@@ -76,7 +74,7 @@ namespace MathMesh
             uSlices = Mathf.Min(200, uSlices);
             vSlices = Mathf.Min(200, vSlices);
             //Ensure meshtype has been selected properly
-            if (currentSurface == null)
+            if (CurrentSurface == null)
             {
                 return;
             }
@@ -116,7 +114,7 @@ namespace MathMesh
 
             CalculateUVs(vertCount);
             //Get the mesh type's name
-            mesh.name = currentSurface.name;
+            mesh.name = CurrentSurface.name;
 
             if(TryGetComponent(out MeshFilter m)){
                 m.mesh = mesh;
@@ -134,7 +132,7 @@ namespace MathMesh
             {
                 for (int j = 0; j < uSlices; j++)
                 {
-                    vertices[i * uSlices + j] = size * currentSurface.GetPoint(u.x + u_diff * j, v.x + v_diff * i, vars[0], vars[1], vars[2], vars[3], vars[4]);
+                    vertices[i * uSlices + j] = size * CurrentSurface.GetPoint(u.x + u_diff * j, v.x + v_diff * i, vars[0], vars[1], vars[2], vars[3], vars[4]);
                 }
             }
 
@@ -253,8 +251,8 @@ namespace MathMesh
 
         private void SealGeometry()
         {
-            int sealVal = currentSurface.sealType;
-            int sealReverse = currentSurface.sealReverse;
+            int sealVal = CurrentSurface.sealType;
+            int sealReverse = CurrentSurface.sealReverse;
             int startVertex = doubleSided ? vertices.Length/2 : vertices.Length;
             startVertex = startVertex - uSlices;
             //if seal is 'u' only, or uv, replace last row of u with first row
@@ -285,7 +283,7 @@ namespace MathMesh
 
         private void ApplyConstraints()
         {
-            Constraints tempCons = currentSurface.constraints;
+            Constraints tempCons = CurrentSurface.constraints;
             if(tempCons == null)
             {
                 return;
@@ -438,7 +436,7 @@ namespace MathMesh
 
         public void ResetToDefaults()
         {
-            float[] vals = currentSurface.defaults;
+            float[] vals = CurrentSurface.defaults;
             u.x = vals[0];
             u.y = vals[1];
             v.x = vals[2];
