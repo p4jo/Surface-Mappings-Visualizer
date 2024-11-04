@@ -30,6 +30,13 @@ public class ParametricSurfaceVisualizer : MonoBehaviour
         var generator = gameObject.GetComponent<MeshGenerator>();
         generator.CurrentSurface = new SurfaceData(parametricSurface.Name, 0, Array.Empty<float>(),
             func: floats => parametricSurface.parametrization?.f(new Vector3(floats[0], floats[1])) ?? Vector3.zero);
+        generator.u = new(0, tau);
+        generator.v = new(0, tau);
+        generator.doubleSided = false;
+        generator.uSlices = 200;
+        generator.vSlices = 200; // todo: increase?
         generator.GenerateMesh();
     }
+
+    private const float tau = Mathf.PI * 2;
 }

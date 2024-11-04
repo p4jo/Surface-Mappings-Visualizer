@@ -121,7 +121,7 @@ public static class SurfaceGenerator
         var cutoutRadius = cutoutDistance / 6;
         for (var i = 0; i < genus - 1; i++)
         {
-            var imageCenter = new Vector2(cutoutDistance * i + cutoutRadius, 0);
+            var imageCenter = new Vector2(cutoutDistance * i + cutoutRadius, Mathf.PI / 2);
             var cutoutCenter = new Vector2((cutoutDistance * i + cutoutRadius + Mathf.PI) % tau, 0);
             var direction = torus.f(imageCenter);
             var center = direction * 2;

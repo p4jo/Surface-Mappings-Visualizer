@@ -24,7 +24,7 @@ public class UICamera : Kamera {
     {
         this.renderTarget = renderTarget;
         renderRectTransform = renderTarget.GetComponent<RectTransform>();
-        
+        Activate();
     }
     
     public void UIMoved(bool offscreen = false) {
