@@ -17,9 +17,16 @@ public class UICamera : Kamera {
     void Start() => Activate(); // Deactivate();
     
     void Awake() {
-        if (renderRectTransform == null) renderRectTransform = renderTarget.gameObject.GetComponent<RectTransform>();
+        // if (renderRectTransform == null) renderRectTransform = renderTarget.gameObject.GetComponent<RectTransform>();
     }
 
+    public void Initialize(RawImage renderTarget, RectTransform canvas)
+    {
+        this.renderTarget = renderTarget;
+        renderRectTransform = renderTarget.GetComponent<RectTransform>();
+        
+    }
+    
     public void UIMoved(bool offscreen = false) {
         if (offscreen) Activate();
         else Deactivate();

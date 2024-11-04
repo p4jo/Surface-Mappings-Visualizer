@@ -55,15 +55,15 @@ public class TooltipManager : MonoBehaviour {
                 var tooltipObject = hit.transform;
                 lastHoverPosition = hit.point;
                 if (tooltipObject != lastHoverObject) {
-                    OnHoverEnd();
+                    OnHoverEnd(lastTooltipThing);
                     lastHoverObject = tooltipObject;
                 }
                 // moved out of the if; now OnHover is called every frame!!
                 if (tooltipObject.TryGetComponent<ITooltipOnHover>(out var tooltipThing))
-                    OnHover(tooltipThing, false, kamera);
+                    OnHover(tooltipThing, lastHoverPosition, kamera);
             }
             else {
-                OnHoverEnd();
+                OnHoverEnd(lastTooltipThing);
                 lastHoverObject = null;
             }
         }
@@ -85,7 +85,8 @@ public class TooltipManager : MonoBehaviour {
             if (objectActivated) {
                 if (cameraManager.TryGetKamera(mousePosition, out kamera)) 
                     lastTooltipThing?.OnClick(kamera, lastHoverPosition, mouseButtonPressed);
-            } else if (uiActivated) {
+            } else if (uiActivated)
+            {
                 lastTooltipThing?.OnClick(null, lastHoverPosition, mouseButtonPressed);
             }
         }
@@ -94,13 +95,15 @@ public class TooltipManager : MonoBehaviour {
         tooltipPanel.position = new(mousePosition.x + 10, mousePosition.y - 10);
     }
 
-    public void OnHover(ITooltipOnHover tooltipThing, bool fromUI = true, Kamera kamera = null) {
-        timer = Time.time;
+    public void OnHover(ITooltipOnHover tooltipThing, Vector3 position, Kamera kamera = null) {
+        if (tooltipThing != lastTooltipThing)
+            timer = Time.time;
         lastTooltipThing = tooltipThing;
         content = tooltipThing.GetTooltip();
-        uiActivated = fromUI;
-        objectActivated = !fromUI;
-        tooltipThing.OnHover(kamera, lastHoverPosition);
+        uiActivated = !kamera;
+        objectActivated = !uiActivated;
+        lastHoverPosition = position;
+        tooltipThing.OnHover(kamera, position);
     }
 
     void ShowTooltip()
@@ -120,13 +123,14 @@ public class TooltipManager : MonoBehaviour {
 
 
 
-    public void OnHoverEnd() {
+    public void OnHoverEnd(ITooltipOnHover tooltipThing) {
+        tooltipThing?.OnHoverEnd();
+        if (lastTooltipThing != tooltipThing)
+            return;
         uiActivated = false;
         objectActivated = false;
         isActive = false;
         tooltipPanel.gameObject.SetActive(false);
-        if (lastTooltipThing != null)
-            lastTooltipThing?.OnHoverEnd();
         lastTooltipThing = null;
         lastHoverObject = null;
     }
