@@ -39,7 +39,8 @@ namespace MathMesh
         TriaxialTeardrop,
         Twisted_Klein_Bottle,
         Twisted_Torus,
-        Wellenkugel
+        Wellenkugel,
+        Custom
         /*
         Banchoff_Chmutov,
         Barth_Decic,

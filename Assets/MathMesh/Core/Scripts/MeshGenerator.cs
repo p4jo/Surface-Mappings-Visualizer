@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 #if UNITY_EDITOR
 using UnityEditor;
-using UnityEditor.Formats.Fbx.Exporter;
+// using UnityEditor.Formats.Fbx.Exporter;
 #endif
 
 namespace MathMesh
@@ -17,6 +17,7 @@ namespace MathMesh
 
         //Mesh vars
         public Mesh mesh;
+        // for selection of mesh type in editor
         public MeshType meshType = MeshType.Astroidal_Ellipsoid;
         public MathMeshTopology topologyType = MathMeshTopology.Triangles;
         [HideInInspector]
@@ -26,6 +27,20 @@ namespace MathMesh
         private int[] triangles;
         private int[] indices;
         private Color[] colors;
+
+
+        private SurfaceData _surface;
+        public SurfaceData currentSurface
+        {
+            get => _surface ?? MathMeshUtility.surfaceDict.GetValueOrDefault(meshType);
+            set {
+                if (value != null)
+                {
+                    meshType = MeshType.Custom;
+                }
+                _surface = value;
+            }
+        }
 
         //Settings
         [Min(1)]
@@ -61,7 +76,7 @@ namespace MathMesh
             uSlices = Mathf.Min(200, uSlices);
             vSlices = Mathf.Min(200, vSlices);
             //Ensure meshtype has been selected properly
-            if (!Enum.IsDefined(typeof(MeshType), meshType))
+            if (currentSurface == null)
             {
                 return;
             }
@@ -101,7 +116,7 @@ namespace MathMesh
 
             CalculateUVs(vertCount);
             //Get the mesh type's name
-            mesh.name = MathMeshUtility.surfaceDict[meshType].name;
+            mesh.name = currentSurface.name;
 
             if(TryGetComponent(out MeshFilter m)){
                 m.mesh = mesh;
@@ -119,7 +134,7 @@ namespace MathMesh
             {
                 for (int j = 0; j < uSlices; j++)
                 {
-                    vertices[i * uSlices + j] = size*MathMeshUtility.surfaceDict[meshType].GetPoint(u.x + u_diff * j, v.x + v_diff * i, vars[0], vars[1], vars[2], vars[3], vars[4]);
+                    vertices[i * uSlices + j] = size * currentSurface.GetPoint(u.x + u_diff * j, v.x + v_diff * i, vars[0], vars[1], vars[2], vars[3], vars[4]);
                 }
             }
 
@@ -238,8 +253,8 @@ namespace MathMesh
 
         private void SealGeometry()
         {
-            int sealVal = MathMeshUtility.surfaceDict[meshType].sealType;
-            int sealReverse = MathMeshUtility.surfaceDict[meshType].sealReverse;
+            int sealVal = currentSurface.sealType;
+            int sealReverse = currentSurface.sealReverse;
             int startVertex = doubleSided ? vertices.Length/2 : vertices.Length;
             startVertex = startVertex - uSlices;
             //if seal is 'u' only, or uv, replace last row of u with first row
@@ -270,7 +285,7 @@ namespace MathMesh
 
         private void ApplyConstraints()
         {
-            Constraints tempCons = MathMeshUtility.surfaceDict[meshType].constraints;
+            Constraints tempCons = currentSurface.constraints;
             if(tempCons == null)
             {
                 return;
@@ -411,7 +426,8 @@ namespace MathMesh
             try
             {
                 var filePath = EditorUtility.SaveFilePanel("Title", Application.dataPath, mesh.name, "fbx");
-                ModelExporter.ExportObject(filePath, Selection.activeObject);
+                // ModelExporter.ExportObject(filePath, Selection.activeObject);
+                Debug.LogError("Not implemented anymore... Unity namespace was missing.");
                 return true;
             }
             catch
@@ -422,7 +438,7 @@ namespace MathMesh
 
         public void ResetToDefaults()
         {
-            float[] vals = MathMeshUtility.surfaceDict[meshType].defaults;
+            float[] vals = currentSurface.defaults;
             u.x = vals[0];
             u.y = vals[1];
             v.x = vals[2];
