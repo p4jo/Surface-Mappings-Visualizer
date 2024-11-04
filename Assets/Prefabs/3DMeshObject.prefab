@@ -13,7 +13,6 @@ GameObject:
   - component: {fileID: 3135849915624360375}
   - component: {fileID: 1898575116253899302}
   - component: {fileID: 6488497274680313891}
-  - component: {fileID: 8121176931919121844}
   m_Layer: 0
   m_Name: 3DMeshObject
   m_TagString: Untagged
@@ -174,20 +173,3 @@ MonoBehaviour:
   - 0
   - 0
   size: 1
---- !u!114 &8121176931919121844
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6155428129297719394}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: aac9e5e8c99e444bbc5cf779fd0c7979, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  parametricSurface:
-    visualizer: {fileID: 0}
-  pointer: {fileID: 0}
-  meshGenerator: []
-  meshPrefab: {fileID: 0}

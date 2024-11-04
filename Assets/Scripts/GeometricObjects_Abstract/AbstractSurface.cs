@@ -20,7 +20,7 @@ public class AbstractSurface
 
     
 
-    public AbstractSurface(int genus, SurfaceMenu surfaceMenu)
+    public AbstractSurface(int genus, SurfaceMenu surfaceMenu = null) // todo? remove surfaceMenu
     {
         this.genus = genus;
         this.surfaceMenu = surfaceMenu;
@@ -45,9 +45,21 @@ public class AbstractSurface
     
     public void AddDrawingSurface(DrawingSurface drawingSurface)
     {
-        drawingSurfaces.Add(drawingSurface.Name, drawingSurface);
-        drawingSurface.MouseHover += point => UpdatePoint(point, drawingSurface);
+        if (drawingSurfaces.TryAdd(drawingSurface.Name, drawingSurface))
+            drawingSurface.MouseHover += point => UpdatePoint(point, drawingSurface);
     }
     
-    public void AddHomeomorphism(Homeomorphism homeomorphism) => homeomorphisms.Add((homeomorphism.source.Name, homeomorphism.target.Name), homeomorphism);
+    public void AddHomeomorphism(Homeomorphism homeomorphism)
+    {
+        AddDrawingSurface(homeomorphism.source);
+        AddDrawingSurface(homeomorphism.target);
+        homeomorphisms.Add((homeomorphism.source.Name, homeomorphism.target.Name), homeomorphism);
+    }
+    
+    public static AbstractSurface FromHomeomorphism(Homeomorphism homeomorphism)
+    {
+        var res = new AbstractSurface(homeomorphism.source.Genus);
+        res.AddHomeomorphism(homeomorphism);
+        return res;
+    }
 }

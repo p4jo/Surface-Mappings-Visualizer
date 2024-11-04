@@ -8,7 +8,7 @@ public class ModelSurfaceVisualizer : MonoBehaviour
 {
     [SerializeField] private ModelSurface surface;
     [SerializeField] private RectTransform pointer;
-    
+    [SerializeField] private RectTransform drawingArea;
     
     public void MovePointTo(Vector3? point)
     {
@@ -20,9 +20,9 @@ public class ModelSurfaceVisualizer : MonoBehaviour
         pointer.localPosition = point.Value;
     }
 
-    public void Initialize(ModelSurface surface)
+    public void Initialize(ModelSurface surface, RectTransform drawingArea)
     {
         this.surface = surface;
-        throw  new NotImplementedException();
+        this.drawingArea = drawingArea;
     }
 }

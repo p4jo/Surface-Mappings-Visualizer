@@ -106,6 +106,9 @@ public class UICamera : Kamera {
 
     void FixScale()
     {
+        if (canvas == null) return;
+        if (renderRectTransform == null) return;
+        if (renderTarget == null) return;
         canvasToScreenScale = new(
            Screen.width / canvas.rect.width,   
            Screen.height / canvas.rect.height 

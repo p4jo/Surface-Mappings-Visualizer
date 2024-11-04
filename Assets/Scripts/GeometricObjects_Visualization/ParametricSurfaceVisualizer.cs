@@ -28,8 +28,8 @@ public class ParametricSurfaceVisualizer : MonoBehaviour
         this.parametricSurface = parametricSurface;
         var gameObject = Instantiate(meshPrefab, transform);
         var generator = gameObject.GetComponent<MeshGenerator>();
-        generator.currentSurface = new SurfaceData(parametricSurface.Name, 0, Array.Empty<float>(),
-            func: floats => parametricSurface.parametrization.f(new Vector3(floats[0], floats[1])));
+        generator.CurrentSurface = new SurfaceData(parametricSurface.Name, 0, Array.Empty<float>(),
+            func: floats => parametricSurface.parametrization?.f(new Vector3(floats[0], floats[1])) ?? Vector3.zero);
         generator.GenerateMesh();
     }
 }

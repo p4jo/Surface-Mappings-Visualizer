@@ -415,7 +415,7 @@ GameObject:
   - component: {fileID: 3286029690838308754}
   - component: {fileID: 2351239804771052012}
   m_Layer: 5
-  m_Name: CameraPanel
+  m_Name: DrawingArea
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

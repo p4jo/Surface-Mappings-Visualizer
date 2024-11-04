@@ -43,7 +43,7 @@ public abstract class DrawingSurface : ITooltipOnHover
 public class ParametricSurface: DrawingSurface
 {
     public ParametricSurfaceVisualizer visualizer;
-    public Homeomorphism parametrization; 
+    public Homeomorphism? parametrization; 
     // this has to be assigned after creation as the homeomorphism has this as one of its fields
     public ParametricSurface(string name, int genus, IEnumerable<IPoint> punctures = null) : base(name, genus, false)
     {

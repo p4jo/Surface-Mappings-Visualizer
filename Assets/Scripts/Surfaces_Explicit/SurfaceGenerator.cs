@@ -1,17 +1,16 @@
 ﻿
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public static class SurfaceGenerator
 {
-    public static AbstractSurface Torus(SurfaceMenu surfaceMenu, float smallRadius = 1f, float largeRadius = 1.5f, int punctures = 0)
+    private static Homeomorphism Torus(float smallRadius = 1f, float largeRadius = 1.5f, int punctures = 0)
     {
-        var surface = new AbstractSurface(1, surfaceMenu);
-        
         var parName = $"Torus with {punctures} punctures (embedded)";
         var parametrizedSurface = new ParametricSurface(parName, 1);
-        surface.AddDrawingSurface(parametrizedSurface);
 
         var modelName = $"Torus with {punctures} punctures (identified flat square)";
         var sides = new List<ModelSurface.PolygonSide>
@@ -22,13 +21,13 @@ public static class SurfaceGenerator
             new("b", Vector2.right, Vector2.right + Vector2.up, false),
         };
         var modelSurface = new ModelSurface(modelName, 1, punctures, GeometryType.Flat, sides);
-        surface.AddDrawingSurface(modelSurface);
 
         var parametrization = new Homeomorphism(modelSurface, parametrizedSurface,
             v => FlatTorusEmbedding((Vector2)v, largeRadius, smallRadius));
-        surface.AddHomeomorphism(parametrization);
         
-        return surface;
+        parametrizedSurface.parametrization = parametrization;
+
+        return parametrization;
     }
     
     
@@ -83,18 +82,19 @@ public static class SurfaceGenerator
             var closestPointOnNew = cutoutCenter + new Vector2( cutoutRadius * Mathf.PI  * dir.x,  cutoutRadius * Mathf.PI * dir.y);
             var end = Torus(closestPointOnNew);
             return Vector3.Lerp(start, end, t);
+            // todo: smoothen by interpolating between the two
         }
         
-        var halfWidth = new Vector2(imageHalfWidth, 0);
-        var halfHeight = new Vector2(0, imageHalfHeight);
+        var halfWidth = new Vector2(imageHalfWidth * (1 + pufferZone) * cutoutRadius, 0);
+        var halfHeight = new Vector2(0, imageHalfHeight  * (1 + pufferZone) * cutoutRadius);
+        var labelA = "a" + Random.Range(0, 1000);
+        var labelB = "b" + Random.Range(0, 1000); // todo: take next chars in alphabet 
         var boundaries = new ModelSurface.PolygonSide[]
         {
-            new("a",  imageCenter + halfWidth - halfHeight, imageCenter + halfWidth + halfHeight, false),
-            new("a", imageCenter - halfWidth - halfHeight, imageCenter - halfWidth + halfHeight, true),
-            new("b", imageCenter - halfWidth + halfHeight, imageCenter + halfWidth + halfHeight, true),
-            new("b", imageCenter - halfWidth - halfHeight, imageCenter + halfWidth - halfHeight, false) 
-            // todo: give names that haven't been used yet
-            // todo: calculate these correctly (the new boundary curves are inside). These describe the curve of the connect sum
+            new(labelA,  imageCenter + halfWidth - halfHeight, imageCenter + halfWidth + halfHeight, false),
+            new(labelA, imageCenter - halfWidth - halfHeight, imageCenter - halfWidth + halfHeight, true),
+            new(labelB, imageCenter - halfWidth + halfHeight, imageCenter + halfWidth + halfHeight, true),
+            new(labelB, imageCenter - halfWidth - halfHeight, imageCenter + halfWidth - halfHeight, false) 
         };
         var newBaseSurface = surface.WithAddedBoundaries(1, 0, boundaries);
         var newTargetSurface = targetSurface.WithAddedGenus(1, Array.Empty<IPoint>());
@@ -105,11 +105,32 @@ public static class SurfaceGenerator
 
     public static AbstractSurface CreateSurface(SurfaceMenu surfaceMenu, IEnumerable<SurfaceParameter> parameters)
     {
-        return Torus(surfaceMenu);
+        return GenusGSurface(parameters.First().genus);
 
         foreach (var parameter in parameters)
         {
             //todo
         }
     }
+
+    private static AbstractSurface GenusGSurface(int genus)
+    {
+        var torus = Torus();
+        var res = torus;
+        var cutoutDistance = tau / (genus - 1);
+        var cutoutRadius = cutoutDistance / 6;
+        for (var i = 0; i < genus - 1; i++)
+        {
+            var imageCenter = new Vector2(cutoutDistance * i + cutoutRadius, 0);
+            var cutoutCenter = new Vector2((cutoutDistance * i + cutoutRadius + Mathf.PI) % tau, 0);
+            var direction = torus.f(imageCenter);
+            var center = direction * 2;
+            res = ConnectSumWithFlatTorus(res, imageCenter, cutoutRadius, cutoutRadius, cutoutCenter, cutoutRadius, center: center);
+        }
+            
+
+        return AbstractSurface.FromHomeomorphism(res);
+    }
+
+    private const float tau = Mathf.PI * 2;
 }

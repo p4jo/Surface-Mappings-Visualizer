@@ -16,13 +16,16 @@ public struct SurfaceParameter
     public bool modelSurface;
     // todo
 
-    public static SurfaceParameter FromString(string s) =>
-        s switch
-        {
-            "Torus2D" => new() { genus = 1, punctures = 0, modelSurface = true },
-            "Torus3D" => new() { genus = 1, punctures = 0, modelSurface = false },
-            _ => throw new NotImplementedException()
-        };
+    public static SurfaceParameter FromString(string s)
+    {
+        if (s.StartsWith("g="))
+            return new() { genus = int.Parse(s.Substring(2)), punctures = 0, modelSurface = false }; // todo
+        if (s == "Torus2D")
+            return new() { genus = 1, punctures = 0, modelSurface = true };
+        if (s == "Torus3D")
+            return new() { genus = 1, punctures = 0, modelSurface = false };
+        throw new NotImplementedException();
+    }
 }
 
 public class SurfaceMenu: MonoBehaviour 
@@ -43,26 +46,31 @@ public class SurfaceMenu: MonoBehaviour
         foreach (var (name, drawingSurface) in surface.drawingSurfaces)
         {
             var surfaceVisualizerUI = Instantiate(surfaceVisualizerUIPrefab, transform);
-            
-            
-            GameObject surfaceVisualizerGameObject = null;
-            if (drawingSurface is ParametricSurface parametricSurface)
-            {
-                surfaceVisualizerGameObject = Instantiate(parametricSurfaceVisualizerPrefab);
-                var surfaceVisualizer =
-                    surfaceVisualizerGameObject.GetComponentInChildren<ParametricSurfaceVisualizer>();
-                surfaceVisualizer.Initialize(parametricSurface);
-            }
-            else if (drawingSurface is ModelSurface modelSurface)
-            {
-                surfaceVisualizerGameObject = Instantiate(modelSurfaceVisualizerPrefab);
-            }
-            else
-                throw new NotImplementedException();
-            
-            var camera = surfaceVisualizerGameObject.GetComponentInChildren<UICamera>();
             var panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
-            camera.Initialize(panel, canvas);
+
+            
+            switch (drawingSurface)
+            {
+                case ParametricSurface parametricSurface:
+                {
+                    var surfaceVisualizerGameObject = Instantiate(parametricSurfaceVisualizerPrefab);
+                    var surfaceVisualizer =
+                        surfaceVisualizerGameObject.GetComponentInChildren<ParametricSurfaceVisualizer>();
+                    surfaceVisualizer.Initialize(parametricSurface);
+                    var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UICamera>();
+                    kamera.Initialize(panel, canvas);
+                    break;
+                }
+                case ModelSurface modelSurface:
+                {
+                    var surfaceVisualizer = panel.gameObject.AddComponent<ModelSurfaceVisualizer>();
+                    surfaceVisualizer.Initialize(modelSurface, panel.rectTransform);
+                    break;
+                }
+                default:
+                    throw new NotImplementedException();
+            }
+            
 
 
         }
