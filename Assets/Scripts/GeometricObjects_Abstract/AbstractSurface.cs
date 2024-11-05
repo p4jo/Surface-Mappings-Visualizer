@@ -11,14 +11,13 @@ public class AbstractSurface
     /// These represent the drawn representations of this abstract surface
     /// </summary>
     public readonly Dictionary<string, DrawingSurface> drawingSurfaces = new();
-    public readonly Dictionary<string, IPoint> currentPoints = new();
-    
+
+    public readonly Dictionary<string, Point> currentPoints = new();
+
     /// <summary>
     /// These represent the edges between the drawn representations of the same surface
     /// </summary>
     private readonly Dictionary<(string, string), Homeomorphism> homeomorphisms = new();
-
-    
 
     public AbstractSurface(int genus, SurfaceMenu surfaceMenu = null) // todo? remove surfaceMenu
     {
@@ -26,36 +25,39 @@ public class AbstractSurface
         this.surfaceMenu = surfaceMenu;
     }
 
-    public void UpdatePoint(Vector3? point, DrawingSurface source)
-    {
-        // todo: overthink this for multiple points, and curve drawing
-        var sourcePoint = source.ClampPoint(point);
-        if (sourcePoint == null)
-        {
-            foreach (var (key, drawingSurface) in drawingSurfaces)
-                drawingSurface.UpdatePoint(null);
-            return;
-        }
-        foreach (var (key, drawingSurface) in drawingSurfaces)
-        {
-            drawingSurface.UpdatePoint(sourcePoint.ApplyHomeomorphism( homeomorphisms[(source.Name, key)] ));
-            // TODO: Also show grid; transport the grid through the homeomorphisms as well
-        }
-    }
-    
     public void AddDrawingSurface(DrawingSurface drawingSurface)
     {
-        if (drawingSurfaces.TryAdd(drawingSurface.Name, drawingSurface))
-            drawingSurface.MouseHover += point => UpdatePoint(point, drawingSurface);
+        drawingSurfaces.TryAdd(drawingSurface.Name, drawingSurface);
+        homeomorphisms.TryAdd((drawingSurface.Name, drawingSurface.Name), Homeomorphism.Identity(drawingSurface));
     }
-    
+
     public void AddHomeomorphism(Homeomorphism homeomorphism)
     {
         AddDrawingSurface(homeomorphism.source);
         AddDrawingSurface(homeomorphism.target);
-        homeomorphisms.Add((homeomorphism.source.Name, homeomorphism.target.Name), homeomorphism);
+        homeomorphisms[(homeomorphism.source.Name, homeomorphism.target.Name)] = homeomorphism;
+        homeomorphisms[(homeomorphism.target.Name, homeomorphism.source.Name)] = homeomorphism.Inverse();
     }
     
+    public Homeomorphism GetHomeomorphism(string source, string target)
+    {
+        if (homeomorphisms.ContainsKey((source, target))) 
+            return homeomorphisms[(source, target)];
+        // todo: generalize, i.e. find shortest path in the graph of homeomorphisms
+        foreach (var (s, t) in homeomorphisms.Keys)
+        {
+            if (s != source) continue;
+            foreach (var (s2, t2) in homeomorphisms.Keys)   
+            {
+                if (s2 != t) continue;
+                if (t2 != target) continue;
+                homeomorphisms[(source, target)] = homeomorphisms[(t, target)] * homeomorphisms[(source, t)];
+                return homeomorphisms[(source, target)];
+            }
+        }
+        throw new Exception($"No homeomorphism given from {source} to {target}, not even with one step in between");
+    }
+
     public static AbstractSurface FromHomeomorphism(Homeomorphism homeomorphism)
     {
         var res = new AbstractSurface(homeomorphism.source.Genus);

@@ -98,6 +98,19 @@ public class CameraManager : MonoBehaviour
         kamera = GetCamera(mousePosition);
         return kamera != null;
     }
+
+    public void AddCamera(Camera camera)
+    {
+        cameras.Add(camera);    
+    }
+    
+    public void AddKamera(Kamera kamera, bool isMain = false, bool isSecondary = false) {
+        cameras.Add(kamera.Cam);
+        if (isMain)
+            mainKamera = kamera;
+        if (isSecondary)
+            secondaryKamera = kamera;
+    }
     
     //void Awake() {
     //    UpdateViewports(1);

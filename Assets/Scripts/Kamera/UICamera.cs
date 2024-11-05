@@ -22,14 +22,15 @@ public class UICamera : Kamera {
 
     public void Initialize(RawImage renderTarget, RectTransform canvas)
     {
+        this.canvas = canvas;
         this.renderTarget = renderTarget;
         renderRectTransform = renderTarget.GetComponent<RectTransform>();
-        Activate();
+        UIMoved();
     }
     
     public void UIMoved(bool offscreen = false) {
-        if (offscreen) Activate();
-        else Deactivate();
+        if (offscreen) Deactivate();
+        else Activate();
         ContinueCheckingPosition();
 
     }
@@ -98,7 +99,7 @@ public class UICamera : Kamera {
                       ", scaled offset pos: " + pos +
                       ", rect:" + renderRectTransform.rect +
                       ", at" + renderRectTransform.position + 
-                      ", scaled Rect:" + new Vector2(renderRect.height * canvasToScreenScale.x, renderRect.width * canvasToScreenScale.y) +
+                      ", scaled Rect:" + new Vector2(renderRect.width * canvasToScreenScale.x, renderRect.height * canvasToScreenScale.y) +
                       ", ray:" + res);
 
         return res;
@@ -114,8 +115,11 @@ public class UICamera : Kamera {
            Screen.height / canvas.rect.height 
         );
         screenOffset = new(
-            renderRectTransform.position.x,
-            renderRectTransform.position.y
+            renderRectTransform.position.x - renderRect.width * canvasToScreenScale.x / 2,
+            renderRectTransform.position.y - renderRect.height * canvasToScreenScale.y / 2
+            // !!! THEY SEEM TO HAVE CHANGED WHAT RectTransform.position MEANS : It's now the center, not the bottom left
+            // old is still good with Unity 2023.6, but not with 6000.0
+            // alternative: https://docs.unity3d.com/ScriptReference/RectTransform.GetWorldCorners.html
         );
         if (FixRenderTexture())
             screenToCameraOutputScale = new(
@@ -134,7 +138,7 @@ public class UICamera : Kamera {
         
         if (renderTexture != null) Destroy(renderTexture);
         renderTexture = new(width, height, 24) {
-            antiAliasing = 4
+            // antiAliasing = 4
         };
         renderTarget.texture = Cam.targetTexture = renderTexture;
         return true;

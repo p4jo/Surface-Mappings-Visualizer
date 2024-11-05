@@ -3,27 +3,28 @@ using System.Linq;
 using UnityEngine;
 
 
-public interface ICurve
+public abstract class Curve: ITransformable<Curve>
 {
-    public float Length { get; }
+    public abstract float Length { get; }
 
-    public IPoint EndPosition { get; }
-    public IPoint StartPosition { get; }
-    public Vector3 EndVelocity { get; }
-    public Vector3 StartVelocity { get; }
-    
-    public DrawingSurface Surface { get; }
-    
-    public virtual IEnumerable<Vector3> NonDifferentiablePoints => Enumerable.Empty<Vector3>();
+    public abstract Point EndPosition { get; }
+    public abstract Point StartPosition { get; }
+    public abstract Vector3 EndVelocity { get; }
+    public abstract Vector3 StartVelocity { get; }
+
+    public abstract DrawingSurface Surface { get; }
+
+    public virtual IEnumerable<Point> NonDifferentiablePoints => Enumerable.Empty<Point>();
 
     public virtual Vector3 this[float t] => ValueAt(t);
 
-    public Vector3 ValueAt(float t);
-    public Vector3 DerivativeAt(float t);
+    public abstract Vector3 ValueAt(float t);
+    public abstract Vector3 DerivativeAt(float t);
     
-    public virtual ICurve Concatenate(ICurve curve) => new ConcatenatedCurve(new ICurve[] { this, curve });
+    public virtual Curve Concatenate(Curve curve) => new ConcatenatedCurve(new Curve[] { this, curve });
 
-    public virtual ICurve Reverse() => new ReverseCurve(this);
+    private Curve reverseCurve;
+    public virtual Curve Reverse() => reverseCurve ??= new ReverseCurve(this);
 
     public virtual float GetClosestPoint(Vector3 point)
     {
@@ -46,41 +47,38 @@ public interface ICurve
         return t;
     }
 
-    ICurve ApplyHomeomorphism(Homeomorphism homeomorphism);
+    public abstract Curve ApplyHomeomorphism(Homeomorphism homeomorphism); // todo implement? (make homeos C1 diffeos!)
 }
 
-public class ConcatenatedCurve : ICurve
+public class ConcatenatedCurve : Curve
 {
-    private readonly ICurve[] segments;
-    private IEnumerable<IPoint> nonDifferentiablePoints;
+    private readonly Curve[] segments;
+    private IEnumerable<Point> nonDifferentiablePoints;
 
-    public DrawingSurface Surface => segments.First().Surface;
+    public override DrawingSurface Surface => segments.First().Surface;
 
-    public float Length { get; private set; }
+    public override float Length => length;
+    private readonly float length;
+    
+    public override IEnumerable<Point> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints();
 
-    public IEnumerable<IPoint> NonDifferentiablePoints
-    {
-        get => CalculateSingularPoints();
-        protected set => nonDifferentiablePoints = value;
-    }
-
-    public ConcatenatedCurve(IEnumerable<ICurve> curves)
+    public ConcatenatedCurve(IEnumerable<Curve> curves)
     {
         segments = curves.ToArray();
         
-        Length = (from segment in segments select segment.Length).Sum();
-        if (Length == 0) throw new System.Exception("Length of curve is zero");
+        length = (from segment in segments select segment.Length).Sum();
+        if (length == 0) throw new("Length of curve is zero");
 
     }
 
-    public IPoint EndPosition => segments.Last().EndPosition;
-    public IPoint StartPosition => segments.First().StartPosition;
-    public Vector3 EndVelocity => segments.Last().EndVelocity;
-    public Vector3 StartVelocity => segments.First().StartVelocity;
+    public override Point EndPosition => segments.Last().EndPosition;
+    public override Point StartPosition => segments.First().StartPosition;
+    public override Vector3 EndVelocity => segments.Last().EndVelocity;
+    public override Vector3 StartVelocity => segments.First().StartVelocity;
 
-    public Vector3 ValueAt(float t)
+    public override Vector3 ValueAt(float t)
     {
-        t %= Length;
+        t %= length;
         foreach (var segment in segments)
         {
             if (t < segment.Length)
@@ -88,12 +86,12 @@ public class ConcatenatedCurve : ICurve
             t -= segment.Length;
         }
 
-        throw new System.Exception("What the heck");
+        throw new("What the heck");
     }
 
-    public Vector3 DerivativeAt(float t)
+    public override Vector3 DerivativeAt(float t)
     {
-        t %= Length;
+        t %= length;
         foreach (var segment in segments)
         {
             if (t < segment.Length)
@@ -101,49 +99,47 @@ public class ConcatenatedCurve : ICurve
             t -= segment.Length;
         }
 
-        throw new System.Exception("What the heck");
+        throw new("What the heck");
     }
 
-    public ICurve ApplyHomeomorphism(Homeomorphism homeomorphism) => 
+    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => 
         new ConcatenatedCurve(from segment in segments select segment.ApplyHomeomorphism(homeomorphism));
     
     
-    private IEnumerable<IPoint> CalculateSingularPoints()
+    private IEnumerable<Point> CalculateSingularPoints()
     {
-        ICurve curve, nextCurve = segments.Last();
-        List<IPoint> res = new();
+        Curve nextCurve = segments.Last();
+        List<Point> res = new();
         for (int i = 0; i <= segments.Length - 2; i++)
         {
-            curve = nextCurve;
+            var curve = nextCurve;
             nextCurve = segments[i];
             if (curve.EndPosition != nextCurve.StartPosition)
                 res.Add(new ConcatenationJumpPoint() { incomingCurve = curve, outgoingCurve = nextCurve });
         }
-        
-        NonDifferentiablePoints = res;
         return res;
     }
 }
 
-public class ReverseCurve : ICurve
+public class ReverseCurve : Curve
 {
-    private readonly ICurve curve;
+    private readonly Curve curve;
 
-    public ReverseCurve(ICurve curve)
+    public ReverseCurve(Curve curve)
     {
         this.curve = curve;
     }
 
-    public float Length => curve.Length;
-    public IPoint EndPosition => curve.StartPosition;
-    public IPoint StartPosition => curve.EndPosition;
-    public Vector3 EndVelocity => - curve.StartVelocity;
-    public Vector3 StartVelocity => - curve.EndVelocity;
-    public DrawingSurface Surface => curve.Surface;
+    public override float Length => curve.Length;
+    public override Point EndPosition => curve.StartPosition;
+    public override Point StartPosition => curve.EndPosition;
+    public override Vector3 EndVelocity => - curve.StartVelocity;
+    public override Vector3 StartVelocity => - curve.EndVelocity;
+    public override DrawingSurface Surface => curve.Surface;
 
-    public Vector3 ValueAt(float t) => curve.ValueAt(Length - t);
-    public Vector3 DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
+    public override Vector3 ValueAt(float t) => curve.ValueAt(Length - t);
+    public override Vector3 DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
 
-    public ICurve ApplyHomeomorphism(Homeomorphism homeomorphism)
+    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Reverse();
 }

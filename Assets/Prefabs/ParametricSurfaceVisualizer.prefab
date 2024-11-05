@@ -175,11 +175,11 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
+  near clip plane: -200
   far clip plane: 1000
   field of view: 60
-  orthographic: 0
-  orthographic size: 5
+  orthographic: 1
+  orthographic size: 7
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
@@ -226,8 +226,8 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
-  m_Antialiasing: 0
+  m_RenderPostProcessing: 1
+  m_Antialiasing: 1
   m_AntialiasingQuality: 2
   m_StopNaN: 0
   m_Dithering: 0
@@ -298,7 +298,7 @@ GameObject:
   - component: {fileID: 7898905382751063786}
   - component: {fileID: 8021947267181143901}
   m_Layer: 0
-  m_Name: 3DVisualizer
+  m_Name: ParametricSurfaceVisualizer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -333,8 +333,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aac9e5e8c99e444bbc5cf779fd0c7979, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  parametricSurface:
-    visualizer: {fileID: 0}
   pointer: {fileID: 8628094876595040950}
-  meshGenerator: []
+  meshGenerators: []
   meshPrefab: {fileID: 6155428129297719394, guid: 4ae20ffde783b4d4aa7ac47aa82793a6, type: 3}

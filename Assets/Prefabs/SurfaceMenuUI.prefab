@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 2901821052067462677}
   - component: {fileID: 4991592527981686739}
   m_Layer: 5
-  m_Name: AbstractSurface
+  m_Name: SurfaceMenuUI
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -105,6 +105,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5e20706859dc4577a577af517b99a55d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  surfaceVisualizerUIPrefab: {fileID: 1296885786719671624, guid: 8fc7b3aa27aa5204a999c309433e3c3e, type: 3}
+  parametricSurfaceVisualizerUIPrefab: {fileID: 1296885786719671624, guid: 8fc7b3aa27aa5204a999c309433e3c3e, type: 3}
   parametricSurfaceVisualizerPrefab: {fileID: 7141618544272409706, guid: c08f04b5205d08c4a93d090c3b25e7db, type: 3}
-  modelSurfaceVisualizerPrefab: {fileID: 0}
+  modelSurfaceVisualizerUIPrefab: {fileID: 1296885786719671624, guid: daf30655010eb5143acaa4edb43e3568, type: 3}
+  mainMenu: {fileID: 0}

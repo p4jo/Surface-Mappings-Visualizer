@@ -31,6 +31,7 @@ public class ModelSurface: DrawingSurface
     private readonly List<ModelSurfaceSide> sideCurves = new();
     private readonly List<ModelSurfaceVertex> vertices = new();
     private readonly List<PolygonSide> sidesAsParameters;
+    public readonly float width, height;
 
     public ModelSurface(string name,
         int genus,
@@ -47,8 +48,9 @@ public class ModelSurface: DrawingSurface
             var newSide = new ModelSurfaceSide(side, geometryType, this);
             var oldSide = this.sideCurves.FirstOrDefault(existingSide => existingSide.label == newSide.label);
             oldSide?.AddOther(newSide);
+            this.sideCurves.Add(newSide);
         }
-        if ((from side in this.sideCurves select side.other != null).Any())
+        if (sideCurves.Any(side => side.other == null))
             throw new Exception("Check your polygon! Some sides are not paired.");
 
         #region find vertices
@@ -74,78 +76,104 @@ public class ModelSurface: DrawingSurface
         foreach (var curve in this.sideCurves)
         {
             AddDirectedEdgeToAStar(curve);
-            AddDirectedEdgeToAStar(curve.Reverse());
+            AddDirectedEdgeToAStar(curve.ReverseModelSide());
         }
         
         foreach ((_, List<ModelSurfaceSide> identifiedGeodesics) in polygonVertices)
         {
             identifiedGeodesics.Sort((a, b) => a.angle.CompareTo(b.angle));
+            // increasing index means turning left
         }
+        
+        width = polygonVertices.Max(pair => pair.Item1.x) - polygonVertices.Min(pair => pair.Item1.x);
+        height = polygonVertices.Max(pair => pair.Item1.y) - polygonVertices.Min(pair => pair.Item1.y);
         
         while (true)
         {
+            var vertex = new ModelSurfaceVertex();
             var vertexIndex = vertices.Count;
+            
+            if (vertexIndex > 3 * sideCurves.Count)           
+                throw new Exception("what the heck?");
+            
+            vertices.Add(vertex);
 
-            var (edgesAtCurrentPolygonVertex, edge) = (
+            var oldEdge = (
                     from polygonVertex in polygonVertices
                     let edgesAtThisPolygonVertex = polygonVertex.Item2
                     let unassignedEdge = edgesAtThisPolygonVertex.FirstOrDefault(
                         edge => edge.vertexIndex == -1
                     )
-                    select (edgesAtThisPolygonVertex, unassignedEdge)                    
+                    select unassignedEdge                  
                 ).FirstOrDefault(
-                    pair => pair.Item2 != null
+                    edge => edge != null
                 );
             
-            if (edge == null) // all edges have been assigned to a vertex
+            if (oldEdge == null) // all edges have been assigned to a vertex
                 break;
             
-            // todo: we might want to do something with the angles
-            List<float> angles = new();
-            
-            edge.vertexIndex = vertexIndex; 
-            var vertex = new ModelSurfaceVertex();
-            vertex.boundaryCurves.Add(edge);
-
             while (true)
             {
-                var i = edgesAtCurrentPolygonVertex.IndexOf(edge);
-                var turnDirection = edge.rightIsInside ? -1 : 1;
-                var newEdge = edgesAtCurrentPolygonVertex[(i + turnDirection) % edgesAtCurrentPolygonVertex.Count];
-                
-                if (newEdge.rightIsInside == edge.rightIsInside)
-                    throw new Exception("Check your polygon! Two edges next to each other on a vertex don't agree on what is the inside of the polygon.");
-                
-                var angle = newEdge.angle - edge.angle;
-                if (angle < 0)
-                    angle += tau;
-                angles.Add(angle);
-                vertex.angle += angle;
-
-                if (newEdge.vertexIndex == vertexIndex)
+                bool TryAddEdgeToVertex(ModelSurfaceSide modelSurfaceSide)
                 {
-                    if (newEdge != vertex.boundaryCurves[0])
-                        throw new Exception("Check your polygon! The supposed cyclic order of edges closed back in on itself, but not where it should.");
-                    break; // we have come full circle
+                    if (modelSurfaceSide.vertexIndex == vertexIndex)
+                    {
+                        if (modelSurfaceSide != vertex.boundaryCurves[0])
+                            throw new Exception("Check your polygon! The supposed cyclic order of edges closed back in on itself, but not where it should.");
+                        return false; // we have come full circle, this vertex is finished
+                    }
+                
+                    if (modelSurfaceSide.vertexIndex != -1)
+                        throw new Exception("Check your polygon! Some edges seem to be assigned to more than one vertex.");
+            
+                    if (vertex.boundaryCurves.Contains(modelSurfaceSide))
+                        throw new Exception("what the heck");
+                    
+                    if (vertex.boundaryCurves.Count > 3 * sideCurves.Count)
+                        throw new Exception("what the heck?");
+                    
+                    modelSurfaceSide.vertexIndex = vertexIndex;
+                    vertex.boundaryCurves.Add(modelSurfaceSide);
+                    
+                    return true;
                 }
                 
-                if (newEdge.vertexIndex != -1)
-                    throw new Exception("Check your polygon!");
-            
-            
-                edge.vertexIndex = vertexIndex; 
-                vertex.boundaryCurves.Add(edge);
+                if (!TryAddEdgeToVertex(oldEdge)) break;
+
+                var edgesAtCurrentPolygonVertex = polygonVertices.First(
+                    pair => pair.Item2.Contains(oldEdge)
+                ).Item2;
                 
-                edge = newEdge.other;
-                    
+                var i = edgesAtCurrentPolygonVertex.IndexOf(oldEdge);
+                var turnDirection = oldEdge.rightIsInside ? +1 : -1;
+                var j = i + turnDirection;
+                if (j < 0)
+                    j += edgesAtCurrentPolygonVertex.Count; // modulo in C# is not always positive...
+                if (j == edgesAtCurrentPolygonVertex.Count)
+                    j = 0;
+                var newEdge = edgesAtCurrentPolygonVertex[j];
+                
+                if (newEdge.rightIsInside == oldEdge.rightIsInside)
+                    throw new Exception("Check your polygon! Two edges next to each other on a vertex don't agree on what is the inside of the polygon.");
+                
+                var angle = newEdge.angle - oldEdge.angle;
+                if (angle < 0)
+                    angle += tau;
+                vertex.angles.Add(angle);
+
+                // we add both edges to the vertex (i.e. this and other, then we continue turning)
+                if (!TryAddEdgeToVertex(newEdge)) break; 
+
+                oldEdge = newEdge.other;
+                
             }
-            vertices.Add(vertex);
+
         }
         
         #endregion
         
         // todo: think about this ordering
-        var vert = vertices.OrderByDescending(vertex => Mathf.Abs(tau / vertex.angle - 1));
+        var vert = vertices.OrderByDescending(vertex => Mathf.Abs(tau / vertex.angles.Sum() - 1));
         this.punctures.AddRange((
                 from vertex in vert
                 select vertex.boundaryCurves.First().curve.StartPosition
@@ -190,7 +218,7 @@ public class ModelSurface: DrawingSurface
         };
     }
 
-    public override IPoint ClampPoint(Vector3? point) // todo: this is extremely inefficient
+    public override Point ClampPoint(Vector3? point) // todo: this is extremely inefficient
     {
         if (point == null) return null;
         var p = point.Value;
@@ -230,29 +258,26 @@ public class ModelSurface: DrawingSurface
 
         return new BasicPoint(p);
     }
-
-    public override void UpdatePoint(IPoint point)
-    {
-        throw new NotImplementedException();
-    }
 }
 
 
-public record ModelSurfaceSide: ICurve
+public class ModelSurfaceSide: Curve
 {
     public readonly string label;
-    public readonly ICurve curve;
+    public readonly Curve curve;
     public readonly bool rightIsInside;
     public readonly float angle;
     public int vertexIndex = -1;
+    public int id = -1;
     public ModelSurfaceSide other;
 
-    public ModelSurfaceSide(ICurve curve, bool rightIsInside, string label)
+    public ModelSurfaceSide(Curve curve, bool rightIsInside, string label)
     {
         this.curve = curve;
         this.rightIsInside = rightIsInside;
         this.label = label;
         angle = Mathf.Atan2(curve.StartVelocity.y, curve.StartVelocity.x);
+        id = Random.Range(0, 1000);
     }
 
     public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, DrawingSurface surface): this(
@@ -261,32 +286,43 @@ public record ModelSurfaceSide: ICurve
         side.label
     ) { }
 
-    public float Length => curve.Length;
-    public IPoint EndPosition => curve.EndPosition;
-    public IPoint StartPosition => curve.StartPosition;
-    public Vector3 EndVelocity => curve.EndVelocity;
-    public Vector3 StartVelocity => curve.StartVelocity;
-    public DrawingSurface Surface => curve.Surface;
-    public Vector3 ValueAt(float t) => curve.ValueAt(t);
+    public override float Length => curve.Length;
+    public override Point EndPosition => curve.EndPosition;
+    public override Point StartPosition => curve.StartPosition;
+    public override Vector3 EndVelocity => curve.EndVelocity;
+    public override Vector3 StartVelocity => curve.StartVelocity;
+    public override DrawingSurface Surface => curve.Surface;
+    public override Vector3 ValueAt(float t) => curve.ValueAt(t);
 
-    public Vector3 DerivativeAt(float t)
+    public override Vector3 DerivativeAt(float t) => curve.DerivativeAt(t);
+
+    private ModelSurfaceSide reverseSide;
+
+    public override Curve Reverse() => ReverseModelSide();
+
+    public ModelSurfaceSide ReverseModelSide()
     {
-        throw new NotImplementedException();
+        if (reverseSide != null) // this method will be called in AddOther from below in other.Reverse()!
+            return reverseSide;
+        reverseSide = new(curve.Reverse(), !rightIsInside, label + "'");
+        reverseSide.reverseSide = this;
+        reverseSide.AddOther(other.ReverseModelSide());
+        
+        return reverseSide;
     }
 
-    public ModelSurfaceSide Reverse() => new(curve.Reverse(), !rightIsInside, label + "'");
-    public ICurve ApplyHomeomorphism(Homeomorphism homeomorphism)
+    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
         return new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), rightIsInside, label);
         // todo: think about orientation
     }
 
-    public void AddOther(ModelSurfaceSide side)
+    public void AddOther(ModelSurfaceSide newOtherSide)
     {
-        if (other != null)
+        if (other != null && other != newOtherSide)
             throw new Exception("Check your polygon! Three sides have the same label.");
-        other = side;
-        side.other = this;
+        other = newOtherSide;
+        other.other = this;
         if (other.rightIsInside == rightIsInside)
             Debug.Log("Check your polygon! Two sides with the same label have the surface on the same side." +
                       " This might mean that it is not orientable?");

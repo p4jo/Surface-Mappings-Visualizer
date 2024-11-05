@@ -1,28 +1,32 @@
-﻿using System;
-using System.Collections.Generic;
-using UnityEngine;
-using MathMesh;
-using UnityEngine.Serialization;
+﻿using UnityEngine;
+using UnityEngine.UI;
 
-public class ModelSurfaceVisualizer : MonoBehaviour
+public class ModelSurfaceVisualizer : SurfaceVisualizer
 {
-    [SerializeField] private ModelSurface surface;
+    private ModelSurface surface;
     [SerializeField] private RectTransform pointer;
-    [SerializeField] private RectTransform drawingArea;
+    [SerializeField] private RawImage drawingArea;
+    [SerializeField] private float scale = 1f;
     
-    public void MovePointTo(Vector3? point)
+    public override void MovePointTo(Point point)
     {
-        if (!point.HasValue)
+        if (point == null)
         {
             pointer.gameObject.SetActive(false);
             return;
         }
-        pointer.localPosition = point.Value;
-    }
+        pointer.gameObject.SetActive(true);
+        pointer.localPosition = point.Position * scale;
+        // todo: several positions => several pointers
+    } // todo: several points as well
 
-    public void Initialize(ModelSurface surface, RectTransform drawingArea)
+    public void Initialize(ModelSurface surface)
     {
         this.surface = surface;
-        this.drawingArea = drawingArea;
+        var tooltipTarget = GetComponent<TooltipTarget>();
+        tooltipTarget.Initialize(this, drawingArea.rectTransform);
+        scale = Mathf.Min(
+            drawingArea.rectTransform.rect.width / surface.width,
+            drawingArea.rectTransform.rect.height / surface.height);
     }
 }

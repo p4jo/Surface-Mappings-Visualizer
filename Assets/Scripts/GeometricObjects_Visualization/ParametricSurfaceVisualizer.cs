@@ -3,40 +3,49 @@ using System.Collections.Generic;
 using UnityEngine;
 using MathMesh;
 using UnityEngine.Serialization;
-using Object = UnityEngine.Object;
 
-public class ParametricSurfaceVisualizer : MonoBehaviour
+public class ParametricSurfaceVisualizer : SurfaceVisualizer
 {
     [SerializeField] private ParametricSurface parametricSurface;
     [SerializeField] private Transform pointer;
-    [SerializeField] private List<MeshGenerator> meshGenerator;
+    [FormerlySerializedAs("meshGenerator")] [SerializeField] private List<MeshGenerator> meshGenerators;
     [SerializeField] private GameObject meshPrefab;
 
 
-    public void MovePointTo(Vector3? point)
+    public override void MovePointTo(Point point)
     {
-        if (!point.HasValue)
+        if (point == null)
         {
             pointer.gameObject.SetActive(false);
             return;
         }
-        pointer.position = point.Value;
+        pointer.gameObject.SetActive(true);
+        pointer.position = point.Position;
     }
 
     public void Initialize(ParametricSurface parametricSurface)
     {
         this.parametricSurface = parametricSurface;
-        var gameObject = Instantiate(meshPrefab, transform);
-        var generator = gameObject.GetComponent<MeshGenerator>();
-        generator.CurrentSurface = new SurfaceData(parametricSurface.Name, 0, Array.Empty<float>(),
-            func: floats => parametricSurface.parametrization?.f(new Vector3(floats[0], floats[1])) ?? Vector3.zero);
-        generator.u = new(0, tau);
-        generator.v = new(0, tau);
-        generator.doubleSided = false;
-        generator.uSlices = 200;
-        generator.vSlices = 200; // todo: increase?
-        generator.GenerateMesh();
+        foreach (var rect in parametricSurface.chartRects)
+        {
+            var gameObject = Instantiate(meshPrefab, transform);
+            var generator = gameObject.GetComponent<MeshGenerator>();
+            generator.CurrentSurface = new SurfaceData(parametricSurface.Name, 0, Array.Empty<float>(),
+                func: floats => parametricSurface.embedding.f(new Vector3(floats[0], floats[1])));
+            generator.u = new(rect.xMin, rect.xMax);
+            generator.v = new(rect.yMin, rect.yMax);
+            // generator.doubleSided = false;
+            generator.uSlices = 300;
+            generator.vSlices = 300; 
+            generator.GenerateMesh();
+            meshGenerators.Add(generator);
+
+            gameObject.GetComponent<MeshCollider>().sharedMesh = generator.mesh;
+            gameObject.GetComponent<TooltipTarget>().Initialize(this);
+        }
     }
 
     private const float tau = Mathf.PI * 2;
+    
+    
 }

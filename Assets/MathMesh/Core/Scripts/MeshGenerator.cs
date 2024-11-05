@@ -71,8 +71,8 @@ namespace MathMesh
 
         public void GenerateMesh()
         {
-            uSlices = Mathf.Min(200, uSlices);
-            vSlices = Mathf.Min(200, vSlices);
+            // uSlices = Mathf.Min(200, uSlices);
+            // vSlices = Mathf.Min(200, vSlices);
             //Ensure meshtype has been selected properly
             if (CurrentSurface == null)
             {

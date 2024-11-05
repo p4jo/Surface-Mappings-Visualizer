@@ -1,78 +1,79 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Serialization;
 using UnityEngine.UI;
-using Object = UnityEngine.Object;
 
-[Serializable]
-public struct SurfaceParameter
-{
-    // todo: this should be split into two tpyes:
-    // One being basically the input for the constructor of Modelsurface
-    // One describing embedded surfaces, e.g. where the genera are. This affects only the embeddings (homeomorphisms)
-    public int genus, punctures;
-    public bool modelSurface;
-    // todo
 
-    public static SurfaceParameter FromString(string s)
-    {
-        if (s.StartsWith("g="))
-            return new() { genus = int.Parse(s.Substring(2)), punctures = 0, modelSurface = false }; // todo
-        if (s == "Torus2D")
-            return new() { genus = 1, punctures = 0, modelSurface = true };
-        if (s == "Torus3D")
-            return new() { genus = 1, punctures = 0, modelSurface = false };
-        throw new NotImplementedException();
-    }
-}
-
+/// <summary>
+/// This is also AbstractSurfaceVisualizer in a sense. This should potentially be split into two classes.
+/// </summary>
 public class SurfaceMenu: MonoBehaviour 
 {
+    
     public AbstractSurface surface;
-    public GameObject surfaceVisualizerUIPrefab;
+    public GameObject parametricSurfaceVisualizerUIPrefab;
     public GameObject parametricSurfaceVisualizerPrefab;
-    public GameObject modelSurfaceVisualizerPrefab;
+    public GameObject modelSurfaceVisualizerUIPrefab;
     private RectTransform canvas;
 
-    public void Initialize(string parameterString, RectTransform canvas) // for UI calls
-        => Initialize(from s in parameterString.Split(";") select SurfaceParameter.FromString(s), canvas);
+    readonly Dictionary<string, SurfaceVisualizer> visualizers = new();
+    private CameraManager cameraManager;
+    [SerializeField] private MainMenu mainMenu;
 
-    public void Initialize(IEnumerable<SurfaceParameter> parameters, RectTransform canvas)
+    public void Initialize(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager, MainMenu mainMenu)
     {
         this.canvas = canvas;
-        surface = SurfaceGenerator.CreateSurface(this, parameters);
+        this.surface = surface;
+        this.cameraManager = cameraManager;
+        this.mainMenu = mainMenu;
         foreach (var (name, drawingSurface) in surface.drawingSurfaces)
         {
-            var surfaceVisualizerUI = Instantiate(surfaceVisualizerUIPrefab, transform);
-            var panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
 
-            
+            SurfaceVisualizer surfaceVisualizer;
             switch (drawingSurface)
             {
                 case ParametricSurface parametricSurface:
                 {
+                    var surfaceVisualizerUI = Instantiate(parametricSurfaceVisualizerUIPrefab, transform);
+                    var panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
                     var surfaceVisualizerGameObject = Instantiate(parametricSurfaceVisualizerPrefab);
-                    var surfaceVisualizer =
+                    var parametricSurfaceVisualizer = 
                         surfaceVisualizerGameObject.GetComponentInChildren<ParametricSurfaceVisualizer>();
-                    surfaceVisualizer.Initialize(parametricSurface);
+                    parametricSurfaceVisualizer.Initialize(parametricSurface);
+                    surfaceVisualizer = parametricSurfaceVisualizer;
+                    
                     var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UICamera>();
                     kamera.Initialize(panel, canvas);
+                    cameraManager.AddKamera(kamera);
+                    mainMenu.UIMoved += () => kamera.UIMoved();
                     break;
                 }
                 case ModelSurface modelSurface:
                 {
-                    var surfaceVisualizer = panel.gameObject.AddComponent<ModelSurfaceVisualizer>();
-                    surfaceVisualizer.Initialize(modelSurface, panel.rectTransform);
+                    var surfaceVisualizerUI = Instantiate(modelSurfaceVisualizerUIPrefab, transform);
+                    var modelSurfaceVisualizer = surfaceVisualizerUI.GetComponentInChildren<ModelSurfaceVisualizer>();
+                    modelSurfaceVisualizer.Initialize(modelSurface);
+                    surfaceVisualizer = modelSurfaceVisualizer;
                     break;
                 }
                 default:
                     throw new NotImplementedException();
             }
             
+            visualizers.Add(name, surfaceVisualizer);
+            surfaceVisualizer.MouseHover += location => MouseHover(drawingSurface.ClampPoint(location), drawingSurface.Name);
+        }
+    }
 
-
+    private void MouseHover([CanBeNull] Point input, string drawingSurfaceName)
+    {
+        // todo: different modes in the menu will show different things, e.g. drawing a curve by waypoints, showing a grid, placing points, grids etc.
+        foreach (var (name, drawingSurface) in surface.drawingSurfaces)
+        {
+            var homeomorphism = surface.GetHomeomorphism(drawingSurfaceName, name);
+            visualizers[name].MovePointTo(input?.ApplyHomeomorphism(homeomorphism));
         }
     }
 }
