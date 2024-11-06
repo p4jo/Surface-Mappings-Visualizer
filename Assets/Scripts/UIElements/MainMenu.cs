@@ -1,6 +1,7 @@
 ﻿
 using System;
 using System.Linq;
+using UnityEditor.UIElements;
 using UnityEngine;
 
 public class MainMenu: MonoBehaviour
@@ -19,6 +20,10 @@ public class MainMenu: MonoBehaviour
         var surface = SurfaceGenerator.CreateSurface(parameters);
         surfaceMenu.Initialize(surface, canvas, cameraManager, this); 
         // todo
+        var (torusName, torus) = surface.drawingSurfaces.FirstOrDefault(v => v.Value is ModelSurface);
+        var modelTorus = torus as ModelSurface;
+        var curve = modelTorus.sideCurves[0];
+        surfaceMenu.AddCurve(curve);
     }
 
     public event Action UIMoved;

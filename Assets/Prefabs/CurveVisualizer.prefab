@@ -319,4 +319,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d7bcaa27abf963b49af775b70ac56a19, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  splineComputer: {fileID: 0}
+  splineComputer: {fileID: 3310283270684842847}

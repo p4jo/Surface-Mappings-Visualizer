@@ -11,14 +11,14 @@ GameObject:
   - component: {fileID: 8628094876595040950}
   - component: {fileID: 8322459770689643072}
   - component: {fileID: 3456604249250009355}
-  - component: {fileID: 4384598899628585422}
+  - component: {fileID: 3779743062206313327}
   m_Layer: 0
   m_Name: Pointer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &8628094876595040950
 Transform:
   m_ObjectHideFlags: 0
@@ -65,7 +65,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: cef8fa60c53cf8c4280cbeb7e0c3333e, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -87,27 +87,20 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!135 &4384598899628585422
-SphereCollider:
+--- !u!114 &3779743062206313327
+MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 746687065297053521}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
   m_Enabled: 1
-  serializedVersion: 3
-  m_Radius: 0.5
-  m_Center: {x: 0, y: 0, z: 0}
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d61225cc27fc6e24fa6b27ddac7b84ba, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  camera: {fileID: 6488324276169718107}
+  baseScale: {x: 0, y: 0, z: 0}
 --- !u!1 &1892613019903874075
 GameObject:
   m_ObjectHideFlags: 0
@@ -333,6 +326,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aac9e5e8c99e444bbc5cf779fd0c7979, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  curveVisualizerPrefab: {fileID: 3391233956122432578, guid: 34b0adc83d662fc4695bd835469ca78d, type: 3}
   pointer: {fileID: 8628094876595040950}
   meshGenerators: []
   meshPrefab: {fileID: 6155428129297719394, guid: 4ae20ffde783b4d4aa7ac47aa82793a6, type: 3}

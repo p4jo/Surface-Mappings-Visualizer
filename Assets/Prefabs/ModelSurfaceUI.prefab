@@ -153,14 +153,14 @@ RectTransform:
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 2038160278720495163}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 100, y: 100}
+  m_SizeDelta: {x: 30, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1586727769847900716
 CanvasRenderer:
@@ -183,8 +183,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_RaycastTarget: 1
+  m_Color: {r: 0, g: 0.043139458, b: 1, a: 1}
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -582,8 +582,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 783c8793ac784e80b9f3532b3c7d53e3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  curveVisualizerPrefab: {fileID: 3391233956122432578, guid: 34b0adc83d662fc4695bd835469ca78d, type: 3}
   pointer: {fileID: 6178441341985466236}
   drawingArea: {fileID: 2351239804771052012}
+  scale: 1
+  imageOffset: {x: 0, y: 0}
 --- !u!114 &8872388053111445737
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -596,4 +599,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ccd23936566343cc9a9b9710872a81ac, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  continuous: 1
+  hovering: 0
   rectTransform: {fileID: 2038160278720495163}

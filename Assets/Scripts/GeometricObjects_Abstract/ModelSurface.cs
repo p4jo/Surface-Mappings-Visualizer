@@ -27,10 +27,10 @@ public class ModelSurface: DrawingSurface
 
     #endregion
 
-    private readonly GeometryType geometryType;
-    private readonly List<ModelSurfaceSide> sideCurves = new();
-    private readonly List<ModelSurfaceVertex> vertices = new();
-    private readonly List<PolygonSide> sidesAsParameters;
+    public readonly GeometryType geometryType;
+    public readonly List<ModelSurfaceSide> sideCurves = new();
+    public readonly List<ModelSurfaceVertex> vertices = new();
+    public readonly List<PolygonSide> sidesAsParameters;
     public readonly float width, height;
 
     public ModelSurface(string name,
@@ -46,7 +46,7 @@ public class ModelSurface: DrawingSurface
         foreach (var side in identifiedSides)
         {
             var newSide = new ModelSurfaceSide(side, geometryType, this);
-            var oldSide = this.sideCurves.FirstOrDefault(existingSide => existingSide.label == newSide.label);
+            var oldSide = this.sideCurves.FirstOrDefault(existingSide => existingSide.Name == newSide.Name);
             oldSide?.AddOther(newSide);
             this.sideCurves.Add(newSide);
         }
@@ -207,13 +207,15 @@ public class ModelSurface: DrawingSurface
         // the corresponding homeomorphisms must be defined elsewhere (where this is called from)
     }
     
-    public static GeodesicSegment GetGeodesic(Vector2 start, Vector2 end, GeometryType geometryType, DrawingSurface surface)
+    public static GeodesicSegment GetGeodesic(Point startPoint, Point endPoint, GeometryType geometryType, DrawingSurface surface, string label)
     {
+        var start = startPoint.Position;
+        var end = endPoint.Position; // todo: Select best fit points! (in part. for points on the boundary)
         return geometryType switch
         {
-            GeometryType.Flat => new FlatGeodesicSegment(start, end, surface),
-            GeometryType.Hyperbolic => new HyperbolicGeodesicSegment(start, end, surface),
-            GeometryType.Spherical => new SphericalGeodesicSegment(start, end, surface),
+            GeometryType.Flat => new FlatGeodesicSegment(start, end, surface, label),
+            GeometryType.Hyperbolic => new HyperbolicGeodesicSegment(start, end, surface, label),
+            GeometryType.Spherical => new SphericalGeodesicSegment(start, end, surface, label),
             _ => throw new NotImplementedException()
         };
     }
@@ -229,7 +231,7 @@ public class ModelSurface: DrawingSurface
         foreach (var side in sideCurves)
         {
             float t = side.curve.GetClosestPoint(p);
-            Vector3 diff = side.curve[t] - p;
+            Vector3 diff = side.curve[t].Position - p; // todo: difference for points
             float l = diff.sqrMagnitude;
             if (l >= closeness) continue;
             
@@ -263,38 +265,34 @@ public class ModelSurface: DrawingSurface
 
 public class ModelSurfaceSide: Curve
 {
-    public readonly string label;
     public readonly Curve curve;
     public readonly bool rightIsInside;
     public readonly float angle;
     public int vertexIndex = -1;
-    public int id = -1;
     public ModelSurfaceSide other;
 
-    public ModelSurfaceSide(Curve curve, bool rightIsInside, string label)
+    public ModelSurfaceSide(Curve curve, bool rightIsInside)
     {
         this.curve = curve;
         this.rightIsInside = rightIsInside;
-        this.label = label;
         angle = Mathf.Atan2(curve.StartVelocity.y, curve.StartVelocity.x);
-        id = Random.Range(0, 1000);
     }
 
     public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, DrawingSurface surface): this(
-        ModelSurface.GetGeodesic(side.start, side.end, geometryType, surface),
-        side.rightIsInside,
-        side.label
+        ModelSurface.GetGeodesic((BasicPoint) side.start, (BasicPoint) side.end, geometryType, surface, side.label),
+        side.rightIsInside
     ) { }
 
+    public override string Name => curve.Name;
     public override float Length => curve.Length;
     public override Point EndPosition => curve.EndPosition;
     public override Point StartPosition => curve.StartPosition;
     public override Vector3 EndVelocity => curve.EndVelocity;
     public override Vector3 StartVelocity => curve.StartVelocity;
     public override DrawingSurface Surface => curve.Surface;
-    public override Vector3 ValueAt(float t) => curve.ValueAt(t);
+    public override Point ValueAt(float t) => new ModelSurfaceBoundaryPoint(this, t);
 
-    public override Vector3 DerivativeAt(float t) => curve.DerivativeAt(t);
+    public override Vector3 DerivativeAt(float t) => curve.DerivativeAt(t); // todo: TangentVectors with more than one position (and value)
 
     private ModelSurfaceSide reverseSide;
 
@@ -304,7 +302,7 @@ public class ModelSurfaceSide: Curve
     {
         if (reverseSide != null) // this method will be called in AddOther from below in other.Reverse()!
             return reverseSide;
-        reverseSide = new(curve.Reverse(), !rightIsInside, label + "'");
+        reverseSide = new(curve.Reverse(), !rightIsInside);
         reverseSide.reverseSide = this;
         reverseSide.AddOther(other.ReverseModelSide());
         
@@ -313,7 +311,7 @@ public class ModelSurfaceSide: Curve
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
-        return new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), rightIsInside, label);
+        return new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), rightIsInside);
         // todo: think about orientation
     }
 

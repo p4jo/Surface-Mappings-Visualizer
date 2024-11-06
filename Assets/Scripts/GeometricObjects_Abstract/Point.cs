@@ -46,6 +46,7 @@ public class BasicPoint : Point
     }
 
     public static implicit operator BasicPoint(Vector3 v) => new(v);
+    public static implicit operator BasicPoint(Vector2 v) => new(v);
 
 }
 
@@ -112,11 +113,8 @@ public class ModelSurfaceBoundaryPoint : Point
         return base.Equals(other);
     }
 
-    public override IEnumerable<Vector3> Positions => new[]
-    {
-        side.curve[t],
-        side.other.curve[t]
-    };
+    public override IEnumerable<Vector3> Positions => 
+        side.curve[t].Positions.Concat(side.other.curve[t].Positions);
 
     public override Point ApplyHomeomorphism(Homeomorphism homeomorphism) => 
         new ModelSurfaceBoundaryPoint(side.ApplyHomeomorphism(homeomorphism) as ModelSurfaceSide, t);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -64,6 +65,7 @@ public class SurfaceMenu: MonoBehaviour
             
             visualizers.Add(name, surfaceVisualizer);
             surfaceVisualizer.MouseHover += location => MouseHover(drawingSurface.ClampPoint(location), drawingSurface.Name);
+            
         }
     }
 
@@ -74,6 +76,32 @@ public class SurfaceMenu: MonoBehaviour
         {
             var homeomorphism = surface.GetHomeomorphism(drawingSurfaceName, name);
             visualizers[name].MovePointTo(input?.ApplyHomeomorphism(homeomorphism));
+        }
+    }
+
+    public void AddCurve(IEnumerable<Point> points, string surfaceName, string name)
+    {
+        var surf = surface.drawingSurfaces[surfaceName];
+        if (surf is not ModelSurface modelSurface)
+            throw new NotImplementedException();
+        
+        var pointArray = points.ToArray();
+        var geodesicSegments = 
+            from i in Enumerable.Range(0, pointArray.Length - 1)
+            let start = pointArray[i]
+            let end = pointArray[i+1]
+            select ModelSurface.GetGeodesic(start, end, modelSurface.geometryType, modelSurface, name);
+        var curve = new ConcatenatedCurve(geodesicSegments);    
+        
+        AddCurve(curve);
+    }
+
+    public void AddCurve(Curve curve)
+    {
+        foreach (var (_, drawingSurface) in surface.drawingSurfaces)
+        {
+            var homeomorphism = surface.GetHomeomorphism(curve.Surface.Name, drawingSurface.Name);
+            visualizers[curve.Surface.Name].AddCurve(curve.ApplyHomeomorphism(homeomorphism));
         }
     }
 }

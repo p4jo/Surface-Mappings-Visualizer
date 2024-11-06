@@ -4,26 +4,15 @@ using UnityEngine;
 
 public class AbstractSurface
 {
-    public readonly int genus;
-    public readonly SurfaceMenu surfaceMenu;
-
     /// <summary>
     /// These represent the drawn representations of this abstract surface
     /// </summary>
     public readonly Dictionary<string, DrawingSurface> drawingSurfaces = new();
 
-    public readonly Dictionary<string, Point> currentPoints = new();
-
     /// <summary>
     /// These represent the edges between the drawn representations of the same surface
     /// </summary>
     private readonly Dictionary<(string, string), Homeomorphism> homeomorphisms = new();
-
-    public AbstractSurface(int genus, SurfaceMenu surfaceMenu = null) // todo? remove surfaceMenu
-    {
-        this.genus = genus;
-        this.surfaceMenu = surfaceMenu;
-    }
 
     public void AddDrawingSurface(DrawingSurface drawingSurface)
     {
@@ -60,7 +49,7 @@ public class AbstractSurface
 
     public static AbstractSurface FromHomeomorphism(Homeomorphism homeomorphism)
     {
-        var res = new AbstractSurface(homeomorphism.source.Genus);
+        var res = new AbstractSurface();
         res.AddHomeomorphism(homeomorphism);
         return res;
     }
