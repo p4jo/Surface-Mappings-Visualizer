@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: f8ae3c40c20e1a743a9554a06102569b
+timeCreated: 1490438819
+licenseType: Store
+DefaultImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 86481
+  packageName: semi transparent outline
+  packageVersion: 1.1
+  assetPath: Assets/OutlineEffect/Demo/Demo.unity
+  uploadId: 231031

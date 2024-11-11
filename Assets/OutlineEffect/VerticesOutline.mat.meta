@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d4dcff38c4c58624ebf541cb3cf8825f
+timeCreated: 1490438933
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 86481
+  packageName: semi transparent outline
+  packageVersion: 1.1
+  assetPath: Assets/OutlineEffect/VerticesOutline.mat
+  uploadId: 231031
