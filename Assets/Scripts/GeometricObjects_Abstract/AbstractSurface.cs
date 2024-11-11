@@ -7,17 +7,19 @@ public class AbstractSurface
     /// <summary>
     /// These represent the drawn representations of this abstract surface
     /// </summary>
-    public readonly Dictionary<string, DrawingSurface> drawingSurfaces = new();
+    public readonly Dictionary<string, Surface> drawingSurfaces = new();
 
     /// <summary>
     /// These represent the edges between the drawn representations of the same surface
     /// </summary>
     private readonly Dictionary<(string, string), Homeomorphism> homeomorphisms = new();
 
-    public void AddDrawingSurface(DrawingSurface drawingSurface)
+    public GeodesicSurface geodesicSurface;
+
+    public void AddDrawingSurface(Surface surface)
     {
-        drawingSurfaces.TryAdd(drawingSurface.Name, drawingSurface);
-        homeomorphisms.TryAdd((drawingSurface.Name, drawingSurface.Name), Homeomorphism.Identity(drawingSurface));
+        drawingSurfaces.TryAdd(surface.Name, surface);
+        homeomorphisms.TryAdd((surface.Name, surface.Name), Homeomorphism.Identity(surface));
     }
 
     public void AddHomeomorphism(Homeomorphism homeomorphism)

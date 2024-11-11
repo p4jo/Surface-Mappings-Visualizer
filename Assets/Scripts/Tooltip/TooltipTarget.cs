@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -13,6 +14,12 @@ public class TooltipTarget : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
     /// This rescales the mouse position
     /// </summary>
     public RectTransform rectTransform;
+
+    void Update()
+    {
+        if (tooltipThing == null) 
+            Debug.LogError("TooltipTarget must be initialized");
+    }
     
     public void Initialize(ITooltipOnHover tooltipThing, RectTransform rectTransform = null)
     {

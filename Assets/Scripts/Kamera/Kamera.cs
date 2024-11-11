@@ -7,6 +7,7 @@ public class Kamera : MonoBehaviour
     [SerializeField] float wheelSensitivity = 1; 
     [SerializeField] float pinchSensitivity = 0.05f; 
     [SerializeField] float rotationSpeed = 1;
+    [SerializeField] float mouseMovementSpeed = 0.1f;
 
     [field: SerializeField] public Camera Cam { get; private set; }
 
@@ -14,8 +15,11 @@ public class Kamera : MonoBehaviour
     [SerializeField] protected Kamera childKamera;
 
     public CenterPointer centerPointer;
+    public Vector3 minimalPosition = new(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+    public Vector3 maximalPosition = new(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
 
     bool pinching = false;
+    [SerializeField] private bool rotateWithMouse;
 
     void Awake() {
         if (Cam == null && TryGetComponent<Camera>(out var cam))
@@ -48,6 +52,8 @@ public class Kamera : MonoBehaviour
 
         transform.rotation = Quaternion.Slerp(transform.rotation, goalRotation, Time.deltaTime * 5);
         
+        if (!IsMouseInViewport(mousePosition)) return;
+        
         // Zoom by mouse wheel
         Cam.orthographicSize = Math.Max(1, Cam.orthographicSize - Input.GetAxis("Mouse ScrollWheel") * wheelSensitivity);
 
@@ -79,16 +85,15 @@ public class Kamera : MonoBehaviour
         }
 
         // If mouse or finger is down, rotate the camera
-        if (Input.GetMouseButton(0) && !pinching) {
-            float h = Input.GetAxis("Mouse X") * rotationSpeed * 5;
-            float v = Input.GetAxis("Mouse Y") * rotationSpeed * 5;
-
-            // Create a rotation for each axis and multiply them together
-            Quaternion rotation = Quaternion.Euler(-v, h, 0);
-            transform.rotation *= rotation;
+        if (Input.GetMouseButton(0) && !pinching)
+        {
+            var delta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+            Move(delta * 5);
+            // todo: clamp position
         }
         if (Input.touchCount == 1 && !pinching) {
             Touch touchZero = Input.GetTouch(0);
+            Move(touchZero.deltaPosition);
             if (touchZero.phase == TouchPhase.Moved) {
                 float h = touchZero.deltaPosition.x * rotationSpeed;
                 float v = touchZero.deltaPosition.y * rotationSpeed;
@@ -97,6 +102,23 @@ public class Kamera : MonoBehaviour
                 Quaternion rotation = Quaternion.Euler(-v, h, 0);
                 transform.rotation *= rotation;
             }
+        }
+    }
+
+    private void Move(Vector2 delta)
+    {
+        if (rotateWithMouse)
+        {
+            delta *= rotationSpeed;
+            // Create a rotation for each axis and multiply them together
+            Quaternion rotation = Quaternion.Euler(-delta.y, delta.x, 0);
+            transform.rotation *= rotation;
+        }
+        else
+        {
+            delta *= mouseMovementSpeed;
+            var transformLocalPosition = transform.localPosition - (transform.right * delta.x + transform.up * delta.y);
+            transform.localPosition = transformLocalPosition.Clamp(minimalPosition, maximalPosition);
         }
     }
 

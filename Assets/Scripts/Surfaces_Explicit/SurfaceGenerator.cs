@@ -37,8 +37,8 @@ public static class SurfaceGenerator
         var parName = $"Torus with {punctures} punctures (embedded)";
 
         var modelName = $"Torus with {punctures} punctures (identified flat square)";
-        var right = new Vector2(tau, 0);
-        var up = new Vector2(0, tau);
+        var right = new Vector2(τ, 0);
+        var up = new Vector2(0, τ);
         var sides = new List<ModelSurface.PolygonSide>
         {
             new("a", Vector2.zero, right, false),
@@ -49,14 +49,20 @@ public static class SurfaceGenerator
         var modelSurface = new ModelSurface(modelName, 1, punctures, GeometryType.Flat, sides);
 
         var parametrization = new Homeomorphism(modelSurface, null,
-            v => FlatTorusEmbedding((Vector2)v, largeRadius, smallRadius), p => FlatTorusEmbeddingInverse(p, largeRadius, smallRadius));
-        var chartRects = new List<Rect> { new(0, 0, tau, tau) };
-        var parametrizedSurface = new ParametricSurface(parName, parametrization, chartRects); 
+            x => FlatTorusEmbedding((Vector2)x, largeRadius, smallRadius),
+            y => FlatTorusEmbeddingInverse(y, largeRadius, smallRadius),
+            x=> dFlatTorusEmbedding((Vector2)x,  largeRadius, smallRadius),
+            null
+        );
+        var chartRects = new List<Rect> { new(0, 0, τ, τ) };
+        float size = largeRadius + smallRadius;
+        var maximalPosition = new Vector3(size, size, smallRadius);
+        var parametrizedSurface = new ParametricSurface(parName, parametrization, chartRects, 
+            -maximalPosition, maximalPosition); 
         // this assigns the target of the Homeomorphism
 
         return parametrization;
     }
-
 
     private static Vector3 FlatTorusEmbedding(Vector2 angles, float largeRadius = 1.5f, float smallRadius = 1f)
     {
@@ -64,11 +70,24 @@ public static class SurfaceGenerator
         var r = largeRadius + smallRadius * Mathf.Sin(θ);
         return new(r * Mathf.Cos(φ), r * Mathf.Sin(φ), smallRadius * Mathf.Cos(θ));
     }
+    private static Matrix3x3 dFlatTorusEmbedding(Vector2 point, float largeRadius, float smallRadius)
+    {
+        // todo: make this more efficient
+        var (φ, θ) = (point.x, point.y);
+        var r = largeRadius + smallRadius * Mathf.Sin(θ);
+        var dfdφ = new Vector3(-r * Mathf.Sin(φ), r * Mathf.Cos(φ), 0);
+        var drdθ = smallRadius * Mathf.Cos(θ);
+        var dfdθ = new Vector3(drdθ * Mathf.Cos(φ), drdθ * Mathf.Sin(φ), -smallRadius * Mathf.Sin(θ));
+        var normal = -Vector3.Cross(dfdφ, dfdθ);
+        return new Matrix3x3(dfdφ, dfdθ, normal);
+    }
 
     private static Vector3 FlatTorusEmbeddingInverse(Vector3 point, float largeRadius = 1.5f, float smallRadius = 1f)
     {
         var (x, y, z) = (point.x, point.y, point.z);
         var φ = Mathf.Atan2(y, x);
+        if (φ < 0)
+            φ = τ + φ;
         if (Mathf.Abs(z) > smallRadius + 1e-3)
             throw new ArgumentException("point is not on the torus");
         if (Mathf.Abs(z) > smallRadius)
@@ -76,7 +95,7 @@ public static class SurfaceGenerator
         var θ = Mathf.Acos(z / smallRadius);
         var rSquared = x * x + y * y;
         if (rSquared < largeRadius * largeRadius)
-            θ = -θ;
+            θ = τ-θ;
         return new(φ, θ);
     }
     
@@ -113,12 +132,13 @@ public static class SurfaceGenerator
         {
             Vector2 p = pt;
             var centered = p - imageCenter;
-            var normalized = new Vector2(centered.x / imageHalfWidth, centered.y / imageHalfHeight);
             var puffered = 1 + pufferZone;
-            var (x, y) = (normalized.x * puffered, normalized.y * puffered);
+            var totalFactorX = puffered / imageHalfWidth;
+            var totalFactorY = puffered / imageHalfHeight;
+            var (x, y) = (centered.x * totalFactorX, centered.y * totalFactorY);
             var r = Mathf.Max(Mathf.Abs(x), Mathf.Abs(y));
             if (r > puffered)
-                return original(p);
+                return original(pt);
             if (r < 1)
             {
                 var factor = cutoutRadius * Mathf.PI / r / r;
@@ -126,8 +146,8 @@ public static class SurfaceGenerator
                 return NewTorus(result);
             }
             // todo: interpolate (e.g. using a spline surface, e.g. the NURBS
-            var t = (r - 1) / puffered;
-            var dir = normalized / r;
+            var t = (r - 1) / pufferZone;
+            var dir = new Vector2(x, y) / r;
             var closestPointOnOriginal = imageCenter + new Vector2(imageHalfWidth * dir.x, imageHalfHeight * dir.y);
             var start = original(closestPointOnOriginal);
             var closestPointOnNew = cutoutCenter + new Vector2( cutoutRadius * Mathf.PI  * dir.x,  cutoutRadius * Mathf.PI * dir.y);
@@ -161,12 +181,56 @@ public static class SurfaceGenerator
             // todo: inverse of the interpolated sections
             return homeomorphism.fInv(pt);
         }
-        
-        
-        var embedding = new Homeomorphism(newBaseSurface, null, NewEmbedding, NewEmbeddingInverse);
+
+        Matrix3x3 NewEmbeddingDerivative(Vector3 pt)
+        {
+            Vector2 p = pt;
+            var centered = p - imageCenter;
+            var puffered = 1 + pufferZone;
+            var totalFactorX = puffered / imageHalfWidth;
+            var totalFactorY = puffered / imageHalfHeight;
+            var (x, y) = (centered.x * totalFactorX, centered.y * totalFactorY);
+            var r = Mathf.Max(Mathf.Abs(x), Mathf.Abs(y));
+            if (r > puffered)
+                return homeomorphism.df(pt);
+            if (r < 1)
+            {
+                var factor = cutoutRadius * Mathf.PI / r / r;
+                totalFactorX *= factor;
+                totalFactorY *= factor;
+                var result = new Vector2(x * factor, y * factor) + cutoutCenter;
+                return dFlatTorusEmbedding(result, largeRadius, smallRadius) *
+                       new Matrix3x3(totalFactorX, totalFactorY);
+            }
+
+            var dir = new Vector2(x, y) / r;
+            var closestPointOnOriginal = imageCenter + new Vector2(imageHalfWidth * dir.x, imageHalfHeight * dir.y);
+            var start = original(closestPointOnOriginal);
+            var closestPointOnNew =
+                cutoutCenter + new Vector2(cutoutRadius * Mathf.PI * dir.x, cutoutRadius * Mathf.PI * dir.y);
+            var end = NewTorus(closestPointOnNew);
+            var v = (end - start) / pufferZone; 
+            var drdx = x < Mathf.Abs(y) ? -1 : x > Mathf.Abs(y) ? 1 : 0;
+            var drdy = y < Mathf.Abs(x) ? -1 : y > Mathf.Abs(x) ? 1 : 0;
+            // todo: derivative of closestPointOnNew, closestPointOnOriginal, start, end
+            return new Matrix3x3(v * drdx, v * drdy, Vector3.forward); // this is wrong
+            // todo: do the interpolation
+            // todo: make the derivative function entangled with the normal function for less redundancy
+        }
+
+
+        var embedding = new Homeomorphism(newBaseSurface, null, NewEmbedding, NewEmbeddingInverse, NewEmbeddingDerivative, null); 
         // targetSurface doesn't exist yet, but the target of the Homeomorphism is assigned in the ParametricSurface constructor
         
-        var newTargetSurface = new ParametricSurface($"{targetSurface.Name}#T", embedding, newChartRects);
+        
+        float size = largeRadius + smallRadius;
+        var torusSize = new Vector3(size, size, smallRadius);
+        var newTargetSurface = new ParametricSurface($"{targetSurface.Name}#T",
+            embedding,
+            newChartRects,
+            Helpers.Max(targetSurface.MinimalPosition, center - torusSize), 
+            Helpers.Min(targetSurface.MaximalPosition, center + torusSize)
+        );
         
         return embedding;
     }
@@ -185,12 +249,12 @@ public static class SurfaceGenerator
     {
         var torus = Torus();
         var res = torus;
-        var cutoutDistance = tau / (genus - 1);
+        var cutoutDistance = τ / (genus - 1);
         var cutoutRadius = cutoutDistance / 6;
         for (var i = 0; i < genus - 1; i++)
         {
             var imageCenter = new Vector2(cutoutDistance * i + cutoutRadius, Mathf.PI / 2);
-            var cutoutCenter = new Vector2((cutoutDistance * i + cutoutRadius + Mathf.PI) % tau, 0);
+            var cutoutCenter = new Vector2((cutoutDistance * i + cutoutRadius + Mathf.PI) % τ, 0);
             var direction = torus.f(imageCenter);
             var center = direction * 2;
             res = ConnectSumWithFlatTorus(res, imageCenter, cutoutRadius, cutoutRadius, cutoutCenter, cutoutRadius, center: center);
@@ -200,5 +264,5 @@ public static class SurfaceGenerator
         return AbstractSurface.FromHomeomorphism(res);
     }
 
-    private const float tau = Mathf.PI * 2;
+    private const float τ = Mathf.PI * 2;
 }

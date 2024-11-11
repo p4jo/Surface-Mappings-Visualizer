@@ -23,6 +23,12 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
         pointer.position = point.Position;
     }
 
+    protected override void AddPoint(Point point)
+    {
+        var newPointer = Instantiate(pointer.gameObject, pointer.transform.parent);
+        newPointer.transform.localPosition = point.Position;
+    }
+
     public void Initialize(ParametricSurface parametricSurface)
     {
         this.parametricSurface = parametricSurface;

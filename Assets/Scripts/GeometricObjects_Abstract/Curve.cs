@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JetBrains.Annotations;
 using UnityEngine;
 
 
 public abstract class Curve: ITransformable<Curve>
 {
-    public abstract string Name { get; }
+    public abstract string Name { get; set; }
     
     public abstract float Length { get; }
 
@@ -15,9 +16,10 @@ public abstract class Curve: ITransformable<Curve>
     public abstract Vector3 EndVelocity { get; }
     public abstract Vector3 StartVelocity { get; }
 
-    public abstract DrawingSurface Surface { get; }
+    public abstract Surface Surface { get; }
 
     public virtual IEnumerable<Point> NonDifferentiablePoints => Enumerable.Empty<Point>();
+    public virtual Color Color => Color.red;
 
     public virtual Point this[float t] => ValueAt(t);
 
@@ -64,22 +66,27 @@ public class TransformedCurve : Curve
     {
         this.curve = curve;
         this.homeomorphism = homeomorphism;
-        if (curve.Surface != homeomorphism.source)
-            throw new Exception("Homeomorphism does not match surface");
+        // if (curve.Surface != homeomorphism.source)
+        //     throw new Exception("Homeomorphism does not match surface");
     }
 
-    public override string Name => curve.Name + " --> " + homeomorphism.target.Name;
-    
+    [CanBeNull] public string _name;
+    public override string Name
+    {
+        get => _name ?? curve.Name + " --> " + homeomorphism.target.Name;
+        set => _name = value;
+    }
+
     public override float Length => curve.Length;
     public override Point EndPosition => curve.EndPosition.ApplyHomeomorphism(homeomorphism);
     public override Point StartPosition => curve.StartPosition.ApplyHomeomorphism(homeomorphism);
-    public override Vector3 EndVelocity => throw new NotImplementedException("Derivative of homeo missing"); 
-    public override Vector3 StartVelocity => throw new NotImplementedException("Derivative of homeo missing");
-    public override DrawingSurface Surface => homeomorphism.target;
+    public override Vector3 EndVelocity => homeomorphism.df(EndPosition.Position) * curve.EndVelocity; 
+    public override Vector3 StartVelocity => homeomorphism.df(StartPosition.Position) * curve.StartVelocity;
+    public override Surface Surface => homeomorphism.target;
     public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
 
-    public override Vector3 DerivativeAt(float t) => throw new NotImplementedException("Derivative of homeo missing");
-    // we should have a TangentVector class that is transformable. For this, homeomorphisms must have a derivative. This is harder to do in the explicit examples; in the long run, I would actually want this, i.e. everything is C1.
+    public override Vector3 DerivativeAt(float t) => homeomorphism.df(curve.ValueAt(t).Position) * curve.DerivativeAt(t);
+    // we should have a TangentVector class that is transformable. 
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) =>
         new TransformedCurve(curve, homeomorphism * this.homeomorphism);
@@ -91,15 +98,15 @@ public class ConcatenatedCurve : Curve
     private IEnumerable<Point> nonDifferentiablePoints;
 
 
-    public override string Name { get; }
+    public override string Name { get; set; }
 
-    public override DrawingSurface Surface => segments.First().Surface;
+    public override Surface Surface => segments.First().Surface;
 
     public override float Length { get; }
 
     public override IEnumerable<Point> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints();
 
-    public ConcatenatedCurve(IEnumerable<Curve> curves)
+    public ConcatenatedCurve(IEnumerable<Curve> curves, string name = null)
     {
         segments = curves.ToArray();
 
@@ -107,7 +114,7 @@ public class ConcatenatedCurve : Curve
         if (length == 0) throw new Exception("Length of curve is zero");
         Length = length;
         
-        Name = string.Join(" -> ", from segment in segments select segment.Name);
+        Name = name ?? string.Join(" -> ", from segment in segments select segment.Name);
     }
 
     public override Point EndPosition => segments.Last().EndPosition;
@@ -141,10 +148,14 @@ public class ConcatenatedCurve : Curve
         throw new Exception("What the heck");
     }
 
-    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => 
-        new ConcatenatedCurve(from segment in segments select segment.ApplyHomeomorphism(homeomorphism));
-    
-    
+    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
+    {
+        return new ConcatenatedCurve(from segment in segments select segment.ApplyHomeomorphism(homeomorphism),
+            Name + " --> " + homeomorphism.target.Name
+        );
+    }
+
+
     private IEnumerable<Point> CalculateSingularPoints()
     {
         Curve nextCurve = segments.Last();
@@ -169,13 +180,19 @@ public class ReverseCurve : Curve
         this.curve = curve;
     }
 
-    public override string Name => curve.Name + '\'';
+    [CanBeNull] private string _name;
+    public override string Name
+    {
+        get => _name ?? curve.Name + '\'';
+        set => _name = value;
+    }
+
     public override float Length => curve.Length;
     public override Point EndPosition => curve.StartPosition;
     public override Point StartPosition => curve.EndPosition;
     public override Vector3 EndVelocity => - curve.StartVelocity;
     public override Vector3 StartVelocity => - curve.EndVelocity;
-    public override DrawingSurface Surface => curve.Surface;
+    public override Surface Surface => curve.Surface;
 
     public override Point ValueAt(float t) => curve.ValueAt(Length - t);
     public override Vector3 DerivativeAt(float t) => - curve.DerivativeAt(Length - t);

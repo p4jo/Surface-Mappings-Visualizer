@@ -3,11 +3,11 @@ using UnityEngine;
 // TODO: also implement with starting vector or some combination, optimizing
 public abstract class GeodesicSegment: Curve
 {
-    public override string Name { get; }
+    public override string Name { get; set; }
     public override Point StartPosition { get; }
     public override Point EndPosition { get; }
     public override Vector3 StartVelocity { get; }
-    public override DrawingSurface Surface { get; }
+    public override Surface Surface { get; }
     public override Point ValueAt(float t) => (BasicPoint) VectorValueAt(t);
     protected abstract Vector3 VectorValueAt(float t);
 
@@ -16,7 +16,7 @@ public abstract class GeodesicSegment: Curve
     public override Vector3 EndVelocity { get; }
     public override float Length { get; }
 
-    protected GeodesicSegment(Point startPosition, Point endPosition, Vector3 startVelocity, Vector3 endVelocity, float length, DrawingSurface surface, string name)
+    protected GeodesicSegment(Point startPosition, Point endPosition, Vector3 startVelocity, Vector3 endVelocity, float length, Surface surface, string name)
     {
         EndPosition = endPosition;
         StartPosition = startPosition;
@@ -30,7 +30,7 @@ public abstract class GeodesicSegment: Curve
 
 public class FlatGeodesicSegment : GeodesicSegment
 {
-    public FlatGeodesicSegment(Vector3 start, Vector3 end, DrawingSurface surface, string name)
+    public FlatGeodesicSegment(Vector3 start, Vector3 end, Surface surface, string name)
         : base((BasicPoint) start,(BasicPoint)  end, end - start, end - start, 1, surface, name)
     {  }
 
@@ -40,7 +40,7 @@ public class FlatGeodesicSegment : GeodesicSegment
 
 public class HyperbolicGeodesicSegment : GeodesicSegment
 {
-    public HyperbolicGeodesicSegment(Vector3 start, Vector3 end, DrawingSurface surface, string name)
+    public HyperbolicGeodesicSegment(Vector3 start, Vector3 end, Surface surface, string name)
         : base((BasicPoint) start, (BasicPoint)  end, end - start, end - start, 1, surface, name)
     {  throw new System.NotImplementedException(); }
 
@@ -50,7 +50,7 @@ public class HyperbolicGeodesicSegment : GeodesicSegment
 
 public class SphericalGeodesicSegment : GeodesicSegment
 {
-    public SphericalGeodesicSegment(Vector3 start, Vector3 end, DrawingSurface surface, string name)
+    public SphericalGeodesicSegment(Vector3 start, Vector3 end, Surface surface, string name)
         : base((BasicPoint) start, (BasicPoint)  end, end - start, end - start, 1, surface, name)
     {  throw new System.NotImplementedException(); }
 

@@ -3,9 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-public interface ITransformable<out T>
+public interface ITransformable
 {
-    public T ApplyHomeomorphism(Homeomorphism homeomorphism);
+    public ITransformable ApplyHomeomorphism(Homeomorphism homeomorphism);
+}
+
+public interface ITransformable<T>: ITransformable where T : ITransformable
+{
+    public new T ApplyHomeomorphism(Homeomorphism homeomorphism);
+    ITransformable ITransformable.ApplyHomeomorphism(Homeomorphism homeomorphism) => ApplyHomeomorphism(homeomorphism);
 }
 
 public abstract class Point : IEquatable<Point>, ITransformable<Point>

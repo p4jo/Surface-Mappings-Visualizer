@@ -1,3 +1,4 @@
+using Dreamteck.Splines;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -13,6 +14,7 @@ public class ScaleWithCamera : MonoBehaviour
     
     void Start()
     {
+        camera ??= GetComponentInParent<Camera>();
         baseScale = transform.localScale / camera.orthographicSize;
     }
 }

@@ -12,6 +12,7 @@ public class MainMenu: MonoBehaviour
     [SerializeField] private RectTransform canvas;
     [SerializeField] private string surfaceParameters;
     [SerializeField] private CameraManager cameraManager;
+    [SerializeField] public MenuMode mode = MenuMode.AddPoint;
     private void Start()
     {
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
@@ -23,7 +24,7 @@ public class MainMenu: MonoBehaviour
         var (torusName, torus) = surface.drawingSurfaces.FirstOrDefault(v => v.Value is ModelSurface);
         var modelTorus = torus as ModelSurface;
         var curve = modelTorus.sideCurves[0];
-        surfaceMenu.AddCurve(curve);
+        surfaceMenu.Display(curve, modelTorus.Name, false);
     }
 
     public event Action UIMoved;

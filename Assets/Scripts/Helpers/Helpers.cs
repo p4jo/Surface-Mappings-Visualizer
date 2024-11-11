@@ -1,6 +1,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using UnityEngine;
 
 public static class Helpers
@@ -70,5 +71,32 @@ public static class Helpers
 
     public static bool ApproximateEquals(this float t, float s) => 
         (t - s) * (t - s) < εSquared;
+
+    public static Vector3 Clamp(this Vector3 x, Vector3 minPos, Vector3 maxPos)
+    {
+        return new(
+            Mathf.Clamp(x.x, minPos.x, maxPos.x),
+            Mathf.Clamp(x.y, minPos.y, maxPos.y),
+            Mathf.Clamp(x.z, minPos.z, maxPos.z)
+        );
+    }
+
+    public static Vector3 Max(Vector3 a, Vector3 b)
+    {
+        return new(
+            Mathf.Max(a.x, b.x),
+            Mathf.Max(a.y, b.y),
+            Mathf.Max(a.z, b.z)
+        );
+    }
+    
+    public static Vector3 Min(Vector3 a, Vector3 b)
+    {
+        return new(
+            Mathf.Min(a.x, b.x),
+            Mathf.Min(a.y, b.y),
+            Mathf.Min(a.z, b.z)
+        );
+    }
 
 }

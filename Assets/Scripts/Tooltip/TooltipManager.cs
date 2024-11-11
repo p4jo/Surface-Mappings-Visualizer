@@ -41,7 +41,14 @@ public class TooltipManager : MonoBehaviour {
         tooltipPanel.gameObject.SetActive(false);
     }
 
-    void Update() {
+    void Update()
+    {
+        if (Input.GetKeyUp(KeyCode.K))
+        {
+            int a;
+            a = 1;
+        }
+
         var mousePosition = Input.mousePosition;
         if (!uiActivated && cameraManager.TryGetKamera(mousePosition, out var kamera)) { // UI elements have priority
 
@@ -53,7 +60,7 @@ public class TooltipManager : MonoBehaviour {
 
             if (Physics.Raycast(ray, out var hit, maxDistance: 2000, layerMask)) { 
                 var tooltipObject = hit.transform;
-                lastHoverPosition = hit.point;
+                lastHoverPosition = tooltipObject.InverseTransformPoint(hit.point);
                 if (tooltipObject != lastHoverObject) {
                     OnHoverEnd(lastTooltipThing);
                     lastHoverObject = tooltipObject;

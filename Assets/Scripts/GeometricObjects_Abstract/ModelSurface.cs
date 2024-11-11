@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JetBrains.Annotations;
+using NUnit.Framework.Constraints;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
 
-public class ModelSurface: DrawingSurface
+public class ModelSurface: GeodesicSurface
 {
     const float tau = 2 * Mathf.PI;
 
@@ -31,7 +33,17 @@ public class ModelSurface: DrawingSurface
     public readonly List<ModelSurfaceSide> sideCurves = new();
     public readonly List<ModelSurfaceVertex> vertices = new();
     public readonly List<PolygonSide> sidesAsParameters;
-    public readonly float width, height;
+    private readonly GeodesicSurface geometrySurface; // Euclidean or Hyperbolic plane.
+    
+    public static readonly Dictionary<GeometryType, GeodesicSurface> BaseGeometrySurfaces = new()
+    {
+        [GeometryType.Flat] = new EuclideanPlane(),
+        [GeometryType.Hyperbolic] = new HyperbolicPlane(),
+        [GeometryType.Spherical] = null // todo?
+    };
+    
+    public override Vector3 MinimalPosition { get; }
+    public override Vector3 MaximalPosition { get; }
 
     public ModelSurface(string name,
         int genus,
@@ -84,9 +96,9 @@ public class ModelSurface: DrawingSurface
             identifiedGeodesics.Sort((a, b) => a.angle.CompareTo(b.angle));
             // increasing index means turning left
         }
-        
-        width = polygonVertices.Max(pair => pair.Item1.x) - polygonVertices.Min(pair => pair.Item1.x);
-        height = polygonVertices.Max(pair => pair.Item1.y) - polygonVertices.Min(pair => pair.Item1.y);
+
+        MinimalPosition = new(polygonVertices.Min(pair => pair.Item1.x), polygonVertices.Min(pair => pair.Item1.y));
+        MaximalPosition = new(polygonVertices.Max(pair => pair.Item1.x), polygonVertices.Max(pair => pair.Item1.y)); ;
         
         while (true)
         {
@@ -207,18 +219,15 @@ public class ModelSurface: DrawingSurface
         // the corresponding homeomorphisms must be defined elsewhere (where this is called from)
     }
     
-    public static GeodesicSegment GetGeodesic(Point startPoint, Point endPoint, GeometryType geometryType, DrawingSurface surface, string label)
+    public override Curve GetGeodesic(Point startPoint, Point endPoint, string name)
     {
         var start = startPoint.Position;
-        var end = endPoint.Position; // todo: Select best fit points! (in part. for points on the boundary)
-        return geometryType switch
-        {
-            GeometryType.Flat => new FlatGeodesicSegment(start, end, surface, label),
-            GeometryType.Hyperbolic => new HyperbolicGeodesicSegment(start, end, surface, label),
-            GeometryType.Spherical => new SphericalGeodesicSegment(start, end, surface, label),
-            _ => throw new NotImplementedException()
-        };
+        var end = endPoint.Position; 
+        // todo: Select best fit points! (in part. for points on the boundary)
+        // todo: implement going through boundary!
+        return BaseGeometrySurfaces[geometryType].GetGeodesic((BasicPoint) start, (BasicPoint) end, name);
     }
+    
 
     public override Point ClampPoint(Vector3? point) // todo: this is extremely inefficient
     {
@@ -260,6 +269,8 @@ public class ModelSurface: DrawingSurface
 
         return new BasicPoint(p);
     }
+
+    public override Matrix3x3 BasisAt(Vector3 position) => Matrix3x3.Identity;
 }
 
 
@@ -278,18 +289,27 @@ public class ModelSurfaceSide: Curve
         angle = Mathf.Atan2(curve.StartVelocity.y, curve.StartVelocity.x);
     }
 
-    public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, DrawingSurface surface): this(
-        ModelSurface.GetGeodesic((BasicPoint) side.start, (BasicPoint) side.end, geometryType, surface, side.label),
+    public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, Surface surface) : this(
+        ModelSurface.BaseGeometrySurfaces[geometryType]
+            .GetGeodesic((BasicPoint) side.start, (BasicPoint) side.end, side.label),
         side.rightIsInside
-    ) { }
+    )
+    {
+        Surface = surface;
+    }
 
-    public override string Name => curve.Name;
+    [CanBeNull] private string _name;
+    public override string Name
+    {
+        get => _name ?? curve.Name + '\'';
+        set => _name = value;
+    }
     public override float Length => curve.Length;
     public override Point EndPosition => curve.EndPosition;
     public override Point StartPosition => curve.StartPosition;
     public override Vector3 EndVelocity => curve.EndVelocity;
     public override Vector3 StartVelocity => curve.StartVelocity;
-    public override DrawingSurface Surface => curve.Surface;
+    public override Surface Surface { get; }
     public override Point ValueAt(float t) => new ModelSurfaceBoundaryPoint(this, t);
 
     public override Vector3 DerivativeAt(float t) => curve.DerivativeAt(t); // todo: TangentVectors with more than one position (and value)
@@ -311,8 +331,13 @@ public class ModelSurfaceSide: Curve
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
-        return new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), rightIsInside);
-        // todo: think about orientation
+        if (homeomorphism.isIdentity)
+            return this;
+        if (homeomorphism.target is ModelSurface)
+            return new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), rightIsInside);
+        
+        // todo: think about orientation, other
+        return curve.ApplyHomeomorphism(homeomorphism);
     }
 
     public void AddOther(ModelSurfaceSide newOtherSide)
@@ -350,3 +375,34 @@ public enum GeometryType
     /// </summary>
     Spherical,
 }
+
+public class HyperbolicPlane : GeodesicSurface
+{
+    public HyperbolicPlane(string name = "Hyperbolic Plane") : base(name, 0, true){}
+    public override Point ClampPoint(Vector3? point) => 
+        point.HasValue ? (BasicPoint)(Vector2) point : null;
+
+    public override Matrix3x3 BasisAt(Vector3 position) => Matrix3x3.Identity;
+
+    public override Vector3 MinimalPosition { get; } = new(float.NegativeInfinity, float.NegativeInfinity);
+    public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);
+    
+    public override Curve GetGeodesic(Point start, Point end, string name)
+        => new HyperbolicGeodesicSegment(start.Position, end.Position, this, name);
+}
+
+public class EuclideanPlane : GeodesicSurface
+{
+    public EuclideanPlane(string name = "Euclidean Plane") : base(name, 0, true){}
+    public override Point ClampPoint(Vector3? point) => 
+        point.HasValue ? (BasicPoint)(Vector2) point : null;
+
+    public override Matrix3x3 BasisAt(Vector3 position) => Matrix3x3.Identity;
+    
+    public override Vector3 MinimalPosition { get; } = new(float.NegativeInfinity, float.NegativeInfinity);
+    public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);
+
+    public override Curve GetGeodesic(Point start, Point end, string name)
+        => new FlatGeodesicSegment(start.Position, end.Position, this, name);
+}
+
