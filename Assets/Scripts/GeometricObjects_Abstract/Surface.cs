@@ -24,10 +24,12 @@ public abstract class Surface
     /// <returns></returns>
     public abstract Point ClampPoint(Vector3? point);
 
-    public abstract Matrix3x3 BasisAt(Vector3 position);
+    public abstract TangentSpace BasisAt(Point position);
     
     public abstract Vector3 MinimalPosition { get; }
     public abstract Vector3 MaximalPosition { get; }
+
+    public virtual Homeomorphism GetAutomorphism(AutomorphismType type, ITransformable[] parameters) => null;
 }
 
 public abstract class GeodesicSurface: Surface

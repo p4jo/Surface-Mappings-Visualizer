@@ -22,6 +22,9 @@ public class ParametricSurface: Surface
         MinimalPosition = minimalPosition;
         MaximalPosition = maximalPosition;
     }
+    
+    public ParametricSurface((string, Homeomorphism, IEnumerable<Rect>, Vector3, Vector3) args): 
+        this(args.Item1, args.Item2, args.Item3, args.Item4, args.Item5) {}
 
     public override Point ClampPoint(Vector3? point)
     { 
@@ -31,7 +34,8 @@ public class ParametricSurface: Surface
         return point.HasValue ? new BasicPoint(point.Value) : null;
     }
 
-    public override Matrix3x3 BasisAt(Vector3 position) => 
-        embedding.df(embedding.fInv(position));
+    public override TangentSpace BasisAt(Point position) => embedding.source.BasisAt(
+        position.ApplyHomeomorphism(embedding.Inverse)
+    ).ApplyHomeomorphism(embedding);
 
 }

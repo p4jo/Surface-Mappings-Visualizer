@@ -36,10 +36,14 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
         {
             var gameObject = Instantiate(meshPrefab, transform);
             var generator = gameObject.GetComponent<MeshGenerator>();
-            generator.CurrentSurface = new SurfaceData(parametricSurface.Name, 0, Array.Empty<float>(),
-                func: floats => parametricSurface.embedding.f(new Vector3(floats[0], floats[1])));
             generator.u = new(rect.xMin, rect.xMax);
             generator.v = new(rect.yMin, rect.yMax);
+            generator.CurrentSurface = new SurfaceData(
+                parametricSurface.Name, 
+                0, 
+                new []{generator.u.x, generator.u.y, generator.v.x, generator.v.y},
+                func: floats => parametricSurface.embedding.f(new Vector3(floats[0], floats[1]))
+            );
             // generator.doubleSided = false;
             generator.uSlices = 300;
             generator.vSlices = 300; 

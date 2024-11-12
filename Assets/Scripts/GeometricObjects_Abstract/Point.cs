@@ -30,6 +30,8 @@ public abstract class Point : IEquatable<Point>, ITransformable<Point>
                     otherPosition => otherPosition.ApproximatelyEquals(position)
                 ));
 
+    public static implicit operator Point(Vector3 v) => new BasicPoint(v);
+    public static implicit operator Point(Vector2 v) => new BasicPoint(v);
 
 }
 

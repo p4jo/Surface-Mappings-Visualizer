@@ -7,7 +7,7 @@ using UnityEngine;
 using Random = UnityEngine.Random;
 
 
-public class ModelSurface: GeodesicSurface
+public partial class ModelSurface: GeodesicSurface
 {
     const float tau = 2 * Mathf.PI;
 
@@ -30,7 +30,12 @@ public class ModelSurface: GeodesicSurface
     #endregion
 
     public readonly GeometryType geometryType;
-    public readonly List<ModelSurfaceSide> sideCurves = new();
+    public readonly List<ModelSurfaceSide> sides = new();
+    public IEnumerable<ModelSurfaceSide> AllSideCurves => sides.Concat(
+        from side in sides
+        select side.other
+    );
+    
     public readonly List<ModelSurfaceVertex> vertices = new();
     public readonly List<PolygonSide> sidesAsParameters;
     private readonly GeodesicSurface geometrySurface; // Euclidean or Hyperbolic plane.
@@ -58,11 +63,13 @@ public class ModelSurface: GeodesicSurface
         foreach (var side in identifiedSides)
         {
             var newSide = new ModelSurfaceSide(side, geometryType, this);
-            var oldSide = this.sideCurves.FirstOrDefault(existingSide => existingSide.Name == newSide.Name);
-            oldSide?.AddOther(newSide);
-            this.sideCurves.Add(newSide);
+            var oldSide = this.sides.FirstOrDefault(existingSide => existingSide.Name == newSide.Name);
+            if (oldSide != null)
+                oldSide?.AddOther(newSide);
+            else
+                sides.Add(newSide);
         }
-        if (sideCurves.Any(side => side.other == null))
+        if (sides.Any(side => side.other == null))
             throw new Exception("Check your polygon! Some sides are not paired.");
 
         #region find vertices
@@ -85,7 +92,7 @@ public class ModelSurface: GeodesicSurface
                 polygonVertices.Add((curve.StartPosition.Position, new() { side }));
         }
         
-        foreach (var curve in this.sideCurves)
+        foreach (var curve in this.AllSideCurves)
         {
             AddDirectedEdgeToAStar(curve);
             AddDirectedEdgeToAStar(curve.ReverseModelSide());
@@ -105,7 +112,7 @@ public class ModelSurface: GeodesicSurface
             var vertex = new ModelSurfaceVertex();
             var vertexIndex = vertices.Count;
             
-            if (vertexIndex > 3 * sideCurves.Count)           
+            if (vertexIndex > 4 * sides.Count)           
                 throw new Exception("what the heck?");
             
             vertices.Add(vertex);
@@ -141,7 +148,7 @@ public class ModelSurface: GeodesicSurface
                     if (vertex.boundaryCurves.Contains(modelSurfaceSide))
                         throw new Exception("what the heck");
                     
-                    if (vertex.boundaryCurves.Count > 3 * sideCurves.Count)
+                    if (vertex.boundaryCurves.Count > 4 * sides.Count)
                         throw new Exception("what the heck?");
                     
                     modelSurfaceSide.vertexIndex = vertexIndex;
@@ -225,7 +232,7 @@ public class ModelSurface: GeodesicSurface
         var end = endPoint.Position; 
         // todo: Select best fit points! (in part. for points on the boundary)
         // todo: implement going through boundary!
-        return BaseGeometrySurfaces[geometryType].GetGeodesic((BasicPoint) start, (BasicPoint) end, name);
+        return BaseGeometrySurfaces[geometryType].GetGeodesic(start, end, name);
     }
     
 
@@ -237,7 +244,7 @@ public class ModelSurface: GeodesicSurface
         var closeness = float.MaxValue;
         Vector3 difference = Vector3.zero;
         var time = 0f;
-        foreach (var side in sideCurves)
+        foreach (var side in AllSideCurves)
         {
             float t = side.curve.GetClosestPoint(p);
             Vector3 diff = side.curve[t].Position - p; // todo: difference for points
@@ -259,7 +266,7 @@ public class ModelSurface: GeodesicSurface
                 return vertices[closestSide.other.vertexIndex];
             return new ModelSurfaceBoundaryPoint(closestSide, time);
         }
-        var forward = closestSide.curve.DerivativeAt(time);
+        var (pt, forward) = closestSide.curve.DerivativeAt(time);
         var right = new Vector3(forward.y, -forward.x); // orientation!
         var rightness = Vector3.Dot(right, difference);
         if (rightness < 0 && closestSide.rightIsInside || rightness > 0 && !closestSide.rightIsInside)
@@ -270,7 +277,7 @@ public class ModelSurface: GeodesicSurface
         return new BasicPoint(p);
     }
 
-    public override Matrix3x3 BasisAt(Vector3 position) => Matrix3x3.Identity;
+    public override TangentSpace BasisAt(Point position) => new(position, Matrix3x3.Identity);
 }
 
 
@@ -291,7 +298,7 @@ public class ModelSurfaceSide: Curve
 
     public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, Surface surface) : this(
         ModelSurface.BaseGeometrySurfaces[geometryType]
-            .GetGeodesic((BasicPoint) side.start, (BasicPoint) side.end, side.label),
+            .GetGeodesic( side.start, side.end, side.label),
         side.rightIsInside
     )
     {
@@ -312,7 +319,7 @@ public class ModelSurfaceSide: Curve
     public override Surface Surface { get; }
     public override Point ValueAt(float t) => new ModelSurfaceBoundaryPoint(this, t);
 
-    public override Vector3 DerivativeAt(float t) => curve.DerivativeAt(t); // todo: TangentVectors with more than one position (and value)
+    public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t);
 
     private ModelSurfaceSide reverseSide;
 
@@ -353,56 +360,3 @@ public class ModelSurfaceSide: Curve
     
     
 }
-
-public enum GeometryType
-{
-    /// <summary>
-    /// This represents the manifolds as flat polygons with geodesics as straight lines
-    /// - curvature is concentrated at the punctures.
-    /// </summary>
-    Flat,
-    
-    /// <summary>
-    /// This represents the manifolds as polygons in the Poincaré disk model of the hyperbolic plane.
-    /// All sides and geodesics are circular arcs (or straight lines). 
-    /// </summary>
-    Hyperbolic,
-    
-    /// <summary>
-    /// this is probably not necessary:
-    /// punctured spheres will be displayed as the open disk (either flat or hyperbolic)
-    /// and the non-punctured sphere has completely trivial mapping class group
-    /// </summary>
-    Spherical,
-}
-
-public class HyperbolicPlane : GeodesicSurface
-{
-    public HyperbolicPlane(string name = "Hyperbolic Plane") : base(name, 0, true){}
-    public override Point ClampPoint(Vector3? point) => 
-        point.HasValue ? (BasicPoint)(Vector2) point : null;
-
-    public override Matrix3x3 BasisAt(Vector3 position) => Matrix3x3.Identity;
-
-    public override Vector3 MinimalPosition { get; } = new(float.NegativeInfinity, float.NegativeInfinity);
-    public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);
-    
-    public override Curve GetGeodesic(Point start, Point end, string name)
-        => new HyperbolicGeodesicSegment(start.Position, end.Position, this, name);
-}
-
-public class EuclideanPlane : GeodesicSurface
-{
-    public EuclideanPlane(string name = "Euclidean Plane") : base(name, 0, true){}
-    public override Point ClampPoint(Vector3? point) => 
-        point.HasValue ? (BasicPoint)(Vector2) point : null;
-
-    public override Matrix3x3 BasisAt(Vector3 position) => Matrix3x3.Identity;
-    
-    public override Vector3 MinimalPosition { get; } = new(float.NegativeInfinity, float.NegativeInfinity);
-    public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);
-
-    public override Curve GetGeodesic(Point start, Point end, string name)
-        => new FlatGeodesicSegment(start.Position, end.Position, this, name);
-}
-

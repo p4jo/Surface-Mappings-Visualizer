@@ -35,9 +35,10 @@ public class SurfaceMenu: MonoBehaviour
     private readonly Dictionary<string, SurfaceVisualizer> visualizers = new();
 
     private SurfaceMenu nextMenu, lastMenu;
-    private readonly Dictionary<string, Homeomorphism> forwardHomeos = new(), backwardsHomeos = new();
-    
-    private AbstractSurface surface;
+    private Dictionary<string, Homeomorphism> forwardHomeos = new();
+    private Dictionary<string, Homeomorphism> backwardsHomeos = new();
+
+    public AbstractSurface surface;
     private string currentSurfaceName; 
     public GeodesicSurface geodesicSurface { get; set; }
 
@@ -52,6 +53,7 @@ public class SurfaceMenu: MonoBehaviour
     private CameraManager cameraManager;
     [SerializeField] private MainMenu mainMenu;
     [SerializeField] private string currentCurveName;
+    private readonly HashSet<(ITransformable, string)> currentStuffShown = new();
 
 
     public void Initialize(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager, MainMenu mainMenu)
@@ -124,11 +126,21 @@ public class SurfaceMenu: MonoBehaviour
             throw new Exception("None of the surfaces provides geodesics");
     }
 
-    public void Initialize(SurfaceMenu menu, Dictionary<string, Homeomorphism> homeomorphism)
+    public void Initialize(SurfaceMenu lastMenu, Dictionary<string, Homeomorphism> automorphisms)
     {
-        Initialize(menu.surface, menu.canvas, menu.cameraManager, menu.mainMenu);
-        menu.nextMenu = this;
-        this.lastMenu = menu;
+        Initialize(lastMenu.surface, lastMenu.canvas, lastMenu.cameraManager, lastMenu.mainMenu);
+        lastMenu.nextMenu = this;
+        lastMenu.forwardHomeos = automorphisms;
+        this.lastMenu = lastMenu;
+        this.backwardsHomeos = automorphisms.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Value.Inverse
+        );
+        foreach (var (drawnStuff, drawingSurfaceName) in lastMenu.currentStuffShown)
+        {
+            Display(drawnStuff, drawingSurfaceName, false, propagateBackwards: false, propagateToDrawingSurfaces: false);
+            // currentStuffShown should contain drawnStuff once for every DrawingSurface (transformed)! 
+        }
     }
 
     public void SetMode(int mode) => SetMode((MenuMode) mode);
@@ -144,7 +156,7 @@ public class SurfaceMenu: MonoBehaviour
         Mode = mode;
     }
     
-    private  (ITransformable, string)  PreviewDrawable(Point location, string drawingSurfaceName)
+    private  (ITransformable, string) PreviewDrawable(Point location, string drawingSurfaceName)
     {
         switch (Mode)
         {
@@ -168,14 +180,19 @@ public class SurfaceMenu: MonoBehaviour
             {
                 if (string.IsNullOrEmpty(currentCurveName))
                     // todo: ask user
-                    currentCurveName = "Curve " + Random.Range(0, 100);
+                    currentCurveName = (
+                        from i in Enumerable.Range(0, 52)
+                        select ((char)('a' + i)).ToString()
+                    ).FirstOrDefault(
+                        c => !surface.drawingSurfaces.ContainsKey(c)
+                    );
                 currentWaypoints ??= new();
                 var homeo = surface.GetHomeomorphism(drawingSurfaceName, geodesicSurface.Name);
                 var pointInGeodesicSurface = location.ApplyHomeomorphism(homeo);
                 currentWaypoints.Add(pointInGeodesicSurface);
                 if (currentWaypoints.Count > 1)
                 {
-                    return (geodesicSurface.GetPathFromWaypoints(currentWaypoints.Append(pointInGeodesicSurface), currentCurveName), geodesicSurface.Name);
+                    return (geodesicSurface.GetPathFromWaypoints(currentWaypoints, currentCurveName), geodesicSurface.Name);
                 }
 
                 break;
@@ -211,6 +228,9 @@ public class SurfaceMenu: MonoBehaviour
         IEnumerable<string> skipDrawingSurfaces = null)
     {
         visualizers[drawingSurfaceName].Display(input, preview);
+        
+        if (!preview)
+            currentStuffShown.Add((input, drawingSurfaceName));
 
         propagateForwards = propagateForwards && nextMenu != null;
         string preferredForwardSurfaceName = forwardHomeos.Keys.FirstOrDefault();

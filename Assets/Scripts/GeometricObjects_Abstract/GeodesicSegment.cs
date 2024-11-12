@@ -8,7 +8,7 @@ public abstract class GeodesicSegment: Curve
     public override Point EndPosition { get; }
     public override Vector3 StartVelocity { get; }
     public override Surface Surface { get; }
-    public override Point ValueAt(float t) => (BasicPoint) VectorValueAt(t);
+    public override Point ValueAt(float t) => VectorValueAt(t);
     protected abstract Vector3 VectorValueAt(float t);
 
     public abstract override Vector3 DerivativeAt(float t);
@@ -31,7 +31,7 @@ public abstract class GeodesicSegment: Curve
 public class FlatGeodesicSegment : GeodesicSegment
 {
     public FlatGeodesicSegment(Vector3 start, Vector3 end, Surface surface, string name)
-        : base((BasicPoint) start,(BasicPoint)  end, end - start, end - start, 1, surface, name)
+        : base(start,end, end - start, end - start, 1, surface, name)
     {  }
 
     protected override Vector3 VectorValueAt(float t) => StartPosition.Position + StartVelocity * t;
@@ -41,7 +41,7 @@ public class FlatGeodesicSegment : GeodesicSegment
 public class HyperbolicGeodesicSegment : GeodesicSegment
 {
     public HyperbolicGeodesicSegment(Vector3 start, Vector3 end, Surface surface, string name)
-        : base((BasicPoint) start, (BasicPoint)  end, end - start, end - start, 1, surface, name)
+        : base(start,  end, end - start, end - start, 1, surface, name)
     {  throw new System.NotImplementedException(); }
 
     protected override Vector3 VectorValueAt(float t) => throw new System.NotImplementedException();
@@ -51,7 +51,7 @@ public class HyperbolicGeodesicSegment : GeodesicSegment
 public class SphericalGeodesicSegment : GeodesicSegment
 {
     public SphericalGeodesicSegment(Vector3 start, Vector3 end, Surface surface, string name)
-        : base((BasicPoint) start, (BasicPoint)  end, end - start, end - start, 1, surface, name)
+        : base( start,  end, end - start, end - start, 1, surface, name)
     {  throw new System.NotImplementedException(); }
 
     protected override Vector3 VectorValueAt(float t) => throw new System.NotImplementedException();

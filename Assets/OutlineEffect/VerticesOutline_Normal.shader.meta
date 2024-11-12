@@ -1,13 +1,5 @@
 fileFormatVersion: 2
 guid: 146a0072811123b4bb35f95b34c5a05f
-timeCreated: 1519194786
-licenseType: Store
-ShaderImporter:
-  externalObjects: {}
-  defaultTextures: []
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
 AssetOrigin:
   serializedVersion: 1
   productId: 86481
@@ -15,3 +7,10 @@ AssetOrigin:
   packageVersion: 1.1
   assetPath: Assets/OutlineEffect/VerticesOutline_Normal.shader
   uploadId: 231031
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

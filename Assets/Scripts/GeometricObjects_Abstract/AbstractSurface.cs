@@ -27,7 +27,7 @@ public class AbstractSurface
         AddDrawingSurface(homeomorphism.source);
         AddDrawingSurface(homeomorphism.target);
         homeomorphisms[(homeomorphism.source.Name, homeomorphism.target.Name)] = homeomorphism;
-        homeomorphisms[(homeomorphism.target.Name, homeomorphism.source.Name)] = homeomorphism.Inverse();
+        homeomorphisms[(homeomorphism.target.Name, homeomorphism.source.Name)] = homeomorphism.Inverse;
     }
     
     public Homeomorphism GetHomeomorphism(string source, string target)

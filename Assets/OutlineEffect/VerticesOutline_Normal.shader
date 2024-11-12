@@ -1,4 +1,4 @@
-﻿Shader "ModelEffect/VerticsOutline_Normal"
+﻿Shader "ModelEffect/VerticsOutline_Normal"  
 {
 	Properties {
 		_MainTex("Base (RGB)", 2D) = "white" {}

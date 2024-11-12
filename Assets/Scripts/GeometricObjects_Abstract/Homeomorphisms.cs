@@ -1,49 +1,6 @@
 ﻿using System;
 using UnityEngine;
 
-public struct Matrix3x3
-{
-    public readonly Vector3 a, b, c;
-
-    public Matrix3x3(float α, float β, float γ = 1f):
-        this(new Vector3(α, 0, 0), new Vector3(0, β, 0), new Vector3(0, 0, γ)){}
-    public Matrix3x3(Vector2 a, Vector2 b):
-        this(a, b, Vector3.forward){}
-    public Matrix3x3(Vector3 a, Vector3 b, Vector3 c)
-    {
-        this.a = a;
-        this.b = b;
-        this.c = c;
-    }
-
-    public static Vector3 operator *(Matrix3x3 A, Vector3 v)
-        => A.a * v.x + A.b * v.y + A.c * v.z;
-
-    public static Matrix3x3 operator *(Matrix3x3 A, Matrix3x3 B) => 
-        new(A * B.a, A * B.b, A * B.c);
-
-    public static Matrix3x3 Identity = new(Vector3.right, Vector3.up, Vector3.forward);
-
-    // public static Matrix3x3 FromTangentSpace() 
-    public Matrix3x3 Inverse()
-    {
-        float det = Vector3.Dot(Vector3.Cross(a, b), c);
-
-        var invDet = 1.0f / det;
-        var adjA = Vector3.Cross(b, c) * invDet;
-        var adjB = Vector3.Cross(c, a) * invDet;
-        var adjC = Vector3.Cross(a, b) * invDet;
-        return new Matrix3x3(adjA, adjB, adjC).Transpose();
-    }
-
-    public Matrix3x3 Transpose() =>
-        new(
-            new Vector3(a.x, b.x, c.x),
-            new Vector3(a.y, b.y, c.y),
-            new Vector3(a.z, b.z, c.z)
-        );
-}
-
 public class Homeomorphism
 {
     public readonly Surface source; 
@@ -90,6 +47,7 @@ public class Homeomorphism
             isIdentity: true
         );
 
-    public Homeomorphism Inverse() => 
-        new(target, source, fInv, f, dfInv, df);
+    private Homeomorphism inverse;
+
+    public Homeomorphism Inverse => inverse ??= new(target, source, fInv, f, dfInv, df);
 }

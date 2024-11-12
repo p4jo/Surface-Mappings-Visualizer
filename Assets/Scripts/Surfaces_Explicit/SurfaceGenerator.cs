@@ -29,6 +29,11 @@ public struct SurfaceParameter
     }
 }
 
+public class ModelSurfaceParameter
+{
+    
+}
+
 
 public static class SurfaceGenerator
 {
@@ -68,7 +73,7 @@ public static class SurfaceGenerator
     {
         var (φ, θ) = (angles.x, angles.y);
         var r = largeRadius + smallRadius * Mathf.Sin(θ);
-        return new(r * Mathf.Cos(φ), r * Mathf.Sin(φ), smallRadius * Mathf.Cos(θ));
+        return new Vector3(r * Mathf.Cos(φ), r * Mathf.Sin(φ), smallRadius * Mathf.Cos(θ));
     }
     private static Matrix3x3 dFlatTorusEmbedding(Vector2 point, float largeRadius, float smallRadius)
     {
@@ -96,7 +101,7 @@ public static class SurfaceGenerator
         var rSquared = x * x + y * y;
         if (rSquared < largeRadius * largeRadius)
             θ = τ-θ;
-        return new(φ, θ);
+        return new Vector3(φ, θ);
     }
     
     private static float errorForBeingOnTorus(Vector3 point, float largeRadius = 1.5f, float smallRadius = 1f)

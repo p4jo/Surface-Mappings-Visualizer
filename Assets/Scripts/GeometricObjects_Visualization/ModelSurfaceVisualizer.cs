@@ -37,6 +37,8 @@ public class ModelSurfaceVisualizer : SurfaceVisualizer
 
     public override void AddCurve(Curve curve)
     {
+        if (curve is ModelSurfaceSide side) 
+            AddCurveVisualizer(curve.Name + "*").Initialize(side.other, 0.2f, scale, imageOffset);
         AddCurveVisualizer(curve.Name).Initialize(curve, 0.2f, scale, imageOffset);
     }
 

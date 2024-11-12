@@ -24,7 +24,7 @@ public abstract class Curve: ITransformable<Curve>
     public virtual Point this[float t] => ValueAt(t);
 
     public abstract Point ValueAt(float t);
-    public abstract Vector3 DerivativeAt(float t);
+    public abstract TangentVector DerivativeAt(float t);
     
     public virtual Curve Concatenate(Curve curve) => new ConcatenatedCurve(new Curve[] { this, curve });
 
@@ -36,7 +36,7 @@ public abstract class Curve: ITransformable<Curve>
     {
         // todo: difference for points
         float f(float t) => (point - this[t].Position).sqrMagnitude;
-        float fDeriv(float t) => 2 * Vector3.Dot(DerivativeAt(t), this[t].Position - point);
+        float fDeriv(float t) => 2 * Vector3.Dot(DerivativeAt(t).vector, this[t].Position - point);
 
         float learningRate = 0.1f * Length;
         float t = Length / 2;
@@ -55,6 +55,20 @@ public abstract class Curve: ITransformable<Curve>
     }
 
     public virtual Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => new TransformedCurve(this, homeomorphism);
+
+    public virtual TangentSpace BasisAt(float t)
+    {
+        var (point, tangent) = DerivativeAt(t);
+        var (_, basis) = Surface.BasisAt(point);
+        return new TangentSpace(
+            point,
+            new Matrix3x3(
+                tangent,
+                Vector3.Cross(basis.c, tangent), 
+                basis.c
+            )
+        );
+    }
 }
 
 public class TransformedCurve : Curve
@@ -85,8 +99,10 @@ public class TransformedCurve : Curve
     public override Surface Surface => homeomorphism.target;
     public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
 
-    public override Vector3 DerivativeAt(float t) => homeomorphism.df(curve.ValueAt(t).Position) * curve.DerivativeAt(t);
+    public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t).ApplyHomeomorphism(homeomorphism);
     // we should have a TangentVector class that is transformable. 
+
+    public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) =>
         new TransformedCurve(curve, homeomorphism * this.homeomorphism);
@@ -135,7 +151,7 @@ public class ConcatenatedCurve : Curve
         throw new Exception("What the heck");
     }
 
-    public override Vector3 DerivativeAt(float t)
+    public override TangentVector DerivativeAt(float t)
     {
         t %= Length;
         foreach (var segment in segments)
@@ -195,7 +211,7 @@ public class ReverseCurve : Curve
     public override Surface Surface => curve.Surface;
 
     public override Point ValueAt(float t) => curve.ValueAt(Length - t);
-    public override Vector3 DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
+    public override TangentVector DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Reverse();
