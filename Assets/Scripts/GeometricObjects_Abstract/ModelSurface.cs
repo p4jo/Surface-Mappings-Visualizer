@@ -340,11 +340,17 @@ public class ModelSurfaceSide: Curve
     {
         if (homeomorphism.isIdentity)
             return this;
-        if (homeomorphism.target is ModelSurface)
-            return new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), rightIsInside);
+        if (homeomorphism.target is not ModelSurface) 
+            return curve.ApplyHomeomorphism(homeomorphism);
         
-        // todo: think about orientation, other
-        return curve.ApplyHomeomorphism(homeomorphism);
+        bool orientationReversing = homeomorphism.df(StartPosition.Position).Determinant() < 0;
+        
+        var result = new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), 
+            orientationReversing ? rightIsInside : !rightIsInside);
+        result.other = new ModelSurfaceSide(other.curve.ApplyHomeomorphism(homeomorphism),
+            orientationReversing ? other.rightIsInside : !other.rightIsInside);
+        result.other.other = result;
+        return result;
     }
 
     public void AddOther(ModelSurfaceSide newOtherSide)

@@ -2,8 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using TMPro;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class MainMenu: MonoBehaviour
 {
@@ -14,10 +16,11 @@ public class MainMenu: MonoBehaviour
     [SerializeField] private string surfaceParameters;
     [SerializeField] private CameraManager cameraManager;
     [SerializeField] public MenuMode mode = MenuMode.AddPoint;
+    [SerializeField] private TMP_Dropdown curveDropdown;
     
     public event Action UIMoved;
     public virtual void OnUIMoved() => UIMoved?.Invoke();
-    
+    public string selectedCurve;
     
     private void Start()
     {
@@ -27,6 +30,7 @@ public class MainMenu: MonoBehaviour
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
         var surfaceMenu = gameObject.GetComponent<SurfaceMenu>();
         surfaceMenu.Initialize(surface, canvas, cameraManager, this); 
+        surfaceMenu.StuffShown += OnStuffShown;
         surfaceMenus.Add(surfaceMenu);
         
         foreach (var (surfaceName, drawingSurface) in surface.drawingSurfaces)
@@ -37,13 +41,36 @@ public class MainMenu: MonoBehaviour
         }
     }
 
-    void AddMenuFromAutomorphism(AutomorphismType type, params ITransformable[] parameters)
+    private void OnStuffShown(ITransformable stuff, string surface)
+    {
+        if (stuff is Curve curve && curveDropdown.options.All(option => option.text != curve.Name))
+        {
+            curveDropdown.options.Add(new TMP_Dropdown.OptionData(curve.Name, null, curve.Color));
+        }
+    }
+
+    public void DropdownValueChanged()
+    {
+        selectedCurve = curveDropdown.options[curveDropdown.value].text;
+    }
+
+    public void DehnTwistButtonClicked()
+    {
+        var surfaceMenu = surfaceMenus[^1];
+        var (res, surfaceName) = surfaceMenu.GetCurve(selectedCurve);
+        if (res is not Curve curve) return;
+        AddMenuFromAutomorphism(AutomorphismType.DehnTwist, surfaceName, curve);
+    }
+
+    private void AddMenuFromAutomorphism(AutomorphismType type, string surfaceName, params ITransformable[] parameters)
     {
         var surfaceMenu = surfaceMenus[^1];
         Dictionary<string, Homeomorphism> automorphisms = new();
         foreach (var (drawingSurfaceName, drawingSurface) in surfaceMenu.surface.drawingSurfaces)
         {
-            var automorphism = drawingSurface.GetAutomorphism(type, parameters);
+            var homeomorphism = surfaceMenu.surface.GetHomeomorphism(surfaceName, drawingSurfaceName);
+            var transformedParams = from s in parameters select s.ApplyHomeomorphism(homeomorphism);
+            var automorphism = drawingSurface.GetAutomorphism(type, transformedParams.ToArray());
             if (automorphism == null) continue;
             automorphisms[drawingSurfaceName] = automorphism;
         }

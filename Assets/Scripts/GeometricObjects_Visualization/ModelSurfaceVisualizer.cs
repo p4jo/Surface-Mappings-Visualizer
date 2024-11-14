@@ -48,13 +48,14 @@ public class ModelSurfaceVisualizer : SurfaceVisualizer
     public override void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) => 
         base.OnClick(activeKamera, surfacePosition(position), mouseButton);
 
-    public void Initialize(ModelSurface surface, RawImage drawingArea, Vector2 offset = new())
+    public void Initialize(ModelSurface surface, RawImage drawingArea, float scale = 1f, Vector2 offset = default)
     {
         this.surface = surface;
-        var tooltipTarget = GetComponentInChildren<TooltipTarget>();
-        tooltipTarget.Initialize(this, null); // drawingArea.rectTransform);
-        scale = 1f; 
-        imageOffset = offset;
+        var tooltipTarget = GetComponentInChildren<TooltipTarget>(); // tooltipTarget is on a quad that is a child. It is scaled and offset, thus its transform is bad for transforming hit to local coords (we only want to subtract the (id*100, 0, 0))
+        tooltipTarget.Initialize(this, transformForHitCoordsToLocal: transform); // drawingArea.rectTransform);
+        this.scale = scale;
+        imageOffset = offset; 
+        // ?? (surface.MaximalPosition - surface.MinimalPosition) / 2;
         // Mathf.Min(
         //     drawingArea.rectTransform.rect.width / surface.width,
         //     drawingArea.rectTransform.rect.height / surface.height

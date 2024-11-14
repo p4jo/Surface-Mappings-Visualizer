@@ -55,6 +55,8 @@ public class SurfaceMenu: MonoBehaviour
     [SerializeField] private string currentCurveName;
     private readonly HashSet<(ITransformable, string)> currentStuffShown = new();
 
+    public event Action<ITransformable, string> StuffShown;
+
 
     public void Initialize(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager, MainMenu mainMenu)
     {
@@ -98,6 +100,7 @@ public class SurfaceMenu: MonoBehaviour
 
                     var modelSurfaceVisualizer = 
                         surfaceVisualizerGameObject.GetComponentInChildren<ModelSurfaceVisualizer>();
+                    
                     modelSurfaceVisualizer.Initialize(modelSurface, panel);
                     surfaceVisualizer = modelSurfaceVisualizer;
                     
@@ -227,28 +230,29 @@ public class SurfaceMenu: MonoBehaviour
         bool propagateToDrawingSurfaces = true,
         IEnumerable<string> skipDrawingSurfaces = null)
     {
-        visualizers[drawingSurfaceName].Display(input, preview);
-        
-        if (!preview)
-            currentStuffShown.Add((input, drawingSurfaceName));
-
         propagateForwards = propagateForwards && nextMenu != null;
         string preferredForwardSurfaceName = forwardHomeos.Keys.FirstOrDefault();
         propagateBackwards = propagateBackwards && lastMenu != null;
         string preferredBackwardSurfaceName = backwardsHomeos.Keys.FirstOrDefault();
         // todo: different modes in the menu will show different things, e.g. drawing a curve by waypoints,
         // showing a grid, placing points, grids etc.
-        if (!propagateToDrawingSurfaces) return;
-        var propagateToDrawingSurfacesSet =
-            surface.drawingSurfaces.Keys.ToHashSet();
+        var propagateToDrawingSurfacesSet = new HashSet<string>();
+        if (propagateToDrawingSurfaces)
+            propagateToDrawingSurfacesSet = surface.drawingSurfaces.Keys.ToHashSet();
         skipDrawingSurfaces ??= Enumerable.Empty<string>();
-        propagateToDrawingSurfacesSet.ExceptWith(
-                skipDrawingSurfaces.Append(drawingSurfaceName));  
+        propagateToDrawingSurfacesSet.ExceptWith(skipDrawingSurfaces);  
+        propagateToDrawingSurfacesSet.Add(drawingSurfaceName);
         foreach (string otherDrawingSurfaceName in propagateToDrawingSurfacesSet)
         {
             var homeomorphism = surface.GetHomeomorphism(drawingSurfaceName, otherDrawingSurfaceName);
             var pt = input?.ApplyHomeomorphism(homeomorphism);  
             visualizers[otherDrawingSurfaceName].Display(pt, preview);
+            if (!preview)
+            {
+                currentStuffShown.Add((pt, otherDrawingSurfaceName));
+                StuffShown?.Invoke(pt, otherDrawingSurfaceName);
+            }
+                
             if (propagateBackwards && backwardsHomeos.TryGetValue(otherDrawingSurfaceName, out var homeo)) 
                 lastMenu.Display(pt?.ApplyHomeomorphism(homeo),
                     otherDrawingSurfaceName,
@@ -271,4 +275,7 @@ public class SurfaceMenu: MonoBehaviour
 
     }
 
+    public (ITransformable, string) GetCurve(string name) => currentStuffShown.FirstOrDefault(
+        c => c.Item1 is Curve
+    );
 }

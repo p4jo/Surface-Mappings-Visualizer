@@ -7,6 +7,13 @@ using UnityEngine;
 
 public abstract class Curve: ITransformable<Curve>
 {
+    public readonly int id;
+    private static int _lastId;
+    protected Curve()
+    {
+        id = _lastId++;
+    }
+    
     public abstract string Name { get; set; }
     
     public abstract float Length { get; }
@@ -19,7 +26,7 @@ public abstract class Curve: ITransformable<Curve>
     public abstract Surface Surface { get; }
 
     public virtual IEnumerable<Point> NonDifferentiablePoints => Enumerable.Empty<Point>();
-    public virtual Color Color => Color.red;
+    public virtual Color Color => colors[id % colors.Count];
 
     public virtual Point this[float t] => ValueAt(t);
 
@@ -29,6 +36,10 @@ public abstract class Curve: ITransformable<Curve>
     public virtual Curve Concatenate(Curve curve) => new ConcatenatedCurve(new Curve[] { this, curve });
 
     private Curve reverseCurve;
+    private static List<Color> colors = new()
+    {
+        Color.red, Color.green, Color.blue, Color.yellow, Color.cyan, Color.magenta, new Color(1, 0.5f, 0), new Color(0.5f, 0, 1)
+    };
 
     public virtual Curve Reverse() => reverseCurve ??= new ReverseCurve(this);
 
@@ -38,7 +49,7 @@ public abstract class Curve: ITransformable<Curve>
         float f(float t) => (point - this[t].Position).sqrMagnitude;
         float fDeriv(float t) => 2 * Vector3.Dot(DerivativeAt(t).vector, this[t].Position - point);
 
-        float learningRate = 0.1f * Length;
+        float learningRate = 0.01f;
         float t = Length / 2;
         for (var i = 0; i < 1000; i++)
         {

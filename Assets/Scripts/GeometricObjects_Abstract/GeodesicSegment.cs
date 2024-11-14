@@ -8,10 +8,8 @@ public abstract class GeodesicSegment: Curve
     public override Point EndPosition { get; }
     public override Vector3 StartVelocity { get; }
     public override Surface Surface { get; }
-    public override Point ValueAt(float t) => VectorValueAt(t);
-    protected abstract Vector3 VectorValueAt(float t);
 
-    public abstract override Vector3 DerivativeAt(float t);
+    public abstract override TangentVector DerivativeAt(float t);
     
     public override Vector3 EndVelocity { get; }
     public override float Length { get; }
@@ -34,8 +32,8 @@ public class FlatGeodesicSegment : GeodesicSegment
         : base(start,end, end - start, end - start, 1, surface, name)
     {  }
 
-    protected override Vector3 VectorValueAt(float t) => StartPosition.Position + StartVelocity * t;
-    public override Vector3 DerivativeAt(float t) => StartVelocity;
+    public override Point ValueAt(float t) => StartPosition.Position + StartVelocity * t;
+    public override TangentVector DerivativeAt(float t) => new(ValueAt(t), StartVelocity);
 }
 
 public class HyperbolicGeodesicSegment : GeodesicSegment
@@ -44,8 +42,8 @@ public class HyperbolicGeodesicSegment : GeodesicSegment
         : base(start,  end, end - start, end - start, 1, surface, name)
     {  throw new System.NotImplementedException(); }
 
-    protected override Vector3 VectorValueAt(float t) => throw new System.NotImplementedException();
-    public override Vector3 DerivativeAt(float t) => throw new System.NotImplementedException();
+    public override Point ValueAt(float t) => throw new System.NotImplementedException();
+    public override TangentVector DerivativeAt(float t) => throw new System.NotImplementedException();
 }
 
 public class SphericalGeodesicSegment : GeodesicSegment
@@ -54,6 +52,7 @@ public class SphericalGeodesicSegment : GeodesicSegment
         : base( start,  end, end - start, end - start, 1, surface, name)
     {  throw new System.NotImplementedException(); }
 
-    protected override Vector3 VectorValueAt(float t) => throw new System.NotImplementedException();
-    public override Vector3 DerivativeAt(float t) => throw new System.NotImplementedException();
+    public override Point ValueAt(float t) => throw new System.NotImplementedException();
+
+    public override TangentVector DerivativeAt(float t) => throw new System.NotImplementedException();
 }

@@ -4,6 +4,9 @@ using UnityEngine;
 public class Homeomorphism
 {
     public readonly Surface source; 
+    /// <summary>
+    /// Remark for why non-readonly: The target might be assigned after the constructor has ended, since the homeomorphism is used as a variable in the constructor of the target.
+    /// </summary>
     public Surface target;
     
     public readonly Func<Vector3, Vector3> f, fInv;
@@ -25,7 +28,7 @@ public class Homeomorphism
         this.df = df;
         this.isIdentity = isIdentity;
 
-        dfInv ??= x => df(fInv(x)).Inverse();
+        dfInv ??= y => df(fInv(y)).Inverse();
         this.dfInv = dfInv;
     }
 
@@ -50,4 +53,37 @@ public class Homeomorphism
     private Homeomorphism inverse;
 
     public Homeomorphism Inverse => inverse ??= new(target, source, fInv, f, dfInv, df);
+
+    public static Homeomorphism ContinueAutomorphismOnSubsurface(Homeomorphism automorphismOnSubsurface, Surface surface)
+    {
+        return new(surface, surface, forward, backward, forwardDerivative, backwardDerivative);
+
+        Vector3 forward(Vector3 x)
+        {
+            var y = automorphismOnSubsurface.source.ClampPoint(x);
+            if (y == null) return x;
+            return automorphismOnSubsurface.f(y);
+        }
+
+        Vector3 backward(Vector3 x)
+        {
+            var y = surface.ClampPoint(x);
+            if (y == null) return x;
+            return automorphismOnSubsurface.fInv(y);
+        }
+
+        Matrix3x3 forwardDerivative(Vector3 x)
+        {
+            var y = automorphismOnSubsurface.source.ClampPoint(x);
+            if (y == null) return Matrix3x3.Identity;
+            return automorphismOnSubsurface.df(y);
+        }
+
+        Matrix3x3 backwardDerivative(Vector3 x)
+        {
+            var y = surface.ClampPoint(x);
+            if (y == null) return Matrix3x3.Identity;
+            return automorphismOnSubsurface.dfInv(y);
+        }
+    }
 }

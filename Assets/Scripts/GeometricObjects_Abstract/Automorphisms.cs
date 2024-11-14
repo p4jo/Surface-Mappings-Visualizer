@@ -21,7 +21,13 @@ public partial class ModelSurface
             case AutomorphismType.DehnTwist when parameters.Length == 1 && parameters[0] is Curve curve:
                 var strip = new Strip(curve, closed: true);
                 var homeoOnStrip = strip.embedding * strip.DehnTwist * strip.embedding.Inverse;
-                return Homeomorphism.Continue(homeoOnStrip, curve.Surface);
+                return Homeomorphism.ContinueAutomorphismOnSubsurface(homeoOnStrip, curve.Surface);
+            case AutomorphismType.HalfTwist when parameters.Length == 2 && parameters[0] is Point a && parameters[1] is Point b:
+                throw new NotImplementedException();
+            case AutomorphismType.PointPush when parameters.Length == 1 && parameters[0] is Curve curve:
+                throw new NotImplementedException();
+            default:
+                throw new ArgumentOutOfRangeException(nameof(type), type, null);
         }
     }
 }

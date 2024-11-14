@@ -21,11 +21,11 @@ public class Matrix3x3
     public static Matrix3x3 operator *(Matrix3x3 A, Matrix3x3 B) => 
         new(A * B.a, A * B.b, A * B.c);
 
-    public static Matrix3x3 Identity = new(Vector3.right, Vector3.up, Vector3.forward);
+    public static readonly Matrix3x3 Identity = new(Vector3.right, Vector3.up, Vector3.forward);
     
     public Matrix3x3 Inverse()
     {
-        float det = Vector3.Dot(Vector3.Cross(a, b), c);
+        float det = Determinant();
 
         var invDet = 1.0f / det;
         var adjA = Vector3.Cross(b, c) * invDet;
@@ -33,6 +33,8 @@ public class Matrix3x3
         var adjC = Vector3.Cross(a, b) * invDet;
         return new Matrix3x3(adjA, adjB, adjC).Transpose();
     }
+
+    public float Determinant() => Vector3.Dot(Vector3.Cross(a, b), c);
 
     public Matrix3x3 Transpose() =>
         new(
@@ -71,7 +73,7 @@ public class TangentVector: ITransformable<TangentVector>
     public readonly Vector3 vector;
     public readonly Point point;
 
-    private TangentVector(Point point, Vector3 vector)
+    public TangentVector(Point point, Vector3 vector)
     {
         this.vector = vector;
         this.point = point;

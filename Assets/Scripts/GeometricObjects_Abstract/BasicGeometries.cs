@@ -155,7 +155,7 @@ public class Strip : ParametricSurface
         this.curve = curve;
     }
 
-    public Homeomorphism DehnTwist => (embedding.source as Cylinder).DehnTwist;
+    public Homeomorphism DehnTwist => (embedding.source as Cylinder)!.DehnTwist;
 
     private static (string, Homeomorphism, IEnumerable<Rect>, Vector3, Vector3) ConstructorArgs(
         Curve curve, float start = 0f, float? end = null, bool closed = false
@@ -177,7 +177,8 @@ public class Strip : ParametricSurface
         float width = 0.1f;
         // todo: if this intersects itself, punctures or other obstacles, we need to reduce the width
 
-        var source = StripRectangle(start, end ?? curve.Length, closed, width);
+        float? end1 = end ?? curve.Length;
+        var source = closed ? new Cylinder(width, end1.Value - start) : new Rectangle(width, end1.Value - start);
 
         return new Homeomorphism(source,
             curve.Surface,
@@ -213,8 +214,6 @@ public class Strip : ParametricSurface
             );
         }
     }
-
-    private static Rectangle StripRectangle(float start, float? end, bool closed, float width) => closed ? new Cylinder(width, end.Value - start) : new Rectangle(width, end.Value - start);
 
     public override Point ClampPoint(Vector3? point)
     {

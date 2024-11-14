@@ -7,12 +7,12 @@ using UnityEngine;
 public class ParametricSurface: Surface
 {
     public readonly Homeomorphism embedding; 
+    
     public readonly List<Rect> chartRects = new();
     
     public override Vector3 MinimalPosition { get; }
     public override Vector3 MaximalPosition { get; }
     
-    // this has to be assigned after creation as the homeomorphism has this as one of its fields
     public ParametricSurface(string name, Homeomorphism embedding, IEnumerable<Rect> chartRects, Vector3 minimalPosition, Vector3 maximalPosition) : base(name, embedding.source.Genus, false)
     {
         embedding.target = this;

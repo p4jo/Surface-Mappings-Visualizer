@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Serialization;
 
 
 public class TooltipTarget : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, ITooltipOnHover
@@ -13,7 +14,9 @@ public class TooltipTarget : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
     /// Leave as null if this is on a GameObject in the 3D scene.
     /// This rescales the mouse position
     /// </summary>
-    public RectTransform rectTransform;
+    [FormerlySerializedAs("rectTransform")] public RectTransform rectTransformForScreenCoordsToLocal;
+
+    public Transform transformForHitCoordsToLocal;
 
     void Update()
     {
@@ -21,10 +24,11 @@ public class TooltipTarget : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
             Debug.LogError("TooltipTarget must be initialized");
     }
     
-    public void Initialize(ITooltipOnHover tooltipThing, RectTransform rectTransform = null)
+    public void Initialize(ITooltipOnHover tooltipThing, RectTransform rectTransform = null, Transform transformForHitCoordsToLocal = null)
     {
         this.tooltipThing = tooltipThing;
-        this.rectTransform = rectTransform;
+        this.rectTransformForScreenCoordsToLocal = rectTransform;
+        this.transformForHitCoordsToLocal = transformForHitCoordsToLocal;
     }
 
     public void OnPointerEnter(PointerEventData eventData)
@@ -47,9 +51,9 @@ public class TooltipTarget : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
 
     private void Hovering(Vector2 position)
     {
-        if (rectTransform != null)
+        if (rectTransformForScreenCoordsToLocal != null)
             RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                rectTransform,
+                rectTransformForScreenCoordsToLocal,
                 position,
                 null,
                 out position);
@@ -63,11 +67,18 @@ public class TooltipTarget : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
     
     public TooltipContent GetTooltip() => tooltipThing.GetTooltip();
 
-    public void OnHover(Kamera activeKamera, Vector3 position) => tooltipThing.OnHover(activeKamera, position);
+    public void OnHover(Kamera activeKamera, Vector3 position) => tooltipThing.OnHover(activeKamera, 
+        transformForHitCoordsToLocal != null ?
+            transformForHitCoordsToLocal.InverseTransformPoint(position) :
+            position
+    );
 
     public void OnHoverEnd() => tooltipThing.OnHoverEnd();
 
-    public void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) => tooltipThing.OnClick(activeKamera, position, mouseButton);
+    public void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) => tooltipThing.OnClick(activeKamera, 
+        transformForHitCoordsToLocal != null ?
+            transformForHitCoordsToLocal.InverseTransformPoint(position) :
+            position, mouseButton);
 
     public float hoverTime => tooltipThing.hoverTime;
 }

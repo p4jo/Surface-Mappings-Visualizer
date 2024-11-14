@@ -6,12 +6,18 @@ using UnityEngine;
 public interface ITransformable
 {
     public ITransformable ApplyHomeomorphism(Homeomorphism homeomorphism);
+    
+    public static ITransformable operator *(Homeomorphism homeo, ITransformable input) =>
+        input.ApplyHomeomorphism(homeo);
 }
 
 public interface ITransformable<T>: ITransformable where T : ITransformable
 {
     public new T ApplyHomeomorphism(Homeomorphism homeomorphism);
     ITransformable ITransformable.ApplyHomeomorphism(Homeomorphism homeomorphism) => ApplyHomeomorphism(homeomorphism);
+
+    public static T operator *(Homeomorphism homeo, ITransformable<T> input) =>
+        input.ApplyHomeomorphism(homeo);
 }
 
 public abstract class Point : IEquatable<Point>, ITransformable<Point>
@@ -32,6 +38,7 @@ public abstract class Point : IEquatable<Point>, ITransformable<Point>
 
     public static implicit operator Point(Vector3 v) => new BasicPoint(v);
     public static implicit operator Point(Vector2 v) => new BasicPoint(v);
+    public static implicit operator Vector3(Point p) => p.Position;
 
 }
 

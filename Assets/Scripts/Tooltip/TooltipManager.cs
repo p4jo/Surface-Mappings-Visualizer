@@ -60,7 +60,7 @@ public class TooltipManager : MonoBehaviour {
 
             if (Physics.Raycast(ray, out var hit, maxDistance: 2000, layerMask)) { 
                 var tooltipObject = hit.transform;
-                lastHoverPosition = tooltipObject.InverseTransformPoint(hit.point);
+                lastHoverPosition = hit.point;
                 if (tooltipObject != lastHoverObject) {
                     OnHoverEnd(lastTooltipThing);
                     lastHoverObject = tooltipObject;
