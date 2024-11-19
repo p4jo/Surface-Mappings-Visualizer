@@ -1,8 +1,12 @@
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Security.Claims;
 using UnityEngine;
+using Vector2 = UnityEngine.Vector2;
+using Vector3 = UnityEngine.Vector3;
 
 public static class Helpers
 {
@@ -98,5 +102,52 @@ public static class Helpers
             Mathf.Min(a.z, b.z)
         );
     }
+    
+    public static (T, float) ArgMin<T>(this IEnumerable<T> enumerable, System.Func<T, float> selector)
+    {
+        var min = float.MaxValue;
+        T argMin = default;
+        foreach (var t in enumerable)
+        {
+            var value = selector(t);
+            if (value < min)
+            {
+                min = value;
+                argMin = t;
+            }
+        }
+
+        return (argMin, min);
+    }
+
+    public static (int, float) ArgMinIndex<T>(this IEnumerable<T> enumerable, Func<T, float> selector)
+    {
+        var min = float.MaxValue;
+        var argMin = -1;
+        var index = 0;
+        foreach (var t in enumerable)
+        {
+            var value = selector(t);
+            if (value < min)
+            {
+                min = value;
+                argMin = index;
+            }
+            index++;
+        }
+
+        return (argMin, min);
+    }
+    
+    
+    public static IEnumerable<(T, T2)> CartesianProduct<T, T2>(this IEnumerable<T> enumerable, IEnumerable<T2> other)
+    {
+        return from t in enumerable from t2 in other select (t, t2);
+    }
+    
+    public static float Angle(this Vector2 v) => Mathf.Atan2(v.y, v.x);
+    public static float Angle(this Vector3 v) => Mathf.Atan2(v.y, v.x);
+    
+    public static Vector3 ToVector3(this Complex v) => new((float)v.Real, (float)v.Imaginary);
 
 }

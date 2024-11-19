@@ -6,23 +6,23 @@ public abstract class GeodesicSegment: Curve
     public override string Name { get; set; }
     public override Point StartPosition { get; }
     public override Point EndPosition { get; }
-    public override Vector3 StartVelocity { get; }
+    public override TangentVector StartVelocity { get; }
     public override Surface Surface { get; }
 
     public abstract override TangentVector DerivativeAt(float t);
     
-    public override Vector3 EndVelocity { get; }
+    public override TangentVector EndVelocity { get; }
     public override float Length { get; }
 
     protected GeodesicSegment(Point startPosition, Point endPosition, Vector3 startVelocity, Vector3 endVelocity, float length, Surface surface, string name)
     {
         EndPosition = endPosition;
         StartPosition = startPosition;
-        StartVelocity = startVelocity;
+        StartVelocity = new TangentVector(startPosition, startVelocity);
+        EndVelocity = new TangentVector(endPosition, endVelocity);
         Length = length;
         Surface = surface;
         Name = name;
-        EndVelocity = endVelocity;
     }
 }
 
@@ -32,8 +32,8 @@ public class FlatGeodesicSegment : GeodesicSegment
         : base(start,end, end - start, end - start, 1, surface, name)
     {  }
 
-    public override Point ValueAt(float t) => StartPosition.Position + StartVelocity * t;
-    public override TangentVector DerivativeAt(float t) => new(ValueAt(t), StartVelocity);
+    public override Point ValueAt(float t) => StartPosition.Position + StartVelocity.vector * t;
+    public override TangentVector DerivativeAt(float t) => new(ValueAt(t), StartVelocity.vector);
 }
 
 public class HyperbolicGeodesicSegment : GeodesicSegment

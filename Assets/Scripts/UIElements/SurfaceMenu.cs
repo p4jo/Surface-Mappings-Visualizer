@@ -191,7 +191,7 @@ public class SurfaceMenu: MonoBehaviour
                     );
                 currentWaypoints ??= new();
                 var homeo = surface.GetHomeomorphism(drawingSurfaceName, geodesicSurface.Name);
-                var pointInGeodesicSurface = location.ApplyHomeomorphism(homeo);
+                var pointInGeodesicSurface = location?.ApplyHomeomorphism(homeo);
                 currentWaypoints.Add(pointInGeodesicSurface);
                 if (currentWaypoints.Count > 1)
                 {

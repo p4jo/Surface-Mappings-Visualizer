@@ -70,14 +70,19 @@ public class TangentSpace : ITransformable<TangentSpace>
 
 public class TangentVector: ITransformable<TangentVector>
 {
+    /// <summary>
+    /// This is the vector at the primary position of the point.
+    /// </summary>
     public readonly Vector3 vector;
     public readonly Point point;
 
-    public TangentVector(Point point, Vector3 vector)
+    public TangentVector(Point point, Vector3 vector, int primaryPositionIndex = 0)
     {
-        this.vector = vector;
         this.point = point;
+        this.vector = point.PassThrough(primaryPositionIndex, 0, vector);
     }
+    
+    public Vector3 VectorAtPositionIndex(int index) => point.PassThrough(0, index, vector);
 
     public TangentVector ApplyHomeomorphism(Homeomorphism homeomorphism) => 
         new(

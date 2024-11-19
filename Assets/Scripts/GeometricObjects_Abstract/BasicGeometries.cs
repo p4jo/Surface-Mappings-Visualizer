@@ -44,6 +44,8 @@ public class HyperbolicPlane : Plane
     
     public override Curve GetGeodesic(Point start, Point end, string name)
         => new HyperbolicGeodesicSegment(start.Position, end.Position, this, name);
+
+    public override float Distance(Point startPoint, Point endPoint) => throw new System.NotImplementedException();
 }
 
 public class EuclideanPlane : Plane
@@ -52,6 +54,8 @@ public class EuclideanPlane : Plane
 
     public override Curve GetGeodesic(Point start, Point end, string name)
         => new FlatGeodesicSegment(start.Position, end.Position, this, name);
+
+    public override float Distance(Point startPoint, Point endPoint) => (startPoint.Position - endPoint.Position).magnitude;
 }
 
 public class Rectangle : EuclideanPlane
@@ -197,8 +201,8 @@ public class Strip : ParametricSurface
 
         Vector3 StripEmbeddingInverse(Vector3 pos)
         { // copilot!
-            float t = curve.GetClosestPoint(pos);
-            var (pt, basis) = curve.BasisAt(t);
+            (float t, Point pt)  = curve.GetClosestPoint(pos);
+            var (_, basis) = curve.BasisAt(t);
             var s = Vector3.Dot(pos - pt.Position, basis.b.normalized) / width;
             return new Vector3(t, s);
         }
@@ -218,10 +222,10 @@ public class Strip : ParametricSurface
     public override Point ClampPoint(Vector3? point)
     {
         if (!point.HasValue) return null;
-        float t = curve.GetClosestPoint(point.Value);
-        if ((point.Value - curve[t].Position).sqrMagnitude > Mathf.Pow(chartRects[0].width, 2))
+        var (t, pt) = curve.GetClosestPoint(point.Value);
+        if ((point.Value - pt.Position).sqrMagnitude > Mathf.Pow(chartRects[0].width, 2))
             return null;
-        var (pt, basis) = curve.BasisAt(t);
+        var (_, basis) = curve.BasisAt(t);
         var sTimesWidthTimesNormOfB = Vector3.Dot(point.Value - pt.Position, basis.b);
         return pt.Position + basis.b * sTimesWidthTimesNormOfB / basis.b.sqrMagnitude;
     }

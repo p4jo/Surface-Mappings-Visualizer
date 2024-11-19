@@ -109,14 +109,10 @@ public partial class ModelSurface: GeodesicSurface
         
         while (true)
         {
-            var vertex = new ModelSurfaceVertex();
             var vertexIndex = vertices.Count;
             
             if (vertexIndex > 4 * sides.Count)           
                 throw new Exception("what the heck?");
-            
-            vertices.Add(vertex);
-
             var oldEdge = (
                     from polygonVertex in polygonVertices
                     let edgesAtThisPolygonVertex = polygonVertex.Item2
@@ -130,7 +126,12 @@ public partial class ModelSurface: GeodesicSurface
             
             if (oldEdge == null) // all edges have been assigned to a vertex
                 break;
+
+
+            var vertex = new ModelSurfaceVertex();
+            vertices.Add(vertex);
             
+
             while (true)
             {
                 bool TryAddEdgeToVertex(ModelSurfaceSide modelSurfaceSide)
@@ -228,27 +229,50 @@ public partial class ModelSurface: GeodesicSurface
     
     public override Curve GetGeodesic(Point startPoint, Point endPoint, string name)
     {
-        var start = startPoint.Position;
-        var end = endPoint.Position; 
-        // todo: Select best fit points! (in part. for points on the boundary)
-        // todo: implement going through boundary!
-        return BaseGeometrySurfaces[geometryType].GetGeodesic(start, end, name);
+        GeodesicSurface baseGeometrySurface = BaseGeometrySurfaces[geometryType];
+
+        ModelSurfaceBoundaryPoint centerPoint = null;
+        var shortestLength = baseGeometrySurface.Distance(startPoint, endPoint);
+        foreach (var side in AllSideCurves)
+        {
+            if (startPoint is IModelSurfacePoint start && endPoint is IModelSurfacePoint end)
+            {
+                var (a, b) = start.ClosestBoundaryPoints(side);
+                var (c, d) = end.ClosestBoundaryPoints(side);
+                if (a != null && b != null && c != null && d != null)
+                {// todo; overthink the ClosestBoundaryPoints?
+                    // todo: find best point in boundary to go through (or none), minimizing the length
+                    // todo: result into Distance method.
+                }
+            }
+        }
+        if (centerPoint == null)
+            return baseGeometrySurface.GetGeodesic(startPoint, endPoint, name);
+        
+        var firstSegment = baseGeometrySurface.GetGeodesic(startPoint, centerPoint, name + "pt 1");
+        var secondSegment = baseGeometrySurface.GetGeodesic(centerPoint, endPoint, name + "pt 2");
+        return new ConcatenatedCurve(new[] {firstSegment, secondSegment}, name).Smoothed();
     }
-    
+
+    public override float Distance(Point startPoint, Point endPoint) => throw new NotImplementedException();
 
     public override Point ClampPoint(Vector3? point) // todo: this is extremely inefficient
     {
         if (point == null) return null;
-        var p = point.Value;
+        var p = point.Value; 
+        List<ModelSurfaceBoundaryPoint> closestBoundaryPoints = new();
         ModelSurfaceSide closestSide = null;
         var closeness = float.MaxValue;
         Vector3 difference = Vector3.zero;
         var time = 0f;
         foreach (var side in AllSideCurves)
         {
-            float t = side.curve.GetClosestPoint(p);
-            Vector3 diff = side.curve[t].Position - p; // todo: difference for points
+            var (t, pt) = side.curve.GetClosestPoint(p);
+            Vector3 diff = p - pt.Position; // todo: difference for points
             float l = diff.sqrMagnitude;
+            
+            closestBoundaryPoints.Add(new ModelSurfaceBoundaryPoint(side, t));
+            
             if (l >= closeness) continue;
             
             time = t;
@@ -266,7 +290,7 @@ public partial class ModelSurface: GeodesicSurface
                 return vertices[closestSide.other.vertexIndex];
             return new ModelSurfaceBoundaryPoint(closestSide, time);
         }
-        var (pt, forward) = closestSide.curve.DerivativeAt(time);
+        var (_, forward) = closestSide.curve.DerivativeAt(time);
         var right = new Vector3(forward.y, -forward.x); // orientation!
         var rightness = Vector3.Dot(right, difference);
         if (rightness < 0 && closestSide.rightIsInside || rightness > 0 && !closestSide.rightIsInside)
@@ -274,10 +298,37 @@ public partial class ModelSurface: GeodesicSurface
             return null;
         }
 
-        return new BasicPoint(p);
+        return new ModelSurfaceInteriorPoint(p, closestBoundaryPoints);
     }
 
     public override TangentSpace BasisAt(Point position) => new(position, Matrix3x3.Identity);
+}
+
+public class ModelSurfaceInteriorPoint : BasicPoint, IModelSurfacePoint
+{
+    private List<ModelSurfaceBoundaryPoint> closestBoundaryPoints;
+    public ModelSurfaceInteriorPoint(Vector3 position, List<ModelSurfaceBoundaryPoint> closestBoundaryPoints): base(position)
+    {
+        this.closestBoundaryPoints = closestBoundaryPoints;
+    }
+
+    public (ModelSurfaceBoundaryPoint, ModelSurfaceBoundaryPoint) ClosestBoundaryPoints(ModelSurfaceSide side)
+    {
+        ModelSurfaceBoundaryPoint a = null, b = null;
+        foreach (var boundaryPoint in closestBoundaryPoints)
+        {
+            if (boundaryPoint.side == side)
+                a = boundaryPoint;
+            else if (boundaryPoint.side == side.other)
+                b = boundaryPoint;
+        }
+        return (a, b);
+    }
+}
+
+public interface IModelSurfacePoint
+{
+    (ModelSurfaceBoundaryPoint, ModelSurfaceBoundaryPoint) ClosestBoundaryPoints(ModelSurfaceSide side);
 }
 
 
@@ -288,15 +339,19 @@ public class ModelSurfaceSide: Curve
     public readonly float angle;
     public int vertexIndex = -1;
     public ModelSurfaceSide other;
+    private ModelSurfaceSide reverseSide;
+    private Color color;
 
     public ModelSurfaceSide(Curve curve, bool rightIsInside)
     {
         this.curve = curve;
         this.rightIsInside = rightIsInside;
-        angle = Mathf.Atan2(curve.StartVelocity.y, curve.StartVelocity.x);
+        angle = Mathf.Atan2(curve.StartVelocity.vector.y, curve.StartVelocity.vector.x);
+        color = base.Color;
     }
 
-    public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, Surface surface) : this(
+    public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, Surface surface) :
+        this(
         ModelSurface.BaseGeometrySurfaces[geometryType]
             .GetGeodesic( side.start, side.end, side.label),
         side.rightIsInside
@@ -314,15 +369,28 @@ public class ModelSurfaceSide: Curve
     public override float Length => curve.Length;
     public override Point EndPosition => curve.EndPosition;
     public override Point StartPosition => curve.StartPosition;
-    public override Vector3 EndVelocity => curve.EndVelocity;
-    public override Vector3 StartVelocity => curve.StartVelocity;
+    public override TangentVector EndVelocity => curve.EndVelocity;
+    public override TangentVector StartVelocity => curve.StartVelocity;
     public override Surface Surface { get; }
+
+    public override Color Color => color;
+
     public override Point ValueAt(float t) => new ModelSurfaceBoundaryPoint(this, t);
 
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t);
 
-    private ModelSurfaceSide reverseSide;
-
+    public void AddOther(ModelSurfaceSide newOtherSide)
+    {
+        if (other != null && other != newOtherSide)
+            throw new Exception("Check your polygon! Three sides have the same label.");
+        other = newOtherSide;
+        other.other = this;
+        other.color = color;
+        if (other.rightIsInside == rightIsInside)
+            Debug.Log("Check your polygon! Two sides with the same label have the surface on the same side." +
+                      " This might mean that it is not orientable?");
+    }
+    
     public override Curve Reverse() => ReverseModelSide();
 
     public ModelSurfaceSide ReverseModelSide()
@@ -352,17 +420,5 @@ public class ModelSurfaceSide: Curve
         result.other.other = result;
         return result;
     }
-
-    public void AddOther(ModelSurfaceSide newOtherSide)
-    {
-        if (other != null && other != newOtherSide)
-            throw new Exception("Check your polygon! Three sides have the same label.");
-        other = newOtherSide;
-        other.other = this;
-        if (other.rightIsInside == rightIsInside)
-            Debug.Log("Check your polygon! Two sides with the same label have the surface on the same side." +
-                      " This might mean that it is not orientable?");
-    }
-    
     
 }

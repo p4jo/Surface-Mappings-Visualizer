@@ -40,14 +40,16 @@ public abstract class GeodesicSurface: Surface
 
     public virtual Curve GetPathFromWaypoints(IEnumerable<Point> points, string name)
     {
-        // todo: optimize over possible tangent vectors at the concatenation
         var pointArray = points.ToArray();
         var geodesicSegments = 
             from i in Enumerable.Range(0, pointArray.Length - 1)
             let start = pointArray[i]
             let end = pointArray[i+1]
             select GetGeodesic(start, end, name);
+        // todo: optimize over possible tangent vectors at the concatenation -> do this in ConcatenatedCurve!
         var concatenatedCurve = new ConcatenatedCurve(geodesicSegments, name);
         return concatenatedCurve;  
     }
+
+    public abstract float Distance(Point startPoint, Point endPoint);
 }
