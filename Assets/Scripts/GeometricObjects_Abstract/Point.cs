@@ -53,7 +53,7 @@ public abstract class Point : IEquatable<Point>, ITransformable<Point>
     /// <summary>
     /// This is not really useful at the moment, as secondary positions are not used in curves (is the number of positions constant along the curve ...?)
     /// </summary>
-    public virtual float Distance(Point other) => 
+    public virtual float DistanceSquared(Point other) => 
         Positions.CartesianProduct(other.Positions).Min(positions => (positions.Item1 - positions.Item2).sqrMagnitude);
     
     public static implicit operator Point(Vector3 v) => new BasicPoint(v);
@@ -91,8 +91,10 @@ public class BasicPoint : Point
 /// </summary>
 public class ConcatenationSingularPoint: Point
 {
+    public float time = -1f;
     public Curve incomingCurve, outgoingCurve;
     public int incomingPosIndex, outgoingPosIndex;
+    public bool visualJump, actualJump, angleJump;
 
     public override IEnumerable<Vector3> Positions =>
         incomingCurve.EndPosition.Positions.Concat(outgoingCurve.StartPosition.Positions);
@@ -102,9 +104,28 @@ public class ConcatenationSingularPoint: Point
         return new ConcatenationSingularPoint()
         {
             incomingCurve = incomingCurve.ApplyHomeomorphism(homeomorphism),
-            outgoingCurve = outgoingCurve.ApplyHomeomorphism(homeomorphism)
+            outgoingCurve = outgoingCurve.ApplyHomeomorphism(homeomorphism),
+            incomingPosIndex = incomingPosIndex,
+            outgoingPosIndex = outgoingPosIndex,
+            visualJump = visualJump,
+            actualJump = actualJump,
+            angleJump = angleJump,
+            time = time
         };
     }
+
+    public ConcatenationSingularPoint ApplyTimeOffset(float delta) =>
+        new()
+        {
+            incomingCurve = incomingCurve,
+            outgoingCurve = outgoingCurve,
+            incomingPosIndex = incomingPosIndex,
+            outgoingPosIndex = outgoingPosIndex,
+            visualJump = visualJump,
+            actualJump = actualJump,
+            angleJump = angleJump,
+            time = time + delta
+        };
 }
 
 
@@ -216,8 +237,13 @@ public class ModelSurfaceBoundaryPoint : Point, IModelSurfacePoint
 
     }
 
-    public override Point ApplyHomeomorphism(Homeomorphism homeomorphism) => 
-        new ModelSurfaceBoundaryPoint(side.ApplyHomeomorphism(homeomorphism) as ModelSurfaceSide, t);
+    public override Point ApplyHomeomorphism(Homeomorphism homeomorphism)
+    {
+        Curve transformedCurve = side.ApplyHomeomorphism(homeomorphism);
+        if (transformedCurve is ModelSurfaceSide modelSurfaceSide)
+            return new ModelSurfaceBoundaryPoint(modelSurfaceSide, t);
+        return transformedCurve[t];
+    }
 
     public (ModelSurfaceBoundaryPoint, ModelSurfaceBoundaryPoint) ClosestBoundaryPoints(ModelSurfaceSide side)
     {

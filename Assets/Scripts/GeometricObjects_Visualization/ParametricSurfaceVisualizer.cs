@@ -7,27 +7,9 @@ using UnityEngine.Serialization;
 public class ParametricSurfaceVisualizer : SurfaceVisualizer
 {
     [SerializeField] private ParametricSurface parametricSurface;
-    [SerializeField] private Transform pointer;
     [FormerlySerializedAs("meshGenerator")] [SerializeField] private List<MeshGenerator> meshGenerators;
     [SerializeField] private GameObject meshPrefab;
 
-
-    public override void MovePointTo(Point point)
-    {
-        if (point == null)
-        {
-            pointer.gameObject.SetActive(false);
-            return;
-        }
-        pointer.gameObject.SetActive(true);
-        pointer.position = point.Position;
-    }
-
-    protected override void AddPoint(Point point)
-    {
-        var newPointer = Instantiate(pointer.gameObject, pointer.transform.parent);
-        newPointer.transform.localPosition = point.Position;
-    }
 
     public void Initialize(ParametricSurface parametricSurface)
     {

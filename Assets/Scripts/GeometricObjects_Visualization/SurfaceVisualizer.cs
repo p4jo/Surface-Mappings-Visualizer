@@ -1,39 +1,62 @@
 
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using JetBrains.Annotations;
     using UnityEngine;
+    using UnityEngine.Serialization;
 
     public abstract class SurfaceVisualizer: MonoBehaviour, ITooltipOnHover
     {
         [SerializeField] private GameObject curveVisualizerPrefab;
         [SerializeField] protected Dictionary<string, CurveVisualizer> curveVisualizers = new();
         
+        List<GameObject> inactivePointers = new();
+        Dictionary<Vector3, GameObject> activePointers = new();
+        List<GameObject> activePreviewPointers = new();
         public readonly int id;
         private static int lastID;
+        private ITransformable lastPreviewObject;
+        [SerializeField] protected GameObject pointerPrefab;
+        [SerializeField] protected float scale = 1f;
+        [SerializeField] protected Vector3 imageOffset;
+        [SerializeField] protected new Camera camera;
 
         protected SurfaceVisualizer()
         {
             id = lastID++;
         }
 
-        
-        public abstract void MovePointTo([CanBeNull] Point point);
-        
+
         public virtual CurveVisualizer AddCurveVisualizer(string name)
         {
-            if (curveVisualizers.TryGetValue(name, out var curveVisualizer)) return curveVisualizer;
+            if (curveVisualizers.TryGetValue(name, out var curveVisualizer) && curveVisualizer != null) return curveVisualizer;
             var gameObject = Instantiate(curveVisualizerPrefab, transform);
+            gameObject.name = name;
+            gameObject.transform.localPosition = Vector3.zero;
             curveVisualizer = gameObject.GetComponent<CurveVisualizer>();
             curveVisualizers[name] = curveVisualizer;
-            gameObject.GetComponent<ScaleWithCameraSpline>().camera = GetComponentInChildren<Camera>();
             return curveVisualizer;
         }
 
-        public virtual void AddCurve(Curve curve)
+        
+        #region ITooltipOnHover
+        public event Action<Vector3?, int> MouseEvent;
+    
+        public virtual TooltipContent GetTooltip() => new(); // don't actually show a tooltip
+        public virtual void OnHover(Kamera activeKamera, Vector3 position) => MouseEvent?.Invoke(surfacePosition(position), -1);
+        public virtual void OnHoverEnd() => MouseEvent?.Invoke(null, -1);
+
+        public virtual void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) =>
+            MouseEvent?.Invoke(surfacePosition(position), mouseButton);
+        public virtual float hoverTime => 0;
+        #endregion
+
+        protected virtual void AddCurve(Curve curve)
         {
-            // if a curve of this name is already shown, re-initialize it
-            AddCurveVisualizer(curve.Name).Initialize(curve, 0.2f);
+            if (curve is ModelSurfaceSide side) 
+                AddCurveVisualizer(curve.Name + "*").Initialize(side.other, 0.2f, camera, scale, imageOffset);
+            AddCurveVisualizer(curve.Name).Initialize(curve, 0.2f, camera, scale, imageOffset);
         }
 
         public void RemoveCurve(string name)
@@ -43,19 +66,6 @@
             curveVisualizers.Remove(name);
         }
         
-        
-        #region ITooltipOnHover
-        public event Action<Vector3?, int> MouseEvent;
-    
-        public virtual TooltipContent GetTooltip() => new(); // don't actually show a tooltip
-        public virtual void OnHover(Kamera activeKamera, Vector3 position) => MouseEvent?.Invoke(position, -1);
-        public virtual void OnHoverEnd() => MouseEvent?.Invoke(null, -1);
-
-        public virtual void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) =>
-            MouseEvent?.Invoke(position, mouseButton);
-        public virtual float hoverTime => 0;
-        #endregion
-
         /// <summary>
         /// Display a point, curve, grid etc.
         /// If preview is on, this (re)moves the previous preview object.
@@ -65,27 +75,91 @@
         /// <exception cref="NotImplementedException"></exception>
         public void Display(ITransformable input, bool preview = false)
         {
-            if (input == null)
-            {
-                if (preview)
-                    MovePointTo(null); 
-                return;
-            }
+            
             switch (input)
             {
+                case null when preview && lastPreviewObject is Point:
+                    foreach (var pointer in activePreviewPointers)
+                    {
+                        pointer.SetActive(false);
+                        inactivePointers.Add(pointer);
+                    }
+                    activePreviewPointers.Clear();
+                    break;
                 case Point point when preview:
-                    MovePointTo(point);
+                    PreviewPoint(point);
+                    lastPreviewObject = point;
                     break;
                 case Point point when !preview:
                     AddPoint(point);
                     break;
                 case Curve curve:
                     AddCurve(curve);
+                    if (preview) 
+                        lastPreviewObject = curve;
+                    break;
+                case null when preview && lastPreviewObject != null:
+                    Remove(lastPreviewObject);
+                    break;
+                case null:
                     break;
                 default:
                     throw new NotImplementedException();
             }
         }
 
-        protected abstract void AddPoint(Point point);
+        public void Remove(ITransformable input)
+        {
+            switch (input)
+            {
+                case Point point:
+                    RemovePoint(point);
+                    break;
+                case Curve curve:
+                    RemoveCurve(curve.Name);
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+        
+        public Vector3 displayPosition(Vector3 surfacePosition) => surfacePosition * scale + imageOffset;
+        public Vector3 surfacePosition(Vector3 displayPosition) => (displayPosition - imageOffset) / scale;
+
+        protected virtual void AddPoint(Point point)
+        {
+            foreach (var position in point.Positions)   
+            {
+                var pointer = inactivePointers.Pop() ?? Instantiate(pointerPrefab, transform);
+                pointer.SetActive(true);
+                pointer.transform.localPosition = displayPosition(position);
+                activePointers.Add(position, pointer);
+            }
+        }
+        
+        protected virtual void RemovePoint(Point point)
+        {
+            foreach (var position in point.Positions)
+            {
+                if (!activePointers.TryGetValue(position, out var pointer)) 
+                    continue;
+                pointer.SetActive(false);
+                activePointers.Remove(position);
+                inactivePointers.Add(pointer);
+            }
+        }
+        
+        protected virtual void PreviewPoint(Point point)
+        {
+            var pointPositions = point.Positions.ToArray();
+
+            foreach (var position in pointPositions)
+            {
+                var pointer = activePreviewPointers.Pop() ?? inactivePointers.Pop() ?? Instantiate(pointerPrefab, transform);
+                pointer.SetActive(true);
+                pointer.transform.localPosition = displayPosition(position);
+                activePreviewPointers.Add(pointer);
+            }
+        }
+
     }

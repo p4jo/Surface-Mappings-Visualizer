@@ -10,7 +10,7 @@ public abstract class GeodesicSegment: Curve
     public override Surface Surface { get; }
 
     public abstract override TangentVector DerivativeAt(float t);
-    
+
     public override TangentVector EndVelocity { get; }
     public override float Length { get; }
 
@@ -29,7 +29,7 @@ public abstract class GeodesicSegment: Curve
 public class FlatGeodesicSegment : GeodesicSegment
 {
     public FlatGeodesicSegment(Vector3 start, Vector3 end, Surface surface, string name)
-        : base(start,end, end - start, end - start, 1, surface, name)
+        : base(start,end, (end - start).normalized, (end - start).normalized, (end - start).magnitude, surface, name)
     {  }
 
     public override Point ValueAt(float t) => StartPosition.Position + StartVelocity.vector * t;

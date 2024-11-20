@@ -45,7 +45,7 @@ public class HyperbolicPlane : Plane
     public override Curve GetGeodesic(Point start, Point end, string name)
         => new HyperbolicGeodesicSegment(start.Position, end.Position, this, name);
 
-    public override float Distance(Point startPoint, Point endPoint) => throw new System.NotImplementedException();
+    public override float DistanceSquared(Point startPoint, Point endPoint) => throw new System.NotImplementedException();
 }
 
 public class EuclideanPlane : Plane
@@ -55,7 +55,7 @@ public class EuclideanPlane : Plane
     public override Curve GetGeodesic(Point start, Point end, string name)
         => new FlatGeodesicSegment(start.Position, end.Position, this, name);
 
-    public override float Distance(Point startPoint, Point endPoint) => (startPoint.Position - endPoint.Position).magnitude;
+    public override float DistanceSquared(Point startPoint, Point endPoint) => startPoint.DistanceSquared(endPoint); // this minimizes over the positions
 }
 
 public class Rectangle : EuclideanPlane

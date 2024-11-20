@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using JetBrains.Annotations;
+using NUnit.Framework;
 using Unity.VisualScripting;
 using UnityEngine;
 using Vector3 = UnityEngine.Vector3;
@@ -28,8 +29,8 @@ public abstract class Curve: ITransformable<Curve>
 
     public abstract Surface Surface { get; }
 
-    public virtual IEnumerable<Point> NonDifferentiablePoints => Enumerable.Empty<Point>();
     public virtual Color Color => colors[id % colors.Count];
+    public virtual IEnumerable<float> VisualJumpTimes => Enumerable.Empty<float>();
 
     public virtual Point this[float t] => ValueAt(t);
 
@@ -73,17 +74,17 @@ public abstract class Curve: ITransformable<Curve>
             if (t < 0) return (0, StartPosition);
             if (t > Length) return (Length, EndPosition);
 
-            var res = f(t);
+            var (dist, pos) = f(t);
             if (Mathf.Abs(change) < 1e-6)
-                return res;
-            if (Mathf.Abs(res.Item1) < 1e-6)
-                return res;
+                return (t, pos);
+            if (dist < 1e-6)
+                return (t, pos);
         }
 
-        return f(t);
+        return (t, this[t]);
     }
 
-    public virtual Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => new TransformedCurve(this, homeomorphism);
+    public virtual Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => homeomorphism.isIdentity ? this : new TransformedCurve(this, homeomorphism);
 
     public virtual TangentSpace BasisAt(float t)
     {
@@ -148,7 +149,7 @@ public class TransformedCurve : Curve
 public class ConcatenatedCurve : Curve
 {
     private readonly Curve[] segments;
-    private IEnumerable<Point> nonDifferentiablePoints;
+    private List<ConcatenationSingularPoint> nonDifferentiablePoints;
 
 
     public override string Name { get; set; }
@@ -157,12 +158,16 @@ public class ConcatenatedCurve : Curve
 
     public override float Length { get; }
 
-    public override IEnumerable<Point> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints(segments);
+    public override IEnumerable<float> VisualJumpTimes => from singularPoint in NonDifferentiablePoints where singularPoint.visualJump select singularPoint.time;
+
+    private List<ConcatenationSingularPoint> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints(segments);
     public override Color Color => segments.First().Color;
 
     public ConcatenatedCurve(IEnumerable<Curve> curves, string name = null)
     {
-        segments = curves.ToArray();
+        segments = curves.SelectMany(
+            curve => curve is ConcatenatedCurve concatenatedCurve ? concatenatedCurve.segments : new []{ curve }
+        ).ToArray();
 
         float length = (from segment in segments select segment.Length).Sum();
         if (length == 0) throw new Exception("Length of curve is zero");
@@ -175,10 +180,11 @@ public class ConcatenatedCurve : Curve
     {
         var curves = segments.ToList();
         
-        var singularPoints = CalculateSingularPoints(curves);
+        var singularPoints = CalculateSingularPoints(curves, ignoreSubConcatenatedCurves: true);
 
         List<int> singularIndices = singularPoints.Select(singularPoint => curves.IndexOf(singularPoint.incomingCurve)).ToList();
-
+        if (singularIndices.Any(index => index == -1))
+            throw new Exception("Something went wrong");
 
         for (int i = 0; i < singularPoints.Count; i++)
         {
@@ -219,7 +225,9 @@ public class ConcatenatedCurve : Curve
             curves.Insert(index + 2, secondInterpolated);
         }
 
-        return new ConcatenatedCurve(curves, Name + " (smooth)");
+        var result = new ConcatenatedCurve(curves, Name + " (smooth)");
+        // result.nonDifferentiablePoints = ...
+        return result; 
     }
 
     public override Point EndPosition => segments.Last().EndPosition;
@@ -255,38 +263,56 @@ public class ConcatenatedCurve : Curve
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
+        if (homeomorphism.isIdentity)
+            return this;
         return new ConcatenatedCurve(from segment in segments select segment.ApplyHomeomorphism(homeomorphism),
             Name + " --> " + homeomorphism.target.Name
         );
     }
 
 
-    private static List<ConcatenationSingularPoint> CalculateSingularPoints(IReadOnlyList<Curve> segments)
+    private static List<ConcatenationSingularPoint> CalculateSingularPoints(IReadOnlyList<Curve> segments, bool expectClosedCurve = false, bool ignoreSubConcatenatedCurves = false)
     {
-        Curve nextCurve;
-        Curve lastCurve = nextCurve = segments[^1];
         List<ConcatenationSingularPoint> res = new();
-        for (int i = 0; i <= segments.Count - 2; i++)
+        var timeA = 0f;
+        Curve curve, nextCurve;
+        for (int i = 0; i < segments.Count; i++)
         {
-            var curve = nextCurve;
-            res.AddRange(curve.NonDifferentiablePoints);
+            curve = segments[i];
+            if (!ignoreSubConcatenatedCurves && curve is ConcatenatedCurve curveAsConcat)
+                res.AddRange(from internalJumpPoint in curveAsConcat.NonDifferentiablePoints select internalJumpPoint.ApplyTimeOffset(timeA));
+            if (i < segments.Count - 1)
+                nextCurve = segments[i + 1];
+            else if (expectClosedCurve)
+                nextCurve = segments[0];
+            else
+                break;
+            timeA += curve.Length; // todo: this seems to not work correctly in some cases (the time is the 0.1f*Length off in the smoothed curves) and this compounds.
             
-            nextCurve = segments[i];
             var (herePosIndex, therePosIndex, distanceSquared) = curve.EndPosition.ClosestPositionIndices(nextCurve.StartPosition);
             // if (!curve.EndPosition.Equals(nextCurve.StartPosition))
-            if (distanceSquared > 1e-6 || 
-                !curve.EndVelocity.VectorAtPositionIndex(herePosIndex).ApproximatelyEquals(
-                    nextCurve.StartVelocity.VectorAtPositionIndex(therePosIndex))
-            )
-                res.Add(new ConcatenationSingularPoint()
+            bool angleJump = !curve.EndVelocity.VectorAtPositionIndex(herePosIndex).ApproximatelyEquals(
+                nextCurve.StartVelocity.VectorAtPositionIndex(therePosIndex));
+            bool actualJump = distanceSquared > 1e-6;
+            // if distance is too l°arge, this means, these points are actually different; even considering multiple positions.
+            // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might me far apart (converging to the different positions).
+            bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
+            if (actualJump || angleJump || visualJump)
+            {
+                res.Add(new ConcatenationSingularPoint
                 {
                     incomingCurve = curve,
                     outgoingCurve = nextCurve, 
                     incomingPosIndex = herePosIndex,
-                    outgoingPosIndex = therePosIndex
+                    outgoingPosIndex = therePosIndex,
+                    visualJump = visualJump,
+                    actualJump = actualJump,
+                    angleJump = angleJump,
+                    time = timeA
                 }); // save angle?
+            }
+
         }
-        res.AddRange(lastCurve.NonDifferentiablePoints);
         return res;
     }
 }
@@ -351,8 +377,8 @@ public class RestrictedCurve : Curve
     public override Surface Surface => curve.Surface;
     public override Color Color => curve.Color;
 
-    public override Point ValueAt(float t) => curve.ValueAt(t);
-    public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(Length - t);
+    public override Point ValueAt(float t) => curve.ValueAt(t + start);
+    public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
@@ -387,7 +413,30 @@ public class SplineSegment : GeodesicSegment
         base(start, end, startVelocity, endVelocity, length, surface, name)
     {}
 
-    public override Point ValueAt(float t) => throw new NotImplementedException();
+    public override Point ValueAt(float t)
+    {
+        float s = t / Length;
+        float s2 = s * s;
+        float s3 = s2 * s;
+        
+        Vector3 position = (2 * s3 - 3 * s2 + 1) * StartPosition.Position +
+                           (s3 - 2 * s2 + s) * StartVelocity.vector +
+                           (-2 * s3 + 3 * s2) * EndPosition.Position +
+                           (s3 - s2) * EndVelocity.vector;
+        // todo: this is not correct (copilot suggestion)
+        return position;
+    }
 
-    public override TangentVector DerivativeAt(float t) => throw new NotImplementedException();
+    public override TangentVector DerivativeAt(float t)
+    {
+        float s = t / Length;
+        float s2 = s * s;
+
+        Vector3 velocity = (6 * s2 - 6 * s) * StartPosition.Position +
+                           (3 * s2 - 4 * s + 1) * StartVelocity.vector +
+                           (-6 * s2 + 6 * s) * EndPosition.Position +
+                           (3 * s2 - 2 * s) * EndVelocity.vector;
+
+        return new TangentVector(ValueAt(t), velocity / Length);
+    }
 }

@@ -230,31 +230,56 @@ public partial class ModelSurface: GeodesicSurface
     public override Curve GetGeodesic(Point startPoint, Point endPoint, string name)
     {
         GeodesicSurface baseGeometrySurface = BaseGeometrySurfaces[geometryType];
+        if (startPoint is not IModelSurfacePoint)
+            startPoint = ClampPoint(startPoint.Position);
+        if (endPoint is not IModelSurfacePoint)
+            endPoint = ClampPoint(endPoint.Position);
 
-        ModelSurfaceBoundaryPoint centerPoint = null;
-        var shortestLength = baseGeometrySurface.Distance(startPoint, endPoint);
-        foreach (var side in AllSideCurves)
-        {
-            if (startPoint is IModelSurfacePoint start && endPoint is IModelSurfacePoint end)
-            {
-                var (a, b) = start.ClosestBoundaryPoints(side);
-                var (c, d) = end.ClosestBoundaryPoints(side);
-                if (a != null && b != null && c != null && d != null)
-                {// todo; overthink the ClosestBoundaryPoints?
-                    // todo: find best point in boundary to go through (or none), minimizing the length
-                    // todo: result into Distance method.
-                }
-            }
-        }
+        var (_, centerPoint) = DistanceMinimizer(startPoint, endPoint, baseGeometrySurface);
         if (centerPoint == null)
             return baseGeometrySurface.GetGeodesic(startPoint, endPoint, name);
         
-        var firstSegment = baseGeometrySurface.GetGeodesic(startPoint, centerPoint, name + "pt 1");
-        var secondSegment = baseGeometrySurface.GetGeodesic(centerPoint, endPoint, name + "pt 2");
-        return new ConcatenatedCurve(new[] {firstSegment, secondSegment}, name).Smoothed();
+        var ((_, firstCenterPosition), _) = startPoint.ClosestPosition(centerPoint);
+        var ((_, secondCenterPosition), _) = endPoint.ClosestPosition(centerPoint);
+        if (secondCenterPosition == firstCenterPosition)
+            Debug.Log("Weird reflection at the boundary. For some reason it thought that going to the boundary is efficient, but we actually don't go through it because that takes longer.");
+        var firstSegment = baseGeometrySurface.GetGeodesic(startPoint, firstCenterPosition, name + "pt 1");
+        var secondSegment = baseGeometrySurface.GetGeodesic(secondCenterPosition, endPoint, name + "pt 2");
+        return new ConcatenatedCurve(new[] { firstSegment, secondSegment }, name); // .Smoothed(); // TODO: this doesn't work as expected
     }
 
-    public override float Distance(Point startPoint, Point endPoint) => throw new NotImplementedException();
+    private (float, Point) DistanceMinimizer(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
+    {
+        var shortestLength = baseGeometrySurface.DistanceSquared(startPoint, endPoint);
+        Point result = null;
+        if (startPoint is not IModelSurfacePoint start || endPoint is not IModelSurfacePoint end)
+            throw new Exception("Start and end point should have the type IModelSurfacePoint");
+        foreach (var side in sides)
+        {
+            var (a, b) = start.ClosestBoundaryPoints(side);
+            var (c, d) = end.ClosestBoundaryPoints(side);
+            if (a == null || b == null || c == null || d == null)
+                throw new Exception("Lazy Programmer!");
+                
+            float LengthVia(ModelSurfaceBoundaryPoint x) =>
+                baseGeometrySurface.DistanceSquared(x, startPoint) + baseGeometrySurface.DistanceSquared(x, endPoint); // this minimizes over the positions
+                
+            ModelSurfaceBoundaryPoint[] points = {
+                a, b, c, d,
+                new ModelSurfaceBoundaryPoint(side, (a.t + d.t) / 2 ),
+                new ModelSurfaceBoundaryPoint(side.other, (b.t + c.t) / 2 )
+            };
+                
+            var (minPoint, distance) = points.ArgMin(LengthVia);
+
+            if (!(distance < shortestLength)) continue;
+            shortestLength = distance;
+            result = minPoint;
+        }
+        return (shortestLength, result);
+    }
+
+    public override float DistanceSquared(Point startPoint, Point endPoint) => throw new NotImplementedException();
 
     public override Point ClampPoint(Vector3? point) // todo: this is extremely inefficient
     {

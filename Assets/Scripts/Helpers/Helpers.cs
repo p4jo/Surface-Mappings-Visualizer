@@ -149,5 +149,15 @@ public static class Helpers
     public static float Angle(this Vector3 v) => Mathf.Atan2(v.y, v.x);
     
     public static Vector3 ToVector3(this Complex v) => new((float)v.Real, (float)v.Imaginary);
+    
+    public static Vector2 ToVector2(this Complex v) => new((float)v.Real, (float)v.Imaginary);
+    
+    public static T Pop<T> (this List<T> list)
+    {
+        if (list.Count == 0) return default;
+        var last = list[^1];
+        list.RemoveAt(list.Count - 1);
+        return last;
+    }
 
 }

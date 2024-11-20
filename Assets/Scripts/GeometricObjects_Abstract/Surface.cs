@@ -48,8 +48,8 @@ public abstract class GeodesicSurface: Surface
             select GetGeodesic(start, end, name);
         // todo: optimize over possible tangent vectors at the concatenation -> do this in ConcatenatedCurve!
         var concatenatedCurve = new ConcatenatedCurve(geodesicSegments, name);
-        return concatenatedCurve;  
+        return concatenatedCurve.Smoothed();  
     }
 
-    public abstract float Distance(Point startPoint, Point endPoint);
+    public abstract float DistanceSquared(Point startPoint, Point endPoint);
 }
