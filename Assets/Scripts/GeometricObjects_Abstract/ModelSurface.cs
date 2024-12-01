@@ -309,9 +309,9 @@ public partial class ModelSurface: GeodesicSurface
             throw new("Why are there no sides at this point?");
         if (closeness < 0.1f)
         {
-            if (time == 0)
+            if (time.ApproximateEquals(0))
                 return vertices[closestSide.vertexIndex];
-            if (time == closestSide.curve.Length)
+            if (time.ApproximateEquals(closestSide.curve.Length))
                 return vertices[closestSide.other.vertexIndex];
             return new ModelSurfaceBoundaryPoint(closestSide, time);
         }
@@ -417,6 +417,15 @@ public class ModelSurfaceSide: Curve
     }
     
     public override Curve Reverse() => ReverseModelSide();
+    
+    public override (float, Point) GetClosestPoint(Vector3 point)
+    {
+        var (t, closestPoint) = curve.GetClosestPoint(point);
+        var (t2, closestPoint2) = other.curve.GetClosestPoint(point);
+        if (closestPoint.DistanceSquared(point) < closestPoint2.DistanceSquared(point))
+            return (t, this[t]);
+        return (t, other[t]);
+    }
 
     public ModelSurfaceSide ReverseModelSide()
     {

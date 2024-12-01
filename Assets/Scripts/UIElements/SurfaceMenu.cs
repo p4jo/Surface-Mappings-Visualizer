@@ -176,7 +176,7 @@ public class SurfaceMenu: MonoBehaviour
 
     private (ITransformable, string) Drawable(Point location, string drawingSurfaceName)
     {
-        
+        if (location is null) return (null, drawingSurfaceName);
         switch (Mode)
         {
             case MenuMode.AddCurve:

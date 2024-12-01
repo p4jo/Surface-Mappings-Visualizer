@@ -43,7 +43,7 @@ public class HyperbolicPlane : Plane
     public HyperbolicPlane(string name = "Hyperbolic Plane") : base(name, 0, true){}
     
     public override Curve GetGeodesic(Point start, Point end, string name)
-        => new HyperbolicGeodesicSegment(start.Position, end.Position, this, name);
+        => new HyperbolicGeodesicSegment(start, end, this, name);
 
     public override float DistanceSquared(Point startPoint, Point endPoint) => throw new System.NotImplementedException();
 }
@@ -53,7 +53,7 @@ public class EuclideanPlane : Plane
     public EuclideanPlane(string name = "Euclidean Plane") : base(name, 0, true){}
 
     public override Curve GetGeodesic(Point start, Point end, string name)
-        => new FlatGeodesicSegment(start.Position, end.Position, this, name);
+        => new FlatGeodesicSegment(start, end, this, name);
 
     public override float DistanceSquared(Point startPoint, Point endPoint) => startPoint.DistanceSquared(endPoint); // this minimizes over the positions
 }
@@ -62,7 +62,7 @@ public class Rectangle : EuclideanPlane
 {    
     protected readonly float width, height;
     public Rectangle(float width, float height, string name = null, Vector3 minimalPosition = default): base(name ??
-        $"Rectangle at ({minimalPosition.x}, {minimalPosition.y}) with width {width} and height {height})")
+        $"Rectangle at ({minimalPosition.x:g2}, {minimalPosition.y:g2}) with width {width:g2} and height {height:g2})")
     {
         MinimalPosition = minimalPosition;
         MaximalPosition = minimalPosition + new Vector3(width, height);
@@ -87,13 +87,23 @@ public class Cylinder : Rectangle
     /// A cylinder which is a rectangle and we interpret the y-direction as a circle.
     /// </summary>
     public Cylinder(float width, float height, string name = null, Vector3 minimalPosition = default) : base(width,
-        height, name, minimalPosition)
+        height, name ?? $"Cylinder with width {width:g2} and height {height:g2}", minimalPosition)
     { }
 
+    private Homeomorphism dehnTwist;
     /// <summary>
-    /// This Dehn twist fixes the left side of the cylinder (x=0).
+    /// This Dehn twist fixes the sides of the cylinder (x = x_min and x = x_max).
     /// </summary>
-    public Homeomorphism DehnTwist => FromDefaultCylinder * DefaultCylinderDehnTwist * FromDefaultCylinder.Inverse;
+    public Homeomorphism DehnTwist
+    {
+        get
+        {
+            if (dehnTwist != null) return dehnTwist;
+            dehnTwist = FromDefaultCylinder * DefaultCylinderDehnTwist * FromDefaultCylinder.Inverse;
+            dehnTwist.name = "Dehn twist on " + Name;
+            return dehnTwist;
+        }
+    }
 
     public override Point ClampPoint(Vector3? point)
     {
@@ -112,21 +122,28 @@ public class Cylinder : Rectangle
     {
         get
         {
-             return fromDefaultCylinder ??= new Homeomorphism(defaultCylinder, this, forward, backward, dForward, dBackward);
+             return fromDefaultCylinder ??= new Homeomorphism(defaultCylinder,
+                 this,
+                 Forward,
+                 Backwards,
+                 DForward,
+                 DBackwards,
+                "Default Cylinder to " + Name
+            );
 
-            Vector3 forward(Vector3 input) => new(
+            Vector3 Backwards(Vector3 input) => new(
                 (input.x - MinimalPosition.x) / width,
                 (input.y - MinimalPosition.y) / height,
                 input.z);
 
-            Vector3 backward(Vector3 input) => new(
+            Vector3 Forward(Vector3 input) => new(
                 input.x * width + MinimalPosition.x,
                 input.y * height + MinimalPosition.y,
                 input.z);
 
-            Matrix3x3 dForward(Vector3 input) => new(1 / width, 1 / height);
+            Matrix3x3 DBackwards(Vector3 input) => new(1 / width, 1 / height);
 
-            Matrix3x3 dBackward(Vector3 input) => new(width, height);
+            Matrix3x3 DForward(Vector3 input) => new(width, height);
         }
     }
 
@@ -135,7 +152,14 @@ public class Cylinder : Rectangle
     {
         get
         {
-            return _defaultCylinderDehnTwist ??= new Homeomorphism(defaultCylinder, defaultCylinder, forward, backward, dForward, dBackward);
+            return _defaultCylinderDehnTwist ??= new Homeomorphism(defaultCylinder,
+                defaultCylinder,
+                forward,
+                backward,
+                dForward,
+                dBackward,
+                "Dehn Twist"
+            );
             Vector3 forward(Vector3 input) => new(input.x, (input.y + input.x) % 1f, input.z);
             Vector3 backward(Vector3 input) => new(input.x, (input.y + 1 - input.x) % 1f, input.z);
             Matrix3x3 dForward(Vector3 input) => new(new Vector2(1, 1), new Vector2(0, 1));
@@ -178,7 +202,7 @@ public class Strip : ParametricSurface
 
     private static Homeomorphism StripEmbedding(Curve curve, float start, float? end, bool closed)
     {
-        float width = 0.1f;
+        float width = 1f;// 0.1f;
         // todo: if this intersects itself, punctures or other obstacles, we need to reduce the width
 
         float? end1 = end ?? curve.Length;
@@ -189,12 +213,13 @@ public class Strip : ParametricSurface
             StripEmbedding,
             StripEmbeddingInverse,
             dStripEmbedding,
-            null
+            null,
+            curve.Name + " strip embedding"
         );
 
         Vector3 StripEmbedding(Vector3 pos)
         {
-            var (t, s) = (pos.x, pos.y);
+            var (s, t) = (pos.x, pos.y);
             var (pt, basis) = curve.BasisAt(t);
             return pt.Position + basis.b.normalized * (s * width);
         }
@@ -204,12 +229,14 @@ public class Strip : ParametricSurface
             (float t, Point pt)  = curve.GetClosestPoint(pos);
             var (_, basis) = curve.BasisAt(t);
             var s = Vector3.Dot(pos - pt.Position, basis.b.normalized) / width;
-            return new Vector3(t, s);
+            if (s > width || s < 0)
+                Debug.Log("tried to apply inverse strip embedding outside of the strip");
+            return new Vector3(s, t);
         }
 
         Matrix3x3 dStripEmbedding(Vector3 pos)
         {
-            var (t, s) = (pos.x, pos.y);
+            var (s, t) = (pos.x, pos.y);
             var (pt, basis) = curve.BasisAt(t);
             return new Matrix3x3(
                 basis.a,

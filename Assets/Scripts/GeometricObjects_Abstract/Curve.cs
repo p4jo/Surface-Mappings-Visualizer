@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using JetBrains.Annotations;
-using NUnit.Framework;
-using Unity.VisualScripting;
 using UnityEngine;
 using Vector3 = UnityEngine.Vector3;
 
@@ -211,14 +209,12 @@ public class ConcatenatedCurve : Curve
             var centerVector = new TangentVector(incomingCurve.EndPosition.Positions.ElementAt(singularPoint.incomingPosIndex), Complex.FromPolarCoordinates(length, angle).ToVector3());          
             var endOfLastInterpolated = restrictedOutgoingCurve.StartVelocity;
 
-            var firstInterpolated = new SplineSegment(Name + "segment", incomingCurve.Length * 0.1f, 
-                startOfFirstInterpolated.point.Position, centerVector.point.Position,
-                startOfFirstInterpolated.vector, centerVector.vector, Surface                    
+            var firstInterpolated = new SplineSegment(
+                startOfFirstInterpolated, centerVector,incomingCurve.Length * 0.1f,  Surface,  Name + " interp. segment 1"             
             );
-            
-            var secondInterpolated = new SplineSegment(Name + "segment", incomingCurve.Length * 0.1f, 
-                centerVector.point.Position, endOfLastInterpolated.point.Position,
-                centerVector.vector, endOfLastInterpolated.vector, Surface                    
+
+            var secondInterpolated = new SplineSegment(
+                centerVector, endOfLastInterpolated, incomingCurve.Length * 0.1f, Surface, Name + " interp. segment 2"
             );
             
             curves.Insert(index + 1, firstInterpolated);
@@ -273,7 +269,7 @@ public class ConcatenatedCurve : Curve
 
     private static List<ConcatenationSingularPoint> CalculateSingularPoints(IReadOnlyList<Curve> segments, bool expectClosedCurve = false, bool ignoreSubConcatenatedCurves = false)
     {
-        List<ConcatenationSingularPoint> res = new();
+        List<ConcatenationSingularPoint> res = new(); 
         var timeA = 0f;
         Curve curve, nextCurve;
         for (int i = 0; i < segments.Count; i++)
@@ -409,9 +405,9 @@ public class BasicCurve : Curve
 
 public class SplineSegment : GeodesicSegment
 {
-    public SplineSegment(string name, float length, Vector3 start, Vector3 end, Vector3 startVelocity, Vector3 endVelocity, Surface surface): 
-        base(start, end, startVelocity, endVelocity, length, surface, name)
-    {}
+    public SplineSegment(TangentVector startVelocity, TangentVector endVelocity, float length, Surface surface, string name) : base(startVelocity, endVelocity, length, surface, name)
+    {
+    }
 
     public override Point ValueAt(float t)
     {

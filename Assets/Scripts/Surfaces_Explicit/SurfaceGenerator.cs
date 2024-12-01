@@ -57,7 +57,8 @@ public static class SurfaceGenerator
             x => FlatTorusEmbedding((Vector2)x, largeRadius, smallRadius),
             y => FlatTorusEmbeddingInverse(y, largeRadius, smallRadius),
             x=> dFlatTorusEmbedding((Vector2)x,  largeRadius, smallRadius),
-            null
+            null,
+            "Torus embedding"
         );
         var chartRects = new List<Rect> { new(0, 0, τ, τ) };
         float size = largeRadius + smallRadius;
@@ -224,7 +225,14 @@ public static class SurfaceGenerator
         }
 
 
-        var embedding = new Homeomorphism(newBaseSurface, null, NewEmbedding, NewEmbeddingInverse, NewEmbeddingDerivative, null); 
+        var embedding = new Homeomorphism(newBaseSurface,
+            null,
+            NewEmbedding,
+            NewEmbeddingInverse,
+            NewEmbeddingDerivative,
+            null,
+            name: homeomorphism.name + " # " + "Torus"
+        ); 
         // targetSurface doesn't exist yet, but the target of the Homeomorphism is assigned in the ParametricSurface constructor
         
         
