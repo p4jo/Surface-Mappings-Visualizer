@@ -20,8 +20,8 @@ public abstract class Curve: ITransformable<Curve>
     
     public abstract float Length { get; }
 
-    public virtual Point StartPosition => this[0];
-    public virtual Point EndPosition => this[Length];
+    public virtual Point StartPosition => ValueAt(0);
+    public virtual Point EndPosition => ValueAt(Length);
     public virtual TangentVector StartVelocity => DerivativeAt(0);
     public virtual TangentVector EndVelocity => DerivativeAt(Length);
 
@@ -381,11 +381,11 @@ public class RestrictedCurve : Curve
 }
 
 
-public class BasicCurve : Curve
+public class BasicParametrizedCurve : Curve
 {
     private readonly Func<float, Vector3> value;
     private readonly Func<float, Vector3> derivative;
-    public BasicCurve(string name, float length, Surface surface, Func<float, Vector3> value, Func<float, Vector3> derivative)
+    public BasicParametrizedCurve(string name, float length, Surface surface, Func<float, Vector3> value, Func<float, Vector3> derivative)
     {
         Length = length;
         Surface = surface;
@@ -403,7 +403,7 @@ public class BasicCurve : Curve
     public override TangentVector DerivativeAt(float t) => new TangentVector(value(t), derivative(t));
 }
 
-public class SplineSegment : GeodesicSegment
+public class SplineSegment : InterpolatingCurve
 {
     public SplineSegment(TangentVector startVelocity, TangentVector endVelocity, float length, Surface surface, string name) : base(startVelocity, endVelocity, length, surface, name)
     {

@@ -31,9 +31,9 @@ public class CurveVisualizer : MonoBehaviour
         for (int i = 0; i < boundaryTimes.Length - 1; i++)
         {
             float length = boundaryTimes[i+1] - boundaryTimes[i];
+            if (length < resolution) resolution = length; // continue;
             float ε = 1e-2f * resolution;
             length -= 2 * ε;
-            if (length < resolution) continue;
             
             SplineComputer splineComputer;
             if (activeSplines.Count <= i)

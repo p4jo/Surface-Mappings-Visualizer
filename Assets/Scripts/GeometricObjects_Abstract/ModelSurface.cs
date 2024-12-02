@@ -210,7 +210,7 @@ public partial class ModelSurface: GeodesicSurface
     
     
     /// <summary>
-    /// This actually doen't necessarily preserve the locations of the old punctures (if newly added corners have worse
+    /// This actually doesn't necessarily preserve the locations of the old punctures (if newly added corners have worse
     /// angles than the ones already there)
     /// </summary>
     /// <param name="addedGenus"></param>
@@ -218,7 +218,7 @@ public partial class ModelSurface: GeodesicSurface
     /// <param name="extraBoundaries"></param>
     public ModelSurface WithAddedBoundaries(int addedGenus, int addedPunctures, IEnumerable<PolygonSide> extraBoundaries)
     {
-        return new(Name, Genus + addedGenus, 0, geometryType,
+        return new(Name, Genus + addedGenus, punctures.Count + addedPunctures, geometryType,
             sidesAsParameters.Concat(extraBoundaries).ToList());
         
         // todo: implement (this should be basically the same as the constructor and be called from there)
@@ -283,6 +283,7 @@ public partial class ModelSurface: GeodesicSurface
 
     public override Point ClampPoint(Vector3? point) // todo: this is extremely inefficient
     {
+        float closenessThreshold = 0.01f; // todo: this should vary with the camera scale!
         if (point == null) return null;
         var p = point.Value; 
         List<ModelSurfaceBoundaryPoint> closestBoundaryPoints = new();
@@ -307,7 +308,7 @@ public partial class ModelSurface: GeodesicSurface
         }
         if (closestSide is null)
             throw new("Why are there no sides at this point?");
-        if (closeness < 0.1f)
+        if (closeness < closenessThreshold)
         {
             if (time.ApproximateEquals(0))
                 return vertices[closestSide.vertexIndex];

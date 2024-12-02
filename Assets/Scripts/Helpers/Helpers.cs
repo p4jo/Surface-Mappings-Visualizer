@@ -152,6 +152,10 @@ public static class Helpers
     
     public static Vector2 ToVector2(this Complex v) => new((float)v.Real, (float)v.Imaginary);
     
+    public static Complex ToComplex(this Vector2 v) => new(v.x, v.y);
+    
+    public static Complex ToComplex(this Vector3 v) => new(v.x, v.y);
+    
     public static T Pop<T> (this List<T> list)
     {
         if (list.Count == 0) return default;

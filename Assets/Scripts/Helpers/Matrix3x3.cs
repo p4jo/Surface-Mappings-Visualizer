@@ -6,6 +6,9 @@ public class Matrix3x3
 
     public Matrix3x3(float α, float β, float γ = 1f):
         this(new Vector3(α, 0, 0), new Vector3(0, β, 0), new Vector3(0, 0, γ)){}
+    
+    public Matrix3x3(float a, float b, float c, float d): this(new Vector2(a, c), new Vector2(b, d)){}
+    
     public Matrix3x3(Vector2 a, Vector2 b):
         this(a, b, Vector3.forward){}
     public Matrix3x3(Vector3 a, Vector3 b, Vector3 c)
@@ -18,6 +21,9 @@ public class Matrix3x3
     public static Vector3 operator *(Matrix3x3 A, Vector3 v)
         => A.a * v.x + A.b * v.y + A.c * v.z;
 
+    public static Matrix3x3 operator *(float scalar, Matrix3x3 A) => 
+        new(scalar * A.a, scalar * A.b, scalar * A.c);
+    
     public static Matrix3x3 operator *(Matrix3x3 A, Matrix3x3 B) => 
         new(A * B.a, A * B.b, A * B.c);
 
