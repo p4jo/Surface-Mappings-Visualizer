@@ -43,7 +43,8 @@ public partial class ModelSurface: GeodesicSurface
     public static readonly Dictionary<GeometryType, GeodesicSurface> BaseGeometrySurfaces = new()
     {
         [GeometryType.Flat] = new EuclideanPlane(),
-        [GeometryType.Hyperbolic] = new HyperbolicPlane(),
+        [GeometryType.HyperbolicDisk] = new HyperbolicPlane(diskModel: true),
+        [GeometryType.HyperbolicPlane] = new HyperbolicPlane(diskModel: false),
         [GeometryType.Spherical] = null // todo?
     };
     

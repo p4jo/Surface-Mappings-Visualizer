@@ -1,7 +1,5 @@
 using System.Numerics;
-using Unity.Mathematics.Geometry;
 using UnityEngine;
-using UnityEngine.UIElements;
 using Math = System.Math;
 using Vector3 = UnityEngine.Vector3;
 
@@ -50,16 +48,19 @@ public class FlatGeodesicSegment : InterpolatingCurve
 
 public class HyperbolicGeodesicSegment : Curve
 {
-    private Complex a, b, c, d;
+    /// These are the coefficients of the Möbius transformation that sends i to StartPosition and i e^Length to EndPosition. It is an isometry from the upper half plane to either the upper half plane or the unit disk, depending on the bool diskModel.
+    private Complex α, β, γ, δ;
 
     public override string Name { get; set; }
-    public override float Length { get; }
+    
+    private float length;
+    public override float Length => length;
     public override Surface Surface { get; }
 
     public override Point StartPosition { get; }
     public override Point EndPosition { get; }
 
-    public readonly bool diskModel = true;
+    private readonly bool diskModel;
 
     /// <summary>
     /// A geodesic segment in the hyperbolic plane. We use either the Poincaré disk model or the upper half plane model.
@@ -80,72 +81,99 @@ public class HyperbolicGeodesicSegment : Curve
 
     private void Initialize(Point start, Point end)
     {
+        double a = 0, b = 0, c = 0, d = 0;
         Complex p = start.Position.ToComplex();
         Complex q = end.Position.ToComplex();
         if (diskModel)
         {
+            // multiply by the inverse of the Cayley transform (1  -i \\ 1  i); this maps the unit disk isometrically to the upper half plane.
             p = - Complex.ImaginaryOne * (p + 1) / (p - 1);
             q = - Complex.ImaginaryOne * (q + 1) / (q - 1);
         }
         // p, q are in the upper half plane model 
-        
+
         Complex w = (p - q) * (p - Complex.Conjugate(q));
-        if (AssignVariables(w.Real + w.Magnitude)) return;
-        if (!AssignVariables(w.Real - w.Magnitude))
+        if (!AssignIsometry(true) && !AssignIsometry(false))
             Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred half-axis.");
+
+        if (diskModel)
+        {
+            // invert and multiply by the Cayley transform (1  -i \\ 1  i) which isometrically maps the upper half plane to the unit disk.
+            α = new Complex(d, c); 
+            β = new Complex(-b, -a);
+            γ = new Complex(d, -c); 
+            δ = new Complex(-b, a);
+        }
+        else
+        {
+            // invert
+            α = d;
+            β = -b;
+            γ = -c;
+            δ = a;
+        }
+        
         return;
 
-        bool AssignVariables(double α)
+        // This is the Möbius transformation that sends p to i and q to the imaginary axis.
+        bool AssignIsometry(bool alternative)
         {
-            Complex ζ = new Complex(α, 2);
-            Complex ξ = - p * ζ;
-
-            if (!diskModel)
+            if (w.Magnitude < 1e-6)
             {
-                a = -α;
-                b = ξ.Real;
-                c = 2;
-                d = -ξ.Imaginary;
-                // this is the isometry of the upper half plane that sends p to i and q to the imaginary axis (for the values of α above).
-                // The simplest and most well-known geodesic is the one starting at i running upwards at unit speed given by γ(t) = i * e^t.
-                
-                Complex f_q = (a * q + b) / (c * q + d); // as noted; in the half-plane model this should be on the imaginary axis. This is equivalent to being in the real axis in the disk model.
-                if (f_q.Real is > 1e-6 or < -1e-6) 
-                    Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred axis");
-                return f_q.Imaginary > 1;
+                if (alternative)
+                {
+                    a = 0;
+                    b = -p.Imaginary;
+                    c = 1;
+                    d = -p.Real;
+                }
+                else
+                {
+                    a = 1;
+                    b = -p.Real;
+                    c = 0;
+                    d = p.Imaginary;
+                }
             }
             else
             {
-                // afterwards transform back to the disk model
-                a = Complex.Conjugate(ζ);
-                b = ξ;
-                c = ζ;
-                d = Complex.Conjugate(ξ);
-                
-                Complex f_q = (a * q + b) / (c * q + d);
-                if (f_q.Imaginary is > 1e-6 or < -1e-6) 
-                    Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred axis");
-                return f_q.Real > 0;
+                a = alternative ? - w.Real + w.Magnitude : - w.Real - w.Magnitude;
+                c = 2 * p.Imaginary * (q.Real - p.Real);
+                b = - a * p.Real - c * p.Imaginary;
+                d = a * p.Imaginary - c * p.Real;
+
+                // The simplest and most well-known geodesic is the one starting at i running upwards at unit speed given by γ(t) = i * e^t.
+
             }
+            Complex φq = (a * q + b) / (c * q + d); 
+            // as noted; in the half-plane model this should be on the imaginary axis. This is equivalent to being in the real axis in the disk model.
 
             
+            if (φq.Real is > 1e-6 or < -1e-6) 
+                Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred axis");
+            if (φq.Imaginary >= 1)
+            {
+                length = Mathf.Log((float) φq.Imaginary);
+                return true;
+            }
+            return false;
         }
     }
 
 
     public override Point ValueAt(float t)
     {
-        Complex x = Math.Exp(t);
-        return ((a * x + b) / (c * x + d)).ToVector3();
+        var x = new Complex(0, Math.Exp(t));
+        return ((α * x + β) / (γ * x + δ)).ToVector3();
     }
 
     public override TangentVector DerivativeAt(float t)
-    {
-        Complex x = Math.Exp(t);
-        Complex denominator = c * x + d;
-        Complex numerator = a * x + b;
-        Complex value = numerator / denominator;
-        Complex derivative = (a * x * denominator - numerator * c * x) / denominator / denominator;
+    {       
+        var x = new Complex(0, Math.Exp(t));
+        var numerator = (α * x + β);
+        var denominator = (γ * x + δ);
+        var value = numerator / denominator;
+        var derivative = (α * x * denominator - numerator * γ * x) / denominator / denominator;
         return new TangentVector(value.ToVector3(), derivative.ToVector3());
     }
 }

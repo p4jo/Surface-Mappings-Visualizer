@@ -2,8 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using UnityEngine;
 using Random = UnityEngine.Random;
+using Vector2 = UnityEngine.Vector2;
+using Vector3 = UnityEngine.Vector3;
 
 
 [Serializable]
@@ -16,16 +19,20 @@ public struct SurfaceParameter
     public bool modelSurface;
     // todo
 
-    public static SurfaceParameter FromString(string s)
+    public static SurfaceParameter FromString(string str)
     {
-        if (s.StartsWith("g=") && int.TryParse(s[2..], out var g))
-            return new() { genus = g, punctures = 0, modelSurface = false }; // todo
-        
-        if (s == "Torus2D")
-            return new() { genus = 1, punctures = 0, modelSurface = true };
-        if (s == "Torus3D")
-            return new() { genus = 1, punctures = 0, modelSurface = false };
-        throw new NotImplementedException();
+        int genus = 1, punctures = 0;
+        bool modelSurface = true;
+        foreach (var s in str.Split(','))
+        {
+            if (s.StartsWith("g=") && int.TryParse(s[2..], out var g))
+                genus = g;
+            if (s.StartsWith("p=") && int.TryParse(s[2..], out var p))
+                punctures = p;
+            if (s.EndsWith("#"))
+                modelSurface = false;
+        }
+        return new() { genus = genus, punctures = punctures, modelSurface = modelSurface };
     }
 }
 
@@ -37,11 +44,9 @@ public class ModelSurfaceParameter
 
 public static class SurfaceGenerator
 {
-    private static Homeomorphism Torus(float smallRadius = 1f, float largeRadius = 1.5f, int punctures = 0)
+    
+    private static ModelSurface FlatTorusModelSurface(int punctures, string name)
     {
-        var parName = $"Torus with {punctures} punctures (embedded)";
-
-        var modelName = $"Torus with {punctures} punctures (identified flat square)";
         var right = new Vector2(τ, 0);
         var up = new Vector2(0, τ);
         var sides = new List<ModelSurface.PolygonSide>
@@ -51,7 +56,44 @@ public static class SurfaceGenerator
             new("b", Vector2.zero, up, true),
             new("b", right, right + up, false),
         };
-        var modelSurface = new ModelSurface(modelName, 1, punctures, GeometryType.Flat, sides);
+        var modelSurface = new ModelSurface(name, 1, punctures, GeometryType.Flat, sides);
+        return modelSurface;
+    }
+    private static ModelSurface ModelSurface4GGon(int genus, int punctures, string name)
+    {
+        if (genus < 1)
+            throw new ArgumentException("genus must be at least 1");
+        if (genus == 1)
+            return FlatTorusModelSurface(punctures, name);
+        const double radius = 0.7; // todo: choose s.t. the vertex has angle τ. 
+        int n = 4 * genus;
+        var vertices = (
+            from i in Enumerable.Range(0, n)
+            select Complex.FromPolarCoordinates(radius, τ * i / n).ToVector3()
+        ).ToArray();
+        List<ModelSurface.PolygonSide> sides = new();
+        for (var l = 0; l < genus; l++)
+        {
+            int i = 4 * l;
+            var a = vertices[i];
+            var b = vertices[i + 1];
+            var c = vertices[i + 2];
+            var d = vertices[i + 3];
+            var e = vertices[(i + 4) % n];
+            sides.Add(new ModelSurface.PolygonSide("a" + l, a, b, false));
+            sides.Add(new ModelSurface.PolygonSide("b" + l, b, c, false));
+            sides.Add(new ModelSurface.PolygonSide("a" + l, d, c, true));
+            sides.Add(new ModelSurface.PolygonSide("b" + l, e, d, true));
+        }
+        return new ModelSurface(name, genus, punctures, GeometryType.HyperbolicDisk, sides);
+    }
+    
+    private static ParametricSurface Torus(float smallRadius = 1f, float largeRadius = 1.5f, int punctures = 0)
+    {
+        var parName = $"Torus with {punctures} punctures (embedded)";
+
+        var modelName = $"Torus with {punctures} punctures (identified flat square)";
+        var modelSurface = FlatTorusModelSurface(punctures, modelName);
 
         var parametrization = new Homeomorphism(modelSurface, null,
             x => FlatTorusEmbedding((Vector2)x, largeRadius, smallRadius),
@@ -67,8 +109,9 @@ public static class SurfaceGenerator
             -maximalPosition, maximalPosition); 
         // this assigns the target of the Homeomorphism
 
-        return parametrization;
+        return parametrizedSurface;
     }
+
 
     private static Vector3 FlatTorusEmbedding(Vector2 angles, float largeRadius = 1.5f, float smallRadius = 1f)
     {
@@ -113,7 +156,7 @@ public static class SurfaceGenerator
         return new Vector2(r-largeRadius, z).sqrMagnitude - smallRadius * smallRadius;
     }
 
-    private static Homeomorphism ConnectedSumWithFlatTorus(Homeomorphism homeomorphism,
+    private static ParametricSurface ConnectedSumWithFlatTorus(ParametricSurface targetSurface,
         Vector2 imageCenter,
         float imageHalfWidth,
         float imageHalfHeight,
@@ -125,11 +168,10 @@ public static class SurfaceGenerator
         int addedPunctures = 0,
         Vector3 center = new())
     {
+        var homeomorphism = targetSurface.embedding;
 
         if (homeomorphism.source is not ModelSurface surface)
-            throw new ArgumentException("source is not a ModelSurface");
-        if (homeomorphism.target is not ParametricSurface targetSurface)
-            throw new ArgumentException("target is not a ParametricSurface");
+            throw new ArgumentException("source is not a ModelSurface"); // can't happen
         
         var original = homeomorphism.f;
         var Doriginal = homeomorphism.df;
@@ -177,7 +219,7 @@ public static class SurfaceGenerator
             Helpers.Min(targetSurface.MaximalPosition, center + torusSize)
         );
         
-        return embedding;
+        return newTargetSurface;
 
         Vector3 NewTorus(Vector2 p) => FlatTorusEmbedding(new Vector2(2 * cutoutCenter.x - p.x, p.y), largeRadius, smallRadius) + center;
 
@@ -303,7 +345,19 @@ public static class SurfaceGenerator
 
     public static AbstractSurface CreateSurface(IEnumerable<SurfaceParameter> parameters)
     {
-        return GenusGSurface(parameters.First().genus);
+        var p = parameters.First();
+        if (p.modelSurface)
+        {
+            var res = new AbstractSurface();
+            res.AddDrawingSurface(
+                ModelSurface4GGon(p.genus, p.punctures,
+                    $"Model surface with genus {p.genus} and {p.punctures} punctures")
+            );
+            return res;
+        }
+        return AbstractSurface.FromHomeomorphism( 
+            GenusGSurfaceConnectedSumFlat(p.genus, p.punctures).embedding
+        );
 
         foreach (var parameter in parameters)
         {
@@ -311,9 +365,9 @@ public static class SurfaceGenerator
         }
     }
 
-    private static AbstractSurface GenusGSurface(int genus)
+    private static ParametricSurface GenusGSurfaceConnectedSumFlat(int genus, int punctures)
     {
-        var torus = Torus();
+        var torus = Torus(punctures: punctures);
         var res = torus;
         var cutoutDistance = τ / (genus - 1);
         var cutoutRadius = cutoutDistance / 6;
@@ -321,14 +375,15 @@ public static class SurfaceGenerator
         {
             var imageCenter = new Vector2(cutoutDistance * (i + 0.5f), Mathf.PI / 2);
             var cutoutCenter = imageCenter + new Vector2(Mathf.PI, 0);
-            var direction = torus.f(imageCenter);
+            var direction = torus.embedding.f(imageCenter);
             var center = direction * 2;
             res = ConnectedSumWithFlatTorus(res, imageCenter, cutoutRadius, cutoutRadius, cutoutCenter, cutoutRadius, center: center, pufferZone: 0.5f);
         }
-            
 
-        return AbstractSurface.FromHomeomorphism(res);
+
+        return res;
     }
 
     private const float τ = Mathf.PI * 2;
+    
 }

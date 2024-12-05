@@ -52,7 +52,7 @@ public abstract class Curve: ITransformable<Curve>
     /// <returns>the returned Point is a ModelSurfaceBoundaryPoint</returns>
     public virtual (float, Point) GetClosestPoint(Vector3 point)
     {
-        // todo? If curve has more than one position at any time, we should optimize over all of them?
+        // If curve has more than one position at any time, we should optimize over all of them? This is not clear from the curve. Thus this has to be implemented in the subclasses that have multiple positions. Done for the ModelSurfaceSide.
         (float, Point) f(float t)
         {
             var pointOnCurve = this[t]; // is ModelSurfaceBoundaryPoint
@@ -414,25 +414,33 @@ public class SplineSegment : InterpolatingCurve
         float s = t / Length;
         float s2 = s * s;
         float s3 = s2 * s;
+        var (start, vStart) = Length * StartVelocity;
+        var (end, vEnd) = Length * EndVelocity;
+        var d = start.Position;
+        var δ = end.Position - d;
+        var c = vStart;
+        var b = 3 * δ - vEnd;
+        var a = vEnd - vStart - 2 * δ;
         
-        Vector3 position = (2 * s3 - 3 * s2 + 1) * StartPosition.Position +
-                           (s3 - 2 * s2 + s) * StartVelocity.vector +
-                           (-2 * s3 + 3 * s2) * EndPosition.Position +
-                           (s3 - s2) * EndVelocity.vector;
-        // todo: this is not correct (copilot suggestion)
-        return position;
+        return a * s3 + b * s2 + c * s + d;
     }
 
     public override TangentVector DerivativeAt(float t)
     {
         float s = t / Length;
         float s2 = s * s;
+        float s3 = s2 * s;
+        var (start, vStart) = Length * StartVelocity;
+        var (end, vEnd) = Length * EndVelocity;
+        var d = start.Position;
+        var δ = end.Position - d;
+        var c = vStart;
+        var b = 3 * δ - vEnd;
+        var a = vEnd - vStart - 2 * δ;
 
-        Vector3 velocity = (6 * s2 - 6 * s) * StartPosition.Position +
-                           (3 * s2 - 4 * s + 1) * StartVelocity.vector +
-                           (-6 * s2 + 6 * s) * EndPosition.Position +
-                           (3 * s2 - 2 * s) * EndVelocity.vector;
+        var pos = a * s3 + b * s2 + c * s + d;
+        var velocity = a * (3 * s2) + b * (2 * s) + c;
 
-        return new TangentVector(ValueAt(t), velocity / Length);
+        return new TangentVector(pos, velocity / Length);
     }
 }

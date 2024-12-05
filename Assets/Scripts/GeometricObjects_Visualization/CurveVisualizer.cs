@@ -34,6 +34,8 @@ public class CurveVisualizer : MonoBehaviour
             if (length < resolution) resolution = length; // continue;
             float ε = 1e-2f * resolution;
             length -= 2 * ε;
+            if (length <= 0)
+                continue;
             
             SplineComputer splineComputer;
             if (activeSplines.Count <= i)

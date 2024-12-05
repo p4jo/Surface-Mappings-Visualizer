@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -13,7 +14,13 @@ public enum GeometryType
     /// This represents the manifolds as polygons in the Poincaré disk model of the hyperbolic plane.
     /// All sides and geodesics are circular arcs (or straight lines). 
     /// </summary>
-    Hyperbolic,
+    HyperbolicDisk,
+    
+    /// <summary>
+    /// This represents the manifolds as polygons in the Poincaré disk model of the hyperbolic plane.
+    /// All sides and geodesics are circular arcs (or straight lines). 
+    /// </summary>
+    HyperbolicPlane,
     
     /// <summary>
     /// this is probably not necessary:
@@ -40,12 +47,24 @@ public abstract class Plane : GeodesicSurface
 
 public class HyperbolicPlane : Plane
 {
-    public HyperbolicPlane(string name = "Hyperbolic Plane") : base(name, 0, true){}
+    private readonly bool diskModel;
+    public HyperbolicPlane(bool diskModel, string name = "Hyperbolic Plane") : base(name, 0, true)
+    {
+        this.diskModel = diskModel;
+    }
     
     public override Curve GetGeodesic(Point start, Point end, string name)
-        => new HyperbolicGeodesicSegment(start, end, this, name);
+        => new HyperbolicGeodesicSegment(start, end, this, name, diskModel);
 
-    public override float DistanceSquared(Point startPoint, Point endPoint) => throw new System.NotImplementedException();
+    public override float DistanceSquared(Point startPoint, Point endPoint)
+    {
+        var u = startPoint.Position;
+        var v = endPoint.Position;
+        if (diskModel)
+            return (float) Math.Acosh(1 + 2 * (u - v).sqrMagnitude / (1 - u.sqrMagnitude) / (1 - v.sqrMagnitude));
+        var vBar = new Vector3(v.x, -v.y);
+        return 2 * (float) Math.Atanh((u - v).sqrMagnitude / (u - vBar).sqrMagnitude);
+    }
 }
 
 public class EuclideanPlane : Plane

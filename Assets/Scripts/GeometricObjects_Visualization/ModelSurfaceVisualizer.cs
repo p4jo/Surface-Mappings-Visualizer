@@ -22,5 +22,10 @@ public class ModelSurfaceVisualizer : SurfaceVisualizer
         //     drawingArea.rectTransform.rect.width / surface.width,
         //     drawingArea.rectTransform.rect.height / surface.height
         // );
+        var background = transform.GetChild(0);
+        var size = (surface.MaximalPosition - surface.MinimalPosition) * 1.5f;
+        var center = (surface.MaximalPosition + surface.MinimalPosition) / 2;
+        background.localScale = new Vector3(size.x, size.y, 1);
+        background.localPosition = new Vector3(center.x, center.y, 0);
     }
 }
