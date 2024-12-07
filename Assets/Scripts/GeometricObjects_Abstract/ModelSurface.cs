@@ -367,14 +367,12 @@ public class ModelSurfaceSide: Curve
     public int vertexIndex = -1;
     public ModelSurfaceSide other;
     private ModelSurfaceSide reverseSide;
-    private Color color;
 
     public ModelSurfaceSide(Curve curve, bool rightIsInside)
     {
         this.curve = curve;
         this.rightIsInside = rightIsInside;
         angle = Mathf.Atan2(curve.StartVelocity.vector.y, curve.StartVelocity.vector.x);
-        color = base.Color;
     }
 
     public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, Surface surface) :
@@ -390,7 +388,7 @@ public class ModelSurfaceSide: Curve
     [CanBeNull] private string _name;
     public override string Name
     {
-        get => _name ?? curve.Name + '\'';
+        get => _name ?? curve.Name;// + '\'';
         set => _name = value;
     }
     public override float Length => curve.Length;
@@ -400,22 +398,22 @@ public class ModelSurfaceSide: Curve
     public override TangentVector StartVelocity => curve.StartVelocity;
     public override Surface Surface { get; }
 
-    public override Color Color => color;
-
     public override Point ValueAt(float t) => new ModelSurfaceBoundaryPoint(this, t);
 
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t);
 
     public void AddOther(ModelSurfaceSide newOtherSide)
     {
-        if (other != null && other != newOtherSide)
+        if (other == newOtherSide) return;
+        if (other != null)
             throw new Exception("Check your polygon! Three sides have the same label.");
         other = newOtherSide;
         other.other = this;
-        other.color = color;
+        other.Color = Color;
         if (other.rightIsInside == rightIsInside)
             Debug.Log("Check your polygon! Two sides with the same label have the surface on the same side." +
                       " This might mean that it is not orientable?");
+        Debug.Log($"side {Name} (at {StartVelocity} got other side {other.Name} at {other.StartVelocity} with color {Color}");
     }
     
     public override Curve Reverse() => ReverseModelSide();
@@ -435,6 +433,7 @@ public class ModelSurfaceSide: Curve
             return reverseSide;
         reverseSide = new(curve.Reverse(), !rightIsInside);
         reverseSide.reverseSide = this;
+        reverseSide.Color = Color;
         reverseSide.AddOther(other.ReverseModelSide());
         
         return reverseSide;

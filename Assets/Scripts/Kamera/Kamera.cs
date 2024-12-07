@@ -20,8 +20,10 @@ public class Kamera : MonoBehaviour
 
     bool pinching = false;
     [SerializeField] private bool rotateWithMouse;
+    public float maxOrthographicSize = 6f;
+    public float minOrthographicSize = 0.3f;
 
-    void Awake() {
+    protected void Awake() {
         if (Cam == null && TryGetComponent<Camera>(out var cam))
             Cam = cam;
         if (centerPointer == null && TryGetComponent<CenterPointerToTransformComponent>(out var cp))
@@ -55,7 +57,10 @@ public class Kamera : MonoBehaviour
         if (!IsMouseInViewport(mousePosition)) return;
         
         // Zoom by mouse wheel
-        Cam.orthographicSize = Math.Max(1, Cam.orthographicSize - Input.GetAxis("Mouse ScrollWheel") * wheelSensitivity);
+        float newOrthographicSize = Cam.orthographicSize - Input.GetAxis("Mouse ScrollWheel") * wheelSensitivity;
+        if (newOrthographicSize > maxOrthographicSize) newOrthographicSize = maxOrthographicSize;
+        if (newOrthographicSize < minOrthographicSize) newOrthographicSize = minOrthographicSize;
+        Cam.orthographicSize = newOrthographicSize;
 
         // Zoom by finger pinch is broken on WebGL. Zoom will be deactivated on mobile devices.
         if (Input.touchCount == 2)
@@ -152,5 +157,16 @@ public class Kamera : MonoBehaviour
         if (parentKamera != null) parentKamera.childKamera = null;
         if (other != null) other.childKamera = this;
         parentKamera = other;
+    }
+
+    protected void Initialize(Vector3 minimalPosition, Vector3 maximalPosition)
+    {
+        this.minimalPosition = minimalPosition;
+        this.maximalPosition = maximalPosition;
+        minOrthographicSize = Mathf.Min(maximalPosition.x - minimalPosition.x, 
+            maximalPosition.y - minimalPosition.y) / 30;
+        maxOrthographicSize = Mathf.Max(maximalPosition.x - minimalPosition.x,
+            maximalPosition.y - minimalPosition.y) * 0.6f;
+        Cam.orthographicSize = maxOrthographicSize * 0.6f;
     }
 }

@@ -79,7 +79,7 @@ public class EuclideanPlane : Plane
 
 public class Rectangle : EuclideanPlane
 {    
-    protected readonly float width, height;
+    public readonly float width, height;
     public Rectangle(float width, float height, string name = null, Vector3 minimalPosition = default): base(name ??
         $"Rectangle at ({minimalPosition.x:g2}, {minimalPosition.y:g2}) with width {width:g2} and height {height:g2})")
     {
@@ -190,8 +190,9 @@ public class Cylinder : Rectangle
 
 public class Strip : ParametricSurface
 {
-    private readonly Curve curve;
-
+    protected readonly Curve curve;
+    protected readonly Rectangle baseSurface;
+    
     /// <summary>
     /// Give a regular neighborhood of the curve with a homeomorphism to the rectangle or cylinder.
     /// This can be interpreted as a strip in the sense of Bestvina-Handel and be used to perform automorphisms like Dehn twists and point pushes.
@@ -200,6 +201,7 @@ public class Strip : ParametricSurface
         base(ConstructorArgs(curve, start, end, closed))
     {
         this.curve = curve;
+        baseSurface = embedding.source as Rectangle;
     }
 
     public Homeomorphism DehnTwist => (embedding.source as Cylinder)!.DehnTwist;
@@ -269,10 +271,14 @@ public class Strip : ParametricSurface
     {
         if (!point.HasValue) return null;
         var (t, pt) = curve.GetClosestPoint(point.Value);
-        if ((point.Value - pt.Position).sqrMagnitude > Mathf.Pow(chartRects[0].width, 2))
+        
+        if ((point.Value - pt.Position).sqrMagnitude > Mathf.Pow(baseSurface.width, 2))
             return null;
         var (_, basis) = curve.BasisAt(t);
-        var sTimesWidthTimesNormOfB = Vector3.Dot(point.Value - pt.Position, basis.b);
-        return pt.Position + basis.b * sTimesWidthTimesNormOfB / basis.b.sqrMagnitude;
+        var b = basis.b.normalized;
+        float sTimesWidth = Vector3.Dot(point.Value - pt.Position, b);
+        if (sTimesWidth < 0 || sTimesWidth > baseSurface.width)
+            return null;
+        return pt.Position + b * sTimesWidth;
     }
 }

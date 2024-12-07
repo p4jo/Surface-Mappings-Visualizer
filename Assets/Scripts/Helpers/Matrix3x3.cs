@@ -101,7 +101,9 @@ public class TangentVector: ITransformable<TangentVector>
         point = this.point;
         vector = this.vector;
     }
-    
+
+    public override string ToString() => $"(vector {vector} at {point.Position})";
+
     public static TangentVector operator +(TangentVector self, TangentVector other)
     {
         if (self.point != other.point)

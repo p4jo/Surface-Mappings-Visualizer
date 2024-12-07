@@ -17,6 +17,7 @@ public class ScaleWithCameraSpline : MonoBehaviour
     {
         camera ??= GetComponentInParent<Camera>();
         splineRenderer = GetComponent<SplineRenderer>();
-        baseScale = splineRenderer.size / camera.orthographicSize;
+        if (baseScale == 0)
+            baseScale = splineRenderer.size / camera.orthographicSize;
     }
 }

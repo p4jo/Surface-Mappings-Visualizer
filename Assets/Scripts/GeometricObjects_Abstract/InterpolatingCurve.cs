@@ -91,6 +91,10 @@ public class HyperbolicGeodesicSegment : Curve
             q = - Complex.ImaginaryOne * (q + 1) / (q - 1);
         }
         // p, q are in the upper half plane model 
+        if (p.Imaginary < 1e-6)
+            p = new Complex(p.Real, 1e-6);
+        if (q.Imaginary < 1e-6)
+            q = new Complex(q.Real, 1e-6);
 
         Complex w = (p - q) * (p - Complex.Conjugate(q));
         if (!AssignIsometry(true) && !AssignIsometry(false))

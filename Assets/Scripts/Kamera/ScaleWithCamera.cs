@@ -15,6 +15,7 @@ public class ScaleWithCamera : MonoBehaviour
     void Start()
     {
         camera ??= GetComponentInParent<Camera>();
-        baseScale = transform.localScale / camera.orthographicSize;
+        if (baseScale.sqrMagnitude == 0)
+            baseScale = transform.localScale / camera.orthographicSize;
     }
 }

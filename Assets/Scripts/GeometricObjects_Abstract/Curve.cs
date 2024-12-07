@@ -27,7 +27,9 @@ public abstract class Curve: ITransformable<Curve>
 
     public abstract Surface Surface { get; }
 
-    public virtual Color Color => colors[id % colors.Count];
+    private Color? color;
+    public virtual Color Color { get => color ?? DefaultColor; set => color = value; }
+    public virtual Color DefaultColor => colors[id % colors.Count];
     public virtual IEnumerable<float> VisualJumpTimes => Enumerable.Empty<float>();
 
     public virtual Point this[float t] => ValueAt(t);
@@ -132,7 +134,7 @@ public class TransformedCurve : Curve
     public override TangentVector EndVelocity => curve.EndVelocity.ApplyHomeomorphism(homeomorphism); 
     public override TangentVector StartVelocity => curve.StartVelocity.ApplyHomeomorphism(homeomorphism);
     public override Surface Surface => homeomorphism.target;
-    public override Color Color => curve.Color;
+    public override Color DefaultColor => curve.Color;
     public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
 
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t).ApplyHomeomorphism(homeomorphism);
@@ -159,7 +161,7 @@ public class ConcatenatedCurve : Curve
     public override IEnumerable<float> VisualJumpTimes => from singularPoint in NonDifferentiablePoints where singularPoint.visualJump select singularPoint.time;
 
     private List<ConcatenationSingularPoint> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints(segments);
-    public override Color Color => segments.First().Color;
+    public override Color DefaultColor => segments.First().Color;
 
     public ConcatenatedCurve(IEnumerable<Curve> curves, string name = null)
     {
@@ -335,7 +337,7 @@ public class ReverseCurve : Curve
     public override TangentVector EndVelocity => - curve.StartVelocity;
     public override TangentVector StartVelocity => - curve.EndVelocity;
     public override Surface Surface => curve.Surface;
-    public override Color Color => curve.Color;
+    public override Color DefaultColor => curve.Color;
 
     public override Point ValueAt(float t) => curve.ValueAt(Length - t);
     public override TangentVector DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
@@ -371,7 +373,7 @@ public class RestrictedCurve : Curve
     public override TangentVector EndVelocity => curve.DerivativeAt(end);
     public override TangentVector StartVelocity => curve.DerivativeAt(start);
     public override Surface Surface => curve.Surface;
-    public override Color Color => curve.Color;
+    public override Color DefaultColor => curve.Color;
 
     public override Point ValueAt(float t) => curve.ValueAt(t + start);
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);

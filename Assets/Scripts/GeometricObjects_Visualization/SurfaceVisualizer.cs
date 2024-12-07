@@ -152,14 +152,22 @@
         protected virtual void PreviewPoint(Point point)
         {
             var pointPositions = point.Positions.ToArray();
-
+            List<GameObject> newActivePointers = new();
+                
             foreach (var position in pointPositions)
             {
                 var pointer = activePreviewPointers.Pop() ?? inactivePointers.Pop() ?? Instantiate(pointerPrefab, transform);
                 pointer.SetActive(true);
                 pointer.transform.localPosition = displayPosition(position);
-                activePreviewPointers.Add(pointer);
+                newActivePointers.Add(pointer);
             }
+
+            foreach (var notNeededPreviewPointer in activePreviewPointers)
+            {
+                notNeededPreviewPointer.SetActive(false);
+                inactivePointers.Add(notNeededPreviewPointer);
+            }
+            activePreviewPointers = newActivePointers;
         }
 
     }

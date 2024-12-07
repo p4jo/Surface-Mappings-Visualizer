@@ -1,13 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Dreamteck.Splines.Editor;
 using JetBrains.Annotations;
 using UnityEngine;
-using UnityEngine.Serialization;
 using UnityEngine.UI;
-using UnityEngine.UIElements;
-using Object = UnityEngine.Object;
 using Random = UnityEngine.Random;
 
 public enum MenuMode
@@ -53,6 +49,7 @@ public class SurfaceMenu: MonoBehaviour
     private CameraManager cameraManager;
     [SerializeField] private MainMenu mainMenu;
     [SerializeField] private string currentCurveName;
+    [SerializeField] private Color currentCurveColor;
     private readonly HashSet<(ITransformable, string)> currentStuffShown = new();
 
     public event Action<ITransformable, string> StuffShown;
@@ -115,10 +112,10 @@ public class SurfaceMenu: MonoBehaviour
             surfaceVisualizerGameObject.transform.position = new Vector3(100 * surfaceVisualizer.id, 0, 0);
                     
             var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UICamera>();
-            kamera.Initialize(panel, canvas);
+            
+            kamera.Initialize(panel, canvas, drawingSurface.MinimalPosition, drawingSurface.MaximalPosition);
             cameraManager.AddKamera(kamera);
-            kamera.minimalPosition = drawingSurface.MinimalPosition;
-            kamera.maximalPosition = drawingSurface.MaximalPosition;
+            
             mainMenu.UIMoved += () => kamera.UIMoved();
             
             visualizers.Add(drawingSurfaceName, surfaceVisualizer);
@@ -181,7 +178,7 @@ public class SurfaceMenu: MonoBehaviour
         {
             case MenuMode.AddCurve:
             {
-                if (string.IsNullOrEmpty(currentCurveName))
+                if (string.IsNullOrEmpty(currentCurveName)){
                     // todo: ask user
                     currentCurveName = (
                         from i in Enumerable.Range(0, 52)
@@ -189,17 +186,21 @@ public class SurfaceMenu: MonoBehaviour
                     ).FirstOrDefault(
                         c => !surface.drawingSurfaces.ContainsKey(c)
                     );
+                    currentCurveColor = new Color(Random.value, Random.value, Random.value);
+                }
                 currentWaypoints ??= new();
                 var homeo = surface.GetHomeomorphism(drawingSurfaceName, geodesicSurface.Name);
                 var pointInGeodesicSurface = location?.ApplyHomeomorphism(homeo);
                 currentWaypoints.Add(pointInGeodesicSurface);
                 if (currentWaypoints.Count > 1)
                 {
-                    return (geodesicSurface.GetPathFromWaypoints(currentWaypoints, currentCurveName), geodesicSurface.Name);
+                    Curve curve = geodesicSurface.GetPathFromWaypoints(currentWaypoints, currentCurveName);
+                    curve.Color = currentCurveColor;
+                    return (curve, geodesicSurface.Name);
                 }
 
                 break;
-            }
+        }
         }
         return (location, drawingSurfaceName);
     }

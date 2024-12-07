@@ -15,13 +15,15 @@ public class UICamera : Kamera {
     float stopCheckingTime;
 
     void Start() => Activate(); // Deactivate();
-    
-    void Awake() {
+
+    private new void Awake() {
+        base.Awake();
         // if (renderRectTransform == null) renderRectTransform = renderTarget.gameObject.GetComponent<RectTransform>();
     }
 
-    public void Initialize(RawImage renderTarget, RectTransform canvas)
+    public void Initialize(RawImage renderTarget, RectTransform canvas, Vector3 minimalPosition, Vector3 maximalPosition)
     {
+        base.Initialize(minimalPosition, maximalPosition);
         this.canvas = canvas;
         this.renderTarget = renderTarget;
         renderRectTransform = renderTarget.GetComponent<RectTransform>();
