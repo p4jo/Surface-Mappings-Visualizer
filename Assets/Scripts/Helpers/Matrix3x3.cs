@@ -28,6 +28,7 @@ public class Matrix3x3
         new(A * B.a, A * B.b, A * B.c);
 
     public static readonly Matrix3x3 Identity = new(Vector3.right, Vector3.up, Vector3.forward);
+    public static readonly Matrix3x3 InvertZ = new(Vector3.right, Vector3.up, Vector3.back);
     
     public Matrix3x3 Inverse()
     {

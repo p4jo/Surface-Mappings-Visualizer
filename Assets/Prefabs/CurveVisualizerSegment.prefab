@@ -12,8 +12,8 @@ GameObject:
   - component: {fileID: 3310283270684842847}
   - component: {fileID: 1769113522243741999}
   - component: {fileID: 1127768246452650686}
-  - component: {fileID: 5116376294159558719}
   - component: {fileID: 3402437798754175286}
+  - component: {fileID: 4675776712702170322}
   m_Layer: 0
   m_Name: CurveVisualizerSegment
   m_TagString: Untagged
@@ -84,7 +84,7 @@ MonoBehaviour:
   _space: 1
   _sampleMode: 0
   _subscribers:
-  - {fileID: 5116376294159558719}
+  - {fileID: 4675776712702170322}
   _rawSamples: []
   _nodes: []
 --- !u!33 &1769113522243741999
@@ -118,7 +118,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10306, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: e49c2d9a7d6c1024b82e994ce3f5e13f, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -140,7 +140,7 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &5116376294159558719
+--- !u!114 &3402437798754175286
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -149,7 +149,21 @@ MonoBehaviour:
   m_GameObject: {fileID: 3391233956122432578}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bf69cfa06c48dba428c5c4d626d57ab7, type: 3}
+  m_Script: {fileID: 11500000, guid: 2af850a3bac0b464891304c868d6258c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  camera: {fileID: 0}
+  baseScale: 0.04
+--- !u!114 &4675776712702170322
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3391233956122432578}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e1690bb01d509a439fc991a10f8278f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   updateMethod: 0
@@ -168,22 +182,22 @@ MonoBehaviour:
     useClippedPercent: 0
     keys: []
   _sizeModifier:
-    blend: 0.447
+    blend: 1
     useClippedPercent: 0
     keys:
-    - _featherStart: 0.699999988079071
-      _featherEnd: 0.8799999952316284
-      _centerStart: 0.04720848798751831
-      _centerEnd: 0.04720848798751831
+    - _featherStart: 0.75
+      _featherEnd: 0.949999988079071
+      _centerStart: 0.10000000149011612
+      _centerEnd: 0.10000000149011612
       interpolation:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
           time: 0
           value: 0
-          inSlope: 1
+          inSlope: 0
           outSlope: 1
-          tangentMode: 34
+          tangentMode: 0
           weightedMode: 0
           inWeight: 0
           outWeight: 0
@@ -191,8 +205,8 @@ MonoBehaviour:
           time: 1
           value: 1
           inSlope: 1
-          outSlope: 1
-          tangentMode: 34
+          outSlope: 0
+          tangentMode: 0
           weightedMode: 0
           inWeight: 0
           outWeight: 0
@@ -202,19 +216,19 @@ MonoBehaviour:
       blend: 1.37
       size: 2.21
   _clipFromSample:
-    position: {x: 4.1894073, y: 2.7811565, z: 8.359188}
-    up: {x: 0, y: 1, z: 0}
-    forward: {x: 0.84191394, y: -0.00975358, z: -0.5395236}
-    color: {r: 1, g: 1, b: 1, a: 1}
-    size: 1
+    position: {x: 0, y: 0, z: 0}
+    up: {x: 0, y: 0, z: 0}
+    forward: {x: 0, y: 0, z: 0}
+    color: {r: 0, g: 0, b: 0, a: 0}
+    size: 0
     percent: 0
   _clipToSample:
-    position: {x: 4.948459, y: 3.1140983, z: 6.954097}
-    up: {x: 0, y: 1, z: 0}
-    forward: {x: 0.18177399, y: 0.2307628, z: -0.95588005}
-    color: {r: 1, g: 1, b: 1, a: 1}
-    size: 1
-    percent: 1
+    position: {x: 0, y: 0, z: 0}
+    up: {x: 0, y: 0, z: 0}
+    forward: {x: 0, y: 0, z: 0}
+    color: {r: 0, g: 0, b: 0, a: 0}
+    size: 0
+    percent: 0
   _loopSamples: 0
   _clipFrom: 0
   _clipTo: 1
@@ -225,7 +239,7 @@ MonoBehaviour:
   buildOnEnable: 0
   _baked: 0
   _markDynamic: 1
-  _size: 0.27
+  _size: 1
   _color: {r: 1, g: 1, b: 1, a: 1}
   _offset: {x: 0, y: 0, z: 0}
   _normalMethod: 1
@@ -242,20 +256,19 @@ MonoBehaviour:
   _meshIndexFormat: 0
   _bakedMesh: {fileID: 0}
   colliderUpdateRate: 0.2
-  autoOrient: 1
-  updateFrameInterval: 0
-  _slices: 1
---- !u!114 &3402437798754175286
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3391233956122432578}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2af850a3bac0b464891304c868d6258c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  camera: {fileID: 0}
-  baseScale: 0.04
+  _slices: 5
+  _compensateCorners: 0
+  _useShapeCurve: 0
+  _shape:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  _lastShape:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  _shapeExposure: 1

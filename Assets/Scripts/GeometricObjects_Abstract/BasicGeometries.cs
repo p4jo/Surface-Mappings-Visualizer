@@ -24,7 +24,7 @@ public enum GeometryType
     
     /// <summary>
     /// this is probably not necessary:
-    /// punctured spheres will be displayed as the open disk (either flat or hyperbolic)
+    /// punctured spheres can be displayed as the open disk (either flat or hyperbolic)
     /// and the non-punctured sphere has completely trivial mapping class group
     /// </summary>
     Spherical,
@@ -36,7 +36,7 @@ public abstract class Plane : GeodesicSurface
     public override Point ClampPoint(Vector3? point) =>
         point.HasValue ? (Vector2)point : null;
 
-    public override TangentSpace BasisAt(Point position) => new (position, Matrix3x3.Identity);
+    public override TangentSpace BasisAt(Point position) => new (position, Matrix3x3.InvertZ);
 
     public override Vector3 MinimalPosition { get; } = new(float.NegativeInfinity, float.NegativeInfinity);
     public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);

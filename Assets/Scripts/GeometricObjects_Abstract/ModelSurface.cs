@@ -328,7 +328,13 @@ public partial class ModelSurface: GeodesicSurface
         return new ModelSurfaceInteriorPoint(p, closestBoundaryPoints);
     }
 
-    public override TangentSpace BasisAt(Point position) => new(position, Matrix3x3.Identity);
+    /// <summary>
+    /// This is the constant basis (e_x, e_y, -e_z) of the model surface. The normal is pointing towards the camera.
+    /// This is opposite oriented, i.e. right-handed, because Unity uses a left-handed coordinate system.
+    /// </summary>
+    /// <param name="position"></param>
+    /// <returns></returns>
+    public override TangentSpace BasisAt(Point position) => new(position, Matrix3x3.InvertZ);
 }
 
 public class ModelSurfaceInteriorPoint : BasicPoint, IModelSurfacePoint

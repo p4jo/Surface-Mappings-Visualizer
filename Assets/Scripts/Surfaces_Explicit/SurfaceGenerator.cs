@@ -127,7 +127,7 @@ public static class SurfaceGenerator
         var dfdφ = new Vector3(-r * Mathf.Sin(φ), r * Mathf.Cos(φ), 0);
         var drdθ = smallRadius * Mathf.Cos(θ);
         var dfdθ = new Vector3(drdθ * Mathf.Cos(φ), drdθ * Mathf.Sin(φ), -smallRadius * Mathf.Sin(θ));
-        var normal = -Vector3.Cross(dfdφ, dfdθ);
+        var normal = Vector3.Cross(dfdφ, dfdθ);
         return new Matrix3x3(dfdφ, dfdθ, normal);
     }
 

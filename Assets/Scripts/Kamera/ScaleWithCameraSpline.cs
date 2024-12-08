@@ -6,18 +6,18 @@ public class ScaleWithCameraSpline : MonoBehaviour
 {
     [SerializeField] public new Camera camera;
     [SerializeField] private float baseScale;
-    SplineRenderer splineRenderer;
+    MeshGenerator splineViewer;
 
     void Update()
     {
-        splineRenderer.size = camera.orthographicSize * baseScale;    
+        splineViewer.size = camera.orthographicSize * baseScale;    
     }
     
     void Start()
     {
         camera ??= GetComponentInParent<Camera>();
-        splineRenderer = GetComponent<SplineRenderer>();
+        splineViewer = GetComponent<MeshGenerator>();
         if (baseScale == 0)
-            baseScale = splineRenderer.size / camera.orthographicSize;
+            baseScale = splineViewer.size / camera.orthographicSize;
     }
 }

@@ -34,8 +34,12 @@ public class ParametricSurface: Surface
         return point.HasValue ? new BasicPoint(point.Value) : null;
     }
 
-    public override TangentSpace BasisAt(Point position) => embedding.source.BasisAt(
-        position.ApplyHomeomorphism(embedding.Inverse)
-    ).ApplyHomeomorphism(embedding);
+    public override TangentSpace BasisAt(Point position)
+    {
+        return new (position, embedding.df(embedding.fInv(position)) * Matrix3x3.InvertZ);
+    }
+    //     => embedding.source.BasisAt(
+    //     position.ApplyHomeomorphism(embedding.Inverse)
+    // ).ApplyHomeomorphism(embedding); // todo: inefficient: a) we transform the point by the homeomorphism and then back... b) the source is a model surface which has a very constant basis.
 
 }
