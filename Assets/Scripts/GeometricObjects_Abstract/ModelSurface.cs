@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using NUnit.Framework.Constraints;
+using UnityEditor.Analytics;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -284,48 +285,43 @@ public partial class ModelSurface: GeodesicSurface
 
     public override Point ClampPoint(Vector3? point) // todo: this is extremely inefficient
     {
-        float closenessThreshold = 0.01f; // todo: this should vary with the camera scale!
+        const float closenessThreshold = 0.01f; // todo: this should vary with the camera scale!
+        
         if (point == null) return null;
         var p = point.Value; 
-        List<ModelSurfaceBoundaryPoint> closestBoundaryPoints = new();
-        ModelSurfaceSide closestSide = null;
-        var closeness = float.MaxValue;
-        Vector3 difference = Vector3.zero;
-        var time = 0f;
-        foreach (var side in AllSideCurves)
+        Point res = p;
+
+        var distances = (
+            from side in AllSideCurves 
+            let x = side.curve.GetClosestPoint(p) 
+            let pt = new ModelSurfaceBoundaryPoint(side, x.Item1)
+            select (pt, x.Item2.DistanceSquared(res))
+        ).ToArray();
+        var closeness = distances.Min(x => x.Item2);
+        var closestPoints = from x in distances where x.Item2 < closeness + closenessThreshold select x.Item1;
+        
+        foreach (var closestPt in closestPoints)
         {
-            var (t, pt) = side.curve.GetClosestPoint(p);
-            Vector3 diff = p - pt.Position; // todo: difference for points
-            float l = diff.sqrMagnitude;
-            
-            closestBoundaryPoints.Add(new ModelSurfaceBoundaryPoint(side, t));
-            
-            if (l >= closeness) continue;
-            
-            time = t;
-            closeness = l;
-            difference = diff;
-            closestSide = side;
-        }
-        if (closestSide is null)
-            throw new("Why are there no sides at this point?");
-        if (closeness < closenessThreshold)
-        {
-            if (time.ApproximateEquals(0))
-                return vertices[closestSide.vertexIndex];
-            if (time.ApproximateEquals(closestSide.curve.Length))
-                return vertices[closestSide.other.vertexIndex];
-            return new ModelSurfaceBoundaryPoint(closestSide, time);
-        }
-        var (_, forward) = closestSide.curve.DerivativeAt(time);
-        var right = new Vector3(forward.y, -forward.x); // orientation!
-        var rightness = Vector3.Dot(right, difference);
-        if (rightness < 0 && closestSide.rightIsInside || rightness > 0 && !closestSide.rightIsInside)
-        { // this is outside
-            return null;
+            var closestSide = closestPt.side;
+            float time = closestPt.t;
+            if (closeness < closenessThreshold)
+            {
+                if (time.ApproximateEquals(0))
+                    res = vertices[closestSide.vertexIndex];
+                else if (time.ApproximateEquals(closestSide.curve.Length))
+                    res = vertices[closestSide.other.vertexIndex];
+                else res = closestPt;
+            }
+            var (_, forward) = closestSide.curve.DerivativeAt(time);
+            var right = new Vector3(forward.y, -forward.x); // orientation!
+            var rightness = Vector3.Dot(right, p - closestPt.Position);
+            if (rightness < 0 && closestSide.rightIsInside || rightness > 0 && !closestSide.rightIsInside)
+            { // this is outside
+                return null;
+            }
         }
 
-        return new ModelSurfaceInteriorPoint(p, closestBoundaryPoints);
+        return new ModelSurfaceInteriorPoint(p, distances.Select(x => x.Item1).ToList());
     }
 
     /// <summary>
@@ -424,13 +420,20 @@ public class ModelSurfaceSide: Curve
     
     public override Curve Reverse() => ReverseModelSide();
     
+    /// <summary>
+    /// The closest point on either this or the other curve.
+    /// The Position (i.e. Positions.First()) will be the on the curve out of the two identified ones that is closest
+    /// (this is the SideCurve that is returned inside the Point which is the ModelSurfaceBoundaryPoint).
+    /// </summary>
+    /// <param name="point"></param>
+    /// <returns></returns>
     public override (float, Point) GetClosestPoint(Vector3 point)
     {
         var (t, closestPoint) = curve.GetClosestPoint(point);
         var (t2, closestPoint2) = other.curve.GetClosestPoint(point);
         if (closestPoint.DistanceSquared(point) < closestPoint2.DistanceSquared(point))
             return (t, this[t]);
-        return (t, other[t]);
+        return (t2, other[t2]);
     }
 
     public ModelSurfaceSide ReverseModelSide()

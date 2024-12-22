@@ -58,13 +58,17 @@ public class HyperbolicPlane : Plane
 
     public override float DistanceSquared(Point startPoint, Point endPoint)
     {
-        var u = startPoint.Position;
-        var v = endPoint.Position;
-        if (diskModel)
-            return (float) Math.Acosh(1 + 2 * (u - v).sqrMagnitude / (1 - u.sqrMagnitude) / (1 - v.sqrMagnitude));
-        var vBar = new Vector3(v.x, -v.y);
-        return 2 * (float) Math.Atanh((u - v).sqrMagnitude / (u - vBar).sqrMagnitude);
+        return startPoint.Positions.CartesianProduct(endPoint.Positions).ArgMin(DistanceSquared).Item2;
+        float DistanceSquared((Vector3, Vector3) vectors)
+        {
+            var (u, v) = vectors;
+            if (diskModel)
+                return (float) Math.Acosh(1 + 2 * (u - v).sqrMagnitude / (1 - u.sqrMagnitude) / (1 - v.sqrMagnitude));
+            var vBar = new Vector3(v.x, -v.y);
+            return 2 * (float) Math.Atanh((u - v).sqrMagnitude / (u - vBar).sqrMagnitude);
+        }
     }
+
 }
 
 public class EuclideanPlane : Plane

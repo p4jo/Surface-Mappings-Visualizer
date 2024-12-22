@@ -45,7 +45,7 @@ public class MainMenu: MonoBehaviour
     {
         if (stuff is Curve curve && curveDropdown.options.All(option => option.text != curve.Name))
         {
-            curveDropdown.options.Add(new TMP_Dropdown.OptionData(curve.Name, null, curve.DefaultColor));
+            curveDropdown.options.Add(new TMP_Dropdown.OptionData(curve.Name, null, curve.Color));
         }
     }
 

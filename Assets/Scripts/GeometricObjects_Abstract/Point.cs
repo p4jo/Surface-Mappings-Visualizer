@@ -152,6 +152,7 @@ public class ModelSurfaceVertex : Point
 
     public override Point ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
+        if (homeomorphism.isIdentity) return this;
         // this should not depend on the choice of boundary curve
         var position = homeomorphism.F(Position);
         if (position.HasValue)

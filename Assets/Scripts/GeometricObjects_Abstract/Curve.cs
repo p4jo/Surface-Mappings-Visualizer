@@ -51,13 +51,14 @@ public abstract class Curve: ITransformable<Curve>
     /// 
     /// </summary>
     /// <param name="point"></param>
-    /// <returns>the returned Point is a ModelSurfaceBoundaryPoint</returns>
+    /// <returns>if this is a ModelSurfaceSide, the returned Point is a ModelSurfaceBoundaryPoint</returns>
     public virtual (float, Point) GetClosestPoint(Vector3 point)
     {
-        // If curve has more than one position at any time, we should optimize over all of them? This is not clear from the curve. Thus this has to be implemented in the subclasses that have multiple positions. Done for the ModelSurfaceSide.
+        // If curve has more than one position at any time, we should optimize over all of them? This is not clear from the curve.
+        // Thus this has to be implemented in the subclasses that have multiple positions. Done for the ModelSurfaceSide.
         (float, Point) f(float t)
         {
-            var pointOnCurve = this[t]; // is ModelSurfaceBoundaryPoint
+            var pointOnCurve = this[t]; 
             return ((pointOnCurve.Position - point).sqrMagnitude, pointOnCurve);
             // return (pointOnCurve.Distance(point), pointOnCurve);
         }

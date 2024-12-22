@@ -21,19 +21,25 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: SurfaceMaterial 1
-  m_Shader: {fileID: 4800000, guid: 650dd9526735d5b46b79224bc6e94025, type: 3}
+  m_Shader: {fileID: 4800000, guid: bbb29bc6f1f0b704d989cac34a3a1b7e, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
-  - _SURFACE_TYPE_TRANSPARENT
+  - _SOURCE_SPECULARALPHA
   m_InvalidKeywords:
+  - _BLENDMAINNORMAL_ON
+  - _DETAILSOURCE_SPECULARALPHA
   - _EMISSION
+  - _ENABLETRIPLANARPROJECTION_ON
+  - _SURFACE_TYPE_TRANSPARENT
+  - _TRIPLANARSPACEPROJECTION_OBJECTSPACE
+  - _USEAOFROMMAINPROPERTIES_ON
+  - _USEEMISSIONFROMMAINPROPERTIES_ON
   m_LightmapFlags: 0
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 1
-  m_CustomRenderQueue: 3000
-  stringTagMap:
-    RenderType: Transparent
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
   disabledShaderPasses:
   - MOTIONVECTORS
   - DepthOnly
@@ -74,6 +80,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _DetailSpecGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _EmissionMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -95,6 +105,10 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _SpecGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _TransparentMask:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -126,6 +140,7 @@ Material:
     - _BlendMainNormal: 1
     - _BlendModePreserveSpecular: 1
     - _BlendOp: 0
+    - _BlendmodeOverlay: 0
     - _BodyAlpha: 1
     - _Brightness: 1
     - _BumpScale: 1
@@ -136,6 +151,7 @@ Material:
     - _ClearCoatSmoothness: 0
     - _ColorMode: 0
     - _ContrastDetailMap: 0
+    - _ContrastTransparentMap: 0
     - _Cull: 0
     - _Cutoff: 0.5
     - _DecalMeshBiasType: 0
@@ -143,8 +159,11 @@ Material:
     - _DecalMeshViewBias: 0
     - _DetailAlbedoMapScale: 1
     - _DetailBrightness: 1
+    - _DetailGlossiness: 0.5
     - _DetailNormalMapScale: 1
     - _DetailSaturation: 0
+    - _DetailSource: 0
+    - _DetailSpecularIntensity: 0.2
     - _DistortionBlend: 0.5
     - _DistortionEnabled: 0
     - _DistortionStrength: 1
@@ -156,14 +175,17 @@ Material:
     - _EmissionIntensity: 1
     - _EnableDetailMask: 0
     - _EnableExternalAlpha: 0
+    - _EnableTriplanarProjection: 1
     - _EnvironmentReflections: 1
     - _FlipbookMode: 0
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _IntensityMask: 1
+    - _IntensityTransparentMap: 0
     - _InvertABaseColor: 0
     - _InvertMask: 0
+    - _InvertTransparent: 0
     - _LightingEnabled: 0
     - _Metallic: 0
     - _Mode: 0
@@ -185,12 +207,18 @@ Material:
     - _SpecularHighlights: 1
     - _SpecularIntensity: 0.2
     - _SpreadDetailMap: 0
+    - _SpreadTransparentMap: 0
     - _SrcBlend: 5
     - _SrcBlendAlpha: 1
     - _Stencil: 16
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
     - _Surface: 1
+    - _TriplanarFalloff: 20
+    - _TriplanarSpaceProjection: 0
+    - _UseAoFromMainProperties: 1
+    - _UseBaseColorAlpha: 0
+    - _UseEmissionFromMainProperties: 1
     - _VisualizeMask: 0
     - _WorkflowMode: 1
     - _ZTest: 4
@@ -202,6 +230,7 @@ Material:
     - _Color: {r: 0.735849, g: 0.18396223, b: 0.18396223, a: 0.48235294}
     - _ColorAddSubDiff: {r: 0, g: 0, b: 0, a: 0}
     - _DetailColor: {r: 1, g: 1, b: 1, a: 0}
+    - _DetailSpecularColor: {r: 1, g: 1, b: 1, a: 0}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _Flip: {r: 1, g: 1, b: 1, a: 1}
     - _GlobalXYTilingXYZWOffsetXY: {r: 1, g: 1, b: 0, a: 0}
@@ -210,5 +239,6 @@ Material:
     - _SoftParticleFadeParams: {r: 0, g: 0, b: 0, a: 0}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SpecularColor: {r: 1, g: 1, b: 1, a: 0}
+    - _TriplanarXYTilingXYZWOffsetXY: {r: 1, g: 1, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

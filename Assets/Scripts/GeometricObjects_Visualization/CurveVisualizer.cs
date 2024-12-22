@@ -77,9 +77,10 @@ public class CurveVisualizer : MonoBehaviour
                     positionOutside - tangentVector,
                     normalVector,
                     1f,
-                    curve.DefaultColor);
+                    curve.Color);
             splineComputer.SetPoints(points.ToArray(), SplineComputer.Space.Local);
 
+            splineComputer.GetComponent<Renderer>().material.color = curve.Color;
             splineComputer.Rebuild();
         }
     }
