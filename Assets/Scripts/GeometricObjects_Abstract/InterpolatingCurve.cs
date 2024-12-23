@@ -153,7 +153,7 @@ public class HyperbolicGeodesicSegment : Curve
             // as noted; in the half-plane model this should be on the imaginary axis. This is equivalent to being in the real axis in the disk model.
 
             
-            if (φq.Real is > 1e-6 or < -1e-6) 
+            if (φq.Real / φq.Imaginary is > 1e-6  or < -1e-6) 
                 Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred axis");
             if (φq.Imaginary >= 1)
             {

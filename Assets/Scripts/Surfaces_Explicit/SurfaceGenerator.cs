@@ -64,12 +64,13 @@ public static class SurfaceGenerator
         if (genus < 1)
             throw new ArgumentException("genus must be at least 1");
         if (genus == 1)
-            return FlatTorusModelSurface(punctures, name);
-        const double radius = 0.7; // todo: choose s.t. the vertex has angle τ. 
+            return FlatTorusModelSurface(punctures, name); 
         int n = 4 * genus;
+        double radius = Math.Sqrt(Math.Cos(τ / n)); 
+        // chosen s.t. the vertex has angle τ (angle sum) 
         var vertices = (
-            from i in Enumerable.Range(0, n)
-            select Complex.FromPolarCoordinates(radius, τ * i / n).ToVector3()
+            from k in Enumerable.Range(0, n)
+            select Complex.FromPolarCoordinates(radius, τ * k / n).ToVector3()
         ).ToArray();
         List<ModelSurface.PolygonSide> sides = new();
         for (var l = 0; l < genus; l++)
