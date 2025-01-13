@@ -63,7 +63,11 @@ public abstract class Curve: ITransformable<Curve>
             // return (pointOnCurve.Distance(point), pointOnCurve);
         }
 
-        float fDeriv(float t) => 2 * Vector3.Dot(DerivativeAt(t).vector, this[t].Position - point);
+        float fDeriv(float t)
+        {
+            var (pointOnCurve, vector) = DerivativeAt(t);
+            return 2 * Vector3.Dot(vector, pointOnCurve - point);
+        }
 
         float learningRate = 0.01f;
         float t = Length / 2;
@@ -87,6 +91,9 @@ public abstract class Curve: ITransformable<Curve>
 
     public virtual Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => homeomorphism.isIdentity ? this : new TransformedCurve(this, homeomorphism);
 
+    /// <summary>
+    /// A right-handed basis at the point on the curve at time t, with the tangent vector as the first vector and the normal vector of the surface as the third vector. Thus, the second vector points "to the right" of the curve.
+    /// </summary>
     public virtual TangentSpace BasisAt(float t)
     {
         var (point, tangent) = DerivativeAt(t);
@@ -141,6 +148,7 @@ public class TransformedCurve : Curve
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t).ApplyHomeomorphism(homeomorphism);
     // we should have a TangentVector class that is transformable. 
 
+    
     public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) =>

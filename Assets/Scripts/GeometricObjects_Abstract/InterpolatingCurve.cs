@@ -91,6 +91,8 @@ public class HyperbolicGeodesicSegment : Curve
             q = - Complex.ImaginaryOne * (q + 1) / (q - 1);
         }
         // p, q are in the upper half plane model 
+        if (p.Imaginary < 0 || q.Imaginary < 0)
+            Debug.LogError("Calculation error: Points are outside the hyperbolic plane.");
         if (p.Imaginary < 1e-6)
             p = new Complex(p.Real, 1e-6);
         if (q.Imaginary < 1e-6)
@@ -153,7 +155,7 @@ public class HyperbolicGeodesicSegment : Curve
             // as noted; in the half-plane model this should be on the imaginary axis. This is equivalent to being in the real axis in the disk model.
 
             
-            if (φq.Real / φq.Imaginary is > 1e-6  or < -1e-6) 
+            if (φq.Real / φq.Imaginary is > 2e-4  or < -2e-4) 
                 Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred axis");
             if (φq.Imaginary >= 1)
             {

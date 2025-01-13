@@ -283,45 +283,49 @@ public partial class ModelSurface: GeodesicSurface
 
     public override float DistanceSquared(Point startPoint, Point endPoint) => throw new NotImplementedException();
 
-    public override Point ClampPoint(Vector3? point) // todo: this is extremely inefficient
+    public override Point ClampPoint(Vector3? pos) // todo: this is extremely inefficient
     {
         const float closenessThreshold = 0.01f; // todo: this should vary with the camera scale!
+        const float secondaryClosestSideSquareDistanceFactor = 1.5f;
+        if (pos == null) return null;
+        var p = pos.Value; 
+        Point res = null;
+        Point point = p;
         
-        if (point == null) return null;
-        var p = point.Value; 
-        Point res = p;
-
         var distances = (
             from side in AllSideCurves 
             let x = side.curve.GetClosestPoint(p) 
             let pt = new ModelSurfaceBoundaryPoint(side, x.Item1)
-            select (pt, x.Item2.DistanceSquared(res))
+            select (pt, x.Item2.DistanceSquared(point))
         ).ToArray();
-        var closeness = distances.Min(x => x.Item2);
-        var closestPoints = from x in distances where x.Item2 < closeness + closenessThreshold select x.Item1;
-        
-        foreach (var closestPt in closestPoints)
+        var bestCloseness = distances.Min(x => x.Item2);
+        var closestPoints = from x in distances where x.Item2 < bestCloseness * secondaryClosestSideSquareDistanceFactor select x;
+        foreach (var (closestPt, closeness) in closestPoints)
         {
             var closestSide = closestPt.side;
             float time = closestPt.t;
+            
             if (closeness < closenessThreshold)
             {
+                if (res is ModelSurfaceVertex) continue;
                 if (time.ApproximateEquals(0))
                     res = vertices[closestSide.vertexIndex];
                 else if (time.ApproximateEquals(closestSide.curve.Length))
                     res = vertices[closestSide.other.vertexIndex];
                 else res = closestPt;
+                continue;
             }
-            var (_, forward) = closestSide.curve.DerivativeAt(time);
+            // closestPtPosition == closestPt (but as a BasicPoint probably, so it is already calculated)
+            var (closestPtPosition, forward) = closestSide.curve.DerivativeAt(time); 
             var right = new Vector3(forward.y, -forward.x); // orientation!
-            var rightness = Vector3.Dot(right, p - closestPt.Position);
+            var rightness = Vector3.Dot(right, p - closestPtPosition.Position);
             if (rightness < 0 && closestSide.rightIsInside || rightness > 0 && !closestSide.rightIsInside)
             { // this is outside
                 return null;
             }
         }
 
-        return new ModelSurfaceInteriorPoint(p, distances.Select(x => x.Item1).ToList());
+        return res ?? new ModelSurfaceInteriorPoint(p, distances.Select(x => x.Item1).ToList());
     }
 
     /// <summary>

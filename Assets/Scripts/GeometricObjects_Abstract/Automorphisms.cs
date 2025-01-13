@@ -19,7 +19,7 @@ public partial class ModelSurface
         switch (type)
         {
             case AutomorphismType.DehnTwist when parameters.Length == 1 && parameters[0] is Curve curve:
-                var strip = new Strip(curve, closed: true);
+                var strip = new CurveStrip(curve, closed: true);
                 var homeoOnStrip = strip.embedding * strip.DehnTwist * strip.embedding.Inverse;
                 return Homeomorphism.ContinueAutomorphismOnSubsurface(homeoOnStrip, curve.Surface);
             case AutomorphismType.HalfTwist when parameters.Length == 2 && parameters[0] is Point a && parameters[1] is Point b:

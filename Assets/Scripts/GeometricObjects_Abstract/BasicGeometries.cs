@@ -192,7 +192,7 @@ public class Cylinder : Rectangle
 }
 
 
-public class Strip : ParametricSurface
+public class CurveStrip : ParametricSurface
 {
     protected readonly Curve curve;
     protected readonly Rectangle baseSurface;
@@ -201,7 +201,7 @@ public class Strip : ParametricSurface
     /// Give a regular neighborhood of the curve with a homeomorphism to the rectangle or cylinder.
     /// This can be interpreted as a strip in the sense of Bestvina-Handel and be used to perform automorphisms like Dehn twists and point pushes.
     /// </summary>
-    public Strip(Curve curve, float start = 0f, float? end = null, bool closed = false) :
+    public CurveStrip(Curve curve, float start = 0f, float? end = null, bool closed = false) :
         base(ConstructorArgs(curve, start, end, closed))
     {
         this.curve = curve;

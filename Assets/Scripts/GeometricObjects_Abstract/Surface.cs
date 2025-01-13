@@ -24,6 +24,10 @@ public abstract class Surface
     /// <returns></returns>
     public abstract Point ClampPoint(Vector3? point);
 
+    
+    /// <summary>
+    /// A right-handed basis with the normal vector of the surface as the third vector.
+    /// </summary>
     public abstract TangentSpace BasisAt(Point position);
     
     public abstract Vector3 MinimalPosition { get; }
