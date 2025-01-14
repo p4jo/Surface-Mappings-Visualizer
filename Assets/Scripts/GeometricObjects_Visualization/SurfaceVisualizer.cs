@@ -103,6 +103,11 @@
                     break;
                 case null:
                     break;
+                case IPatchedTransformable patchedTransformable:
+                    foreach (var patch in patchedTransformable.Patches) 
+                        Display(patch, preview);
+                    lastPreviewObject = patchedTransformable; 
+                    break;
                 default:
                     throw new NotImplementedException();
             }
@@ -117,6 +122,10 @@
                     break;
                 case Curve curve:
                     RemoveCurve(curve.Name);
+                    break;
+                case IPatchedTransformable patchedTransformable:
+                    foreach (var patch in patchedTransformable.Patches) 
+                        Remove(patch);
                     break;
                 default:
                     throw new NotImplementedException();

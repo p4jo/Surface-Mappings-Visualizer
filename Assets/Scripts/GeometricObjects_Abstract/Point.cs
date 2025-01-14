@@ -23,6 +23,29 @@ public interface ITransformable<T>: ITransformable where T : ITransformable
         input.ApplyHomeomorphism(homeo);
 }
 
+public interface IPatchedTransformable: ITransformable<IPatchedTransformable>
+{
+    public IEnumerable<ITransformable> Patches { get; }
+    
+    IPatchedTransformable ITransformable<IPatchedTransformable>.ApplyHomeomorphism(Homeomorphism homeomorphism) => 
+        new TransformedPatch(this, homeomorphism);
+    
+    private class TransformedPatch : IPatchedTransformable
+    {
+        private readonly IPatchedTransformable original;
+        private readonly Homeomorphism homeomorphism;
+
+        public TransformedPatch(IPatchedTransformable original, Homeomorphism homeomorphism)
+        {
+          this.original = original;
+          this.homeomorphism = homeomorphism;
+        }
+
+        public IEnumerable<ITransformable> Patches => from patch in original.Patches select patch.ApplyHomeomorphism(homeomorphism);
+    }
+}
+
+
 public abstract class Point : IEquatable<Point>, ITransformable<Point>
 {
     public virtual Vector3 Position => Positions.First();
