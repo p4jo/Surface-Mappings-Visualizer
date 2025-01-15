@@ -31,28 +31,35 @@ public class FibredSurface: IPatchedTransformable
     }
 
     public FibredSurface Copy()
-    {
+    {        
         var newGraph = new FibredGraph(true);
+
         var newVertices = new Dictionary<Junction, Junction>(
             from vertex in graph.Vertices 
             select new KeyValuePair<Junction, Junction>(vertex, vertex.Copy(newGraph))
         );
-        newGraph.AddVertexRange(newVertices.Values);
-        var newEdges = new Dictionary<Strip, Strip>(
-            from edge in graph.Edges 
-            select new KeyValuePair<Strip, Strip>(edge, edge.Copy())
-        );
-        foreach (var edge in newGraph.Edges)
+        
+        var newEdges = new Dictionary<Strip, UnorientedStrip>(graph.EdgeCount);
+        foreach (var edge in graph.Edges)
         {
-            edge.Source = newVertices[edge.Source];
-            edge.Target = newVertices[edge.Target];
-            edge.EdgePath = edge.EdgePath.Select(
+            var newEdge = edge.Copy();
+            newEdge.Source = newVertices[edge.Source];
+            newEdge.Target = newVertices[edge.Target];
+            newEdge.EdgePath = edge.EdgePath.Select(
                 strip => strip is OrderedStrip { reverse: true }
-                    ? newEdges[strip.UnderlyingEdge].Reversed()
-                    : newEdges[strip.UnderlyingEdge]
+                    ? newEdges[strip.UnderlyingEdge].Reversed() as Strip
+                    : newEdges[strip.UnderlyingEdge] as Strip
             ).ToList();
+            newEdges[edge] = newEdge;
         }
-        return new FibredSurface(newGraph);
+        
+        newGraph.AddVerticesAndEdgeRange(newEdges.Values);
+        var newPeripheralSubgraph = new FibredGraph(true);
+        newPeripheralSubgraph.AddVerticesAndEdgeRange(
+            from edge in peripheralSubgraph.Edges select newEdges[edge]
+        );
+        
+        return new FibredSurface(newGraph, newPeripheralSubgraph);
     }
     
     private static List<UnorientedStrip> OrbitOfEdge(Strip edge)
@@ -71,23 +78,48 @@ public class FibredSurface: IPatchedTransformable
         return orbit;
     }
 
-    public FibredGraph GetLargestInvariantSubforest()
-    { // todo: only subforests whose collapse doesn't destroy the peripheral subgraph
-        FibredGraph subforest = new FibredGraph();
+    /// <summary>
+    /// only subforests whose collapse doesn't destroy the peripheral subgraph, i.e. whose components contain at most one vertex of the peripheral subgraph.
+    /// 
+    /// </summary>
+    /// <returns></returns>
+    public IReadOnlyCollection<FibredGraph> GetInvariantSubforests()
+    { 
+        Dictionary<UnorientedStrip, FibredGraph> subforests = new();
+        
         foreach (var strip in graph.Edges)
         {
-            if (subforest.Edges.Contains(strip)) continue;
+            if (subforests.Values.Any(subforest => subforest.Edges.Contains(strip))) continue;
+            // there already is a larger subforest containing the one defined from this strip.
+
+            List<UnorientedStrip> orbitOfEdge = OrbitOfEdge(strip);
+            
             FibredGraph newGraph = new FibredGraph();
-            newGraph.AddVerticesAndEdgeRange(subforest.Edges);
-            newGraph.AddVerticesAndEdgeRange(OrbitOfEdge(strip));
-            // actually, this might miss vertices, but that doesn't matter because we only use this in the CollapseInvariantSubforest method.
-            // the only thing we can add while maintaining invariance is an orbit of a strip.
-            if(!newGraph.IsUndirectedAcyclicGraph()) continue;
-            // if the new graph is not a forest, go back to the previous one.
-            subforest = newGraph;
+            newGraph.AddVerticesAndEdgeRange(orbitOfEdge);
+            // actually, components that are only vertices are missing, but that doesn't matter because we only use this in the CollapseInvariantSubforest method.
+            if (!newGraph.IsUndirectedAcyclicGraph()) continue;
+
+            var components = new Dictionary<Junction, int>();
+            int numberOfComponents = newGraph.ConnectedComponents(components);
+            int[] componentIntersections = new int[numberOfComponents];
+            foreach (var vertex in peripheralSubgraph.Vertices)
+            {
+                if (components.TryGetValue(vertex, out var comp))
+                    componentIntersections[comp]++;
+                if (componentIntersections[comp] > 1) break;   
+            } 
+            if (componentIntersections.Any(i => i > 1)) continue; 
+            // one component of the subforest contains more than one vertex of the peripheral subgraph. Collapsing it would destroy the peripheral subgraph.
+            
+                        
+            foreach (var oldEdge in subforests.Keys.ToArray())
+            {
+                if (orbitOfEdge.Contains(oldEdge)) subforests.Remove(oldEdge); // the new subforest contains the old one.
+            }
+            subforests[strip] = newGraph;
         }
-        // TODO: Does this depend on the order of the edges? Probably!
-        return subforest;
+        // todo? See if a union of two subforests is a subforest. If so, we can merge them.
+        return subforests.Values;
     }
     
     public void CollapseInvariantSubforest(FibredGraph subforest)
