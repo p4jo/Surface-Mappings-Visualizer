@@ -17,6 +17,9 @@ public class Junction: IPatchedTransformable
     /// </summary>
     public Junction image;
 
+    private static int _lastId = 0;
+    private readonly int id = _lastId++;
+    
     public Junction(FibredGraph graph, IEnumerable<ITransformable> drawables, Junction image)
     {
         this.graph = graph;
@@ -38,4 +41,6 @@ public class Junction: IPatchedTransformable
             select new OrderedStrip(strip, true)
         );
     }
+
+    public override string ToString() => "Junction " + id;
 }

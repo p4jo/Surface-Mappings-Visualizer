@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-
+using System.Linq;
 
 
 public class EdgePoint
@@ -37,6 +37,13 @@ public class EdgePoint
         if (edge.Equals(other.Reversed()))
             return edge.EdgePath.Count - i;
         return -1;
+    }
+    
+    public override string ToString()
+    {
+        var names = from e in edge.EdgePath select e.Name;
+        var textSegments = names.Take(i).Append("·").Concat(names.Skip(i));
+        return $"Point in {edge} at g({edge.Name}) = {string.Join("", textSegments)}";
     }
 }
 public class Inefficiency: EdgePoint

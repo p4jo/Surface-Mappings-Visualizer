@@ -18,6 +18,7 @@ public abstract class Strip: IEdge<Junction>
     public virtual Junction Source { get; set; }
     public virtual Junction Target { get; set; }
     public abstract UnorientedStrip UnderlyingEdge { get; }
+    public virtual string Name => Curve.Name;
 
     public virtual Junction OtherVertex(Junction vertex) => vertex == Source ? Target : Source;
     
@@ -41,6 +42,8 @@ public abstract class Strip: IEdge<Junction>
     };
 
     public EdgePoint this[int i] => new(this, i);
+
+    public override string ToString() => $"Strip {Curve.Name}";
 }
 
 public class UnorientedStrip : Strip
@@ -53,9 +56,10 @@ public class UnorientedStrip : Strip
 
 public class OrderedStrip: Strip
 {
-    public override Curve Curve => UnderlyingEdge.Curve.Reverse();
+    public override Curve Curve => reverse ? UnderlyingEdge.Curve.Reverse() : UnderlyingEdge.Curve;
     
     public override UnorientedStrip UnderlyingEdge { get; }
+    public override string Name => reverse ? "<s>" + UnderlyingEdge.Name + "</s>" : UnderlyingEdge.Name;
     public readonly bool reverse;
 
     public OrderedStrip(UnorientedStrip underlyingEdge, bool reverse)

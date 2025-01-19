@@ -164,4 +164,21 @@ public static class Helpers
         return last;
     }
 
+    public static ObjectWithString WithToString(this object obj, string toString) => new(obj, toString);
+
+    public class ObjectWithString
+    {
+        public readonly object obj;
+        public readonly string toString;
+
+        public ObjectWithString(object obj, string toString)
+        {
+            this.obj = obj;
+            this.toString = toString;
+        }
+
+        public override string ToString() => toString;
+    }
 }
+
+

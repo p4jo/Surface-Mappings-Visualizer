@@ -1188,6 +1188,7 @@ MonoBehaviour:
   modelSurfaceVisualizerPrefab: {fileID: 7141618544272409706, guid: 80bf56c013f48b849b819bac73292898, type: 3}
   mainMenu: {fileID: 0}
   currentCurveName: 
+  currentCurveColor: {r: 0, g: 0, b: 0, a: 0}
 --- !u!1 &7169205348540684095
 GameObject:
   m_ObjectHideFlags: 0

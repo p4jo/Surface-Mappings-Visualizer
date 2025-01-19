@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using QuikGraph.Algorithms;
-using Unity.VisualScripting;
 using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
@@ -61,7 +60,43 @@ public class FibredSurface: IPatchedTransformable
         
         return new FibredSurface(newGraph, newPeripheralSubgraph);
     }
+
+    public BHDisplayOptions NextSuggestion()
+    {
+        // Iterate through the steps and give the possible steps to the user
+        var a = GetInvariantSubforests();
+        if (a.Count > 0) return new BHDisplayOptions()
+        {
+            options = a,
+            description = "Collapse an invariant subforest.",
+            buttons = new[] {"Collapse"}
+        };
+        return null;
+    }
     
+    public void ApplySuggestion(IEnumerable<object> suggestion, object button)
+    { // todo
+        
+        switch (button)
+        {
+            case "Collapse":
+                CollapseInvariantSubforest((FibredGraph) suggestion);
+                break;
+            
+        }
+        if (suggestion is FibredGraph subforest)
+        {
+            CollapseInvariantSubforest(subforest);
+        }
+    }
+
+    public class BHDisplayOptions
+    {
+        public IEnumerable<object> options;
+        public string description;
+        public IEnumerable<object> buttons;
+    }
+
     private static List<UnorientedStrip> OrbitOfEdge(Strip edge)
     {
         List<UnorientedStrip> orbit = new (){ edge.UnderlyingEdge };
