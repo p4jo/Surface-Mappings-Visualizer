@@ -78,8 +78,8 @@ public class FibredSurface: IPatchedTransformable
         if (b.Any()) return new BHDisplayOptions()
         {
             options = b.Cast<object>(),
-            description = "Pull tight a loose position.",
-            buttons = new[] {"Pull tight"}
+            description = "Pull tight at one or more edges.",
+            buttons = new[] {"Selected", "All"}
         };
         return null;
     }
@@ -96,8 +96,18 @@ public class FibredSurface: IPatchedTransformable
                     // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
                 }
                 break;
-            
-            
+            case "Selected":
+                foreach (object o in suggestion)
+                {
+                    if (o is not ValueTuple<Strip, EdgePoint[], Junction[]> s) continue;
+                    foreach (var edgePoint in s.Item2) PullTightBackTrack(edgePoint);
+                    foreach (var junction in s.Item3) PullTightExtremalVertex(junction);
+                }
+                break;
+            case "All":
+                foreach (var vertex in GetExtremalVertices()) PullTightExtremalVertex(vertex);
+                foreach (var backTrack in GetBackTracks()) PullTightBackTrack(backTrack);
+                break;
         }
     }
 
