@@ -1,9 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuikGraph;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
-public class Junction: IPatchedTransformable
+public class Junction: IPatchedTransformable, IEquatable<Junction>
 {
     // todo? add the ribbon graph structure, i.e. make sure that the cyclic ordering is clear? So far not needed.
     readonly FibredGraph graph;
@@ -31,8 +32,9 @@ public class Junction: IPatchedTransformable
     
     public Junction Copy(FibredGraph graph) => new(graph, Patches, image);
 
-    public IEnumerable<OrderedStrip> Star()
+    public IEnumerable<OrderedStrip> Star(FibredGraph graph = null)
     {
+        graph ??= this.graph;
         return graph.AdjacentEdges(this).Select(
             strip => new OrderedStrip(strip, strip.Source != this)
         ).Concat(
@@ -43,4 +45,16 @@ public class Junction: IPatchedTransformable
     }
 
     public override string ToString() => "Junction " + id;
+
+    public bool Equals(Junction other) => id == other?.id;
+
+    public override bool Equals(object obj)
+    {
+        if (ReferenceEquals(null, obj)) return false;
+        if (ReferenceEquals(this, obj)) return true;
+        if (obj.GetType() != this.GetType()) return false;
+        return Equals((Junction)obj);
+    }
+
+    public override int GetHashCode() => id;
 }

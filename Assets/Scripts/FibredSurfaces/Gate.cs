@@ -3,60 +3,44 @@ using System.Collections.Generic;
 using System.Linq;
 using QuikGraph;
 
-public class Gate
+public class EdgeCycle
 {
-    public readonly Junction junction;
+    public int order;
     /// <summary>
-    /// The edges in the star of the vertex that form the gate, i.e. that get mapped to the same edge under Dg^k for some k.
+    /// The first order elements are the edges in the cycle.
     /// </summary>
-    public readonly List<Strip> Edges;
-    private readonly int cycleDistance;
+    public List<(Strip, int)> attractedEdges = new();
 
-    private Gate(Strip edge, int cycleDistance)
+    public EdgeCycle(Strip edge, int order)
     {
-        junction = edge.Source;
-        Edges = new List<Strip> {edge};
-        this.cycleDistance = cycleDistance;
+        this.order = order;
+        attractedEdges.Add((edge, 0)); // this is the basepoint of the cycle
+        for (int i = order - 1; i > 0; i--)
+        {
+            edge = edge?.Dg;
+            attractedEdges.Add((edge, order - i));
+        }
     }
 
-    class EdgeCycle
+    /// <summary>
+    /// Checks if the edge is known to be attracted into the cycle and returns the distance to the basepoint of the cycle (or -1 if it is not in the cycle).
+    /// </summary>
+    public int CycleIndexOf(Strip edge)
     {
-        public int order;
-        /// <summary>
-        /// The first order elements are the edges in the cycle.
-        /// </summary>
-        public List<(Strip, int)> attractedEdges = new();
-
-        public EdgeCycle(Strip edge, int order)
+        try
         {
-            this.order = order;
-            attractedEdges.Add((edge, 0)); // this is the basepoint of the cycle
-            for (int i = order - 1; i > 0; i--)
-            {
-                edge = edge?.Dg;
-                attractedEdges.Add((edge, order - i));
-            }
+            return attractedEdges.First(stripDistancePair => stripDistancePair.Item1.Equals(edge)).Item2;
         }
-
-        /// <summary>
-        /// Checks if the edge is known to be attracted into the cycle and returns the distance to the basepoint of the cycle (or -1 if it is not in the cycle).
-        /// </summary>
-        public int CycleIndexOf(Strip edge)
+        catch
         {
-            try
-            {
-                return attractedEdges.First(stripDistancePair => stripDistancePair.Item1.Equals(edge)).Item2;
-            }
-            catch
-            {
-                return -1;
-            }
+            return -1;
         }
-    } 
+    }
+    
     /// <summary>
     /// The edgeCycle.attratcedEdges (for edgeCycle in edgeCycles) forms a partition of the set of oriented edges.  
     /// </summary>
-    static List<EdgeCycle> FindEdgeCycles(UndirectedGraph<Junction, UnorientedStrip> graph)
+    public static List<EdgeCycle> FindEdgeCycles(UndirectedGraph<Junction, UnorientedStrip> graph)
     {        
         List<EdgeCycle> edgeCycles = new();
 
@@ -110,27 +94,49 @@ public class Gate
             return (null, -1);
         }
     }
+} 
+public class Gate<T>
+{
+    public readonly T junctionIdentifier;
+    /// <summary>
+    /// The edges in the star of the vertex that form the gate, i.e. that get mapped to the same edge under Dg^k for some k.
+    /// </summary>
+    public readonly List<Strip> Edges;
 
-    public static List<Gate> FindGates(UndirectedGraph<Junction, UnorientedStrip> graph)
+    public readonly int cycleDistance;
+
+    public Gate(Strip edge, int cycleDistance, T junctionIdentifier)
     {
-        List<EdgeCycle> edgeCycles = FindEdgeCycles(graph);
-        List<Gate> gates = new();
+        this.junctionIdentifier = junctionIdentifier;
+        Edges = new List<Strip> {edge};
+        this.cycleDistance = cycleDistance;
+    }
+}
+
+public static class Gate
+{
+    public static List<Gate<Junction>> FindGates(UndirectedGraph<Junction, UnorientedStrip> graph) => FindGates(graph, junction => junction);
+
+    
+    public static List<Gate<T>> FindGates<T>(UndirectedGraph<Junction, UnorientedStrip> graph, Func<Junction, T> identifier) where T : IEquatable<T>
+    {
+        List<EdgeCycle> edgeCycles = EdgeCycle.FindEdgeCycles(graph);
+        List<Gate<T>> gates = new();
         foreach (var edgeCycle in edgeCycles)
         {
             var gatesFromPreviousEdgeCycles = gates.Count;
             foreach (var (edge, cycleDistance) in edgeCycle.attractedEdges)
             {
                 var gate = gates.Skip(gatesFromPreviousEdgeCycles).FirstOrDefault( gate =>
-                    edge.Source == gate.junction &&
+                    identifier(edge.Source).Equals(gate.junctionIdentifier) &&
                     (cycleDistance - gate.cycleDistance) % edgeCycle.order == 0
                 );
                 if (gate == null)
-                    gates.Add(new Gate(edge, cycleDistance));
+                    gates.Add(new Gate<T>(edge, cycleDistance, identifier(edge.Source)));
                 else
                     gate.Edges.Add(edge);
             }
         }
         return gates;
     }
-    
 }

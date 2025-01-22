@@ -14,13 +14,13 @@ public class FibredSurface: IPatchedTransformable
 {
     public FibredGraph graph;
     /// <summary>
-    /// The peripheral subgraph contains one loop around every puncture of the surface apart from one orbit of punctures.
-    /// The peripheral subgraph is assumed to have only valence-two vertices (that have higher valence in the main graph).
+    /// The peripheral subgraph P contains one loop around every puncture of the surface apart from one orbit of punctures.
+    /// P is assumed to have only valence-two vertices (that have higher valence in the main graph).
     /// We also assume that g acts on it as a graph automorphism.
     /// </summary>
     public FibredGraph peripheralSubgraph;
     
-    public List<Gate> gates;
+    public List<Gate<Junction>> gates;
     public IEnumerable<ITransformable> Patches => graph.Vertices.Concat<ITransformable>(from edge in graph.Edges select edge.Curve);
     public IEnumerable<Strip> Edges => graph.Edges.Concat<Strip>(graph.Edges.Select(edge => edge.Reversed()));
 
@@ -66,9 +66,10 @@ public class FibredSurface: IPatchedTransformable
     
     public BHDisplayOptions NextSuggestion()
     {
+        // todo? add a set of ITransformables to highlight with each option?
         // Iterate through the steps and give the possible steps to the user
         var a = GetInvariantSubforests();
-        if (a.Count > 0) return new BHDisplayOptions()
+        if (a.Any()) return new BHDisplayOptions()
         {
             options = a,
             description = "Collapse an invariant subforest.",
@@ -79,24 +80,68 @@ public class FibredSurface: IPatchedTransformable
         {
             options = b.Cast<object>(),
             description = "Pull tight at one or more edges.",
-            buttons = new[] {"Selected", "All"}
+            buttons = new[] {"Tighten Selected", "Tighten All"},
+            allowMultipleSelection = true
         };
+        var c = GetValenceOneJunctions(); // shouldn't happen at this point (tight & no invariant subforests => no valence-one junctions)
+        if (c.Any()) return new BHDisplayOptions()
+        {
+            options = c,
+            description = "Remove a valence-one junction. WHAT THE HECK?",
+            buttons = new[] {"Valence-1 Removal"},
+            allowMultipleSelection = true
+        };
+        if (AbsorbIntoPeriphery(true)) return new BHDisplayOptions()
+        {
+            options = new[]{ GetMaximalPeripheralSubgraph() }, // todo? Display Q?
+            description = "Absorb into periphery.",
+            buttons = new[] {"Absorb"}
+        };
+        // todo: At this step, if the transition matrix for H is reducible, return with a reduction.
+        var d = GetValenceTwoJunctions();
+        if (d.Any()) return new BHDisplayOptions()
+        {
+            options = d,
+            description = "Remove a valence-two junction.",
+            buttons = new[] {"Remove Selected", "Remove All"},
+            allowMultipleSelection = true
+        };
+        // todo: remove peripheral inefficiencies
+        var f = GetInefficiencies();
+        if (f.Any()) return new BHDisplayOptions()
+        {
+            options = f.OrderBy(inefficiency => inefficiency.order),
+            description = "Remove an inefficiency.",
+            buttons = new[] {"Remove Inefficiency"},
+        };
+        
         return null;
+    }
+
+    public bool ApplyNextSuggestion()
+    {
+        var suggestion = NextSuggestion();
+        if (suggestion == null) return false; // done!
+        ApplySuggestion(suggestion.options, suggestion.buttons.First()); // selected ones (all!)
+        return true;
+    }
+    
+    public void BestvinaHandelAlgorithm()
+    {
+        while (ApplyNextSuggestion()) { }
+        // todo: save result (reducible / growth)
     }
     
     public void ApplySuggestion(IEnumerable<object> suggestion, object button)
-    { // todo
-        
+    { 
         switch (button)
         {
             case "Collapse":
-                if (suggestion.FirstOrDefault() is FibredGraph subforest)
-                {
+                if (suggestion.FirstOrDefault() is FibredGraph subforest) 
                     CollapseInvariantSubforest(subforest);
-                    // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
-                }
+                // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
                 break;
-            case "Selected":
+            case "Tighten Selected":
                 foreach (object o in suggestion)
                 {
                     if (o is not ValueTuple<Strip, EdgePoint[], Junction[]> s) continue;
@@ -104,9 +149,34 @@ public class FibredSurface: IPatchedTransformable
                     foreach (var junction in s.Item3) PullTightExtremalVertex(junction);
                 }
                 break;
-            case "All":
+            case "Tighten All":
                 foreach (var vertex in GetExtremalVertices()) PullTightExtremalVertex(vertex);
                 foreach (var backTrack in GetBackTracks()) PullTightBackTrack(backTrack);
+                break;
+            case "Valence-1 Removal":
+                foreach (var junction in suggestion.Cast<Junction>()) RemoveValenceOneJunction(junction);
+                break;
+            case "Absorb":
+                AbsorbIntoPeriphery();
+                break;
+            case "Remove Selected":
+                foreach (object o in suggestion)
+                {
+                    if (o is not Junction valence2Junction) continue;
+                    // todo: select the strip to keep (lower width eigenvalue, or the pre-P one) 
+                    RemoveValenceTwoJunction(valence2Junction, null);
+                }
+                break;
+            case "Remove All":
+                foreach (var junction in GetValenceTwoJunctions()) 
+                    RemoveValenceTwoJunction(junction, null);
+                break;
+            case "Remove Inefficiency":
+                if (suggestion.FirstOrDefault() is Inefficiency inefficiency) 
+                    RemoveInefficiency(inefficiency);
+                break;
+            default:
+                Debug.LogError("Unknown button.");
                 break;
         }
     }
@@ -116,9 +186,10 @@ public class FibredSurface: IPatchedTransformable
         public IEnumerable<object> options;
         public string description;
         public IEnumerable<object> buttons;
+        public bool allowMultipleSelection = false;
     }
 
-    private static List<UnorientedStrip> OrbitOfEdge(Strip edge)
+    private static FibredGraph OrbitOfEdge(Strip edge)
     {
         List<UnorientedStrip> orbit = new (){ edge.UnderlyingEdge };
         for (int i = 0; i < orbit.Count; i++)
@@ -131,12 +202,15 @@ public class FibredSurface: IPatchedTransformable
             }
         }
 
-        return orbit;
+        FibredGraph newGraph = new FibredGraph();
+        newGraph.AddVerticesAndEdgeRange(orbit);
+        return newGraph;
     }
 
     /// <summary>
     /// only subforests whose collapse doesn't destroy the peripheral subgraph, i.e. whose components contain at most one vertex of the peripheral subgraph.
-    /// 
+    /// components that are only vertices are missing!
+    /// (but that doesn't matter because we only use this in the CollapseInvariantSubforest and MaximalPeripheralGraph methods)
     /// </summary>
     /// <returns></returns>
     public IReadOnlyCollection<FibredGraph> GetInvariantSubforests()
@@ -148,34 +222,43 @@ public class FibredSurface: IPatchedTransformable
             if (subforests.Values.Any(subforest => subforest.Edges.Contains(strip))) continue;
             // there already is a larger subforest containing the one defined from this strip.
 
-            List<UnorientedStrip> orbitOfEdge = OrbitOfEdge(strip);
+            FibredGraph orbitOfEdge = OrbitOfEdge(strip);
             
-            FibredGraph newGraph = new FibredGraph();
-            newGraph.AddVerticesAndEdgeRange(orbitOfEdge);
-            // actually, components that are only vertices are missing, but that doesn't matter because we only use this in the CollapseInvariantSubforest method.
-            if (!newGraph.IsUndirectedAcyclicGraph()) continue;
-
-            var components = new Dictionary<Junction, int>();
-            int numberOfComponents = newGraph.ConnectedComponents(components);
-            int[] componentIntersections = new int[numberOfComponents];
-            foreach (var vertex in peripheralSubgraph.Vertices)
-            {
-                if (components.TryGetValue(vertex, out var comp))
-                    componentIntersections[comp]++;
-                if (componentIntersections[comp] > 1) break;   
-            } 
-            if (componentIntersections.Any(i => i > 1)) continue; 
-            // one component of the subforest contains more than one vertex of the peripheral subgraph. Collapsing it would destroy the peripheral subgraph.
+            if (!IsPeripheryFriendlySubforest(orbitOfEdge)) continue;
             
-                        
             foreach (var oldEdge in subforests.Keys.ToArray())
-            {
-                if (orbitOfEdge.Contains(oldEdge)) subforests.Remove(oldEdge); // the new subforest contains the old one.
-            }
-            subforests[strip] = newGraph;
+                if (orbitOfEdge.Edges.Contains(oldEdge)) 
+                    subforests.Remove(oldEdge); // the new subforest contains the old one.
+            subforests[strip] = orbitOfEdge;
         }
         // todo? See if a union of two subforests is a subforest. If so, we can merge them.
         return subforests.Values;
+    }
+    
+    bool IsPeripheryFriendlySubforest(FibredGraph subgraph, FibredGraph peripheralSubgraph = null, bool remove = false)
+    {
+        peripheralSubgraph ??= this.peripheralSubgraph;
+        if (remove)
+        {
+            var edges = subgraph.Edges.ToHashSet();
+            edges.IntersectWith(peripheralSubgraph.Edges);
+            subgraph = new FibredGraph(true); 
+            subgraph.AddVerticesAndEdgeRange(edges);
+        };
+        if (!subgraph.IsUndirectedAcyclicGraph()) return false;
+
+        var components = new Dictionary<Junction, int>();
+        int numberOfComponents = subgraph.ConnectedComponents(components);
+        int[] componentIntersections = new int[numberOfComponents];
+        foreach (var vertex in peripheralSubgraph.Vertices)
+        {
+            if (components.TryGetValue(vertex, out var comp))
+                componentIntersections[comp]++;
+            if (componentIntersections[comp] > 1) return false;  
+        }
+
+        return true;
+        // one component of the subforest contains more than one vertex of the peripheral subgraph. Collapsing it would destroy the peripheral subgraph.
     }
     
     public void CollapseInvariantSubforest(FibredGraph subforest)
@@ -416,7 +499,7 @@ public class FibredSurface: IPatchedTransformable
         {
             for (int i = 0; i <= edge.EdgePath.Count; i++)
             {
-                var inefficiency = CheckEfficiency(edge[i]);
+                var inefficiency = CheckEfficiency(edge[i], gates);
                 if (inefficiency != null)
                 {
                     if (i==0 || i == edge.EdgePath.Count) Debug.Log("Interpreted a valence-two gate-wise extremal vertex as an inefficiency.");
@@ -428,18 +511,18 @@ public class FibredSurface: IPatchedTransformable
     }
 
     [CanBeNull]
-    public Inefficiency CheckEfficiency(EdgePoint edgePoint)
+    public Inefficiency CheckEfficiency(EdgePoint edgePoint, List<Gate<Junction>> gates)
     {
         var a = edgePoint.DgBefore();
         var b = edgePoint.DgAfter();
         if (a == null || b == null) return null; // the edgePoints is actually a vertex of valence other than two
         
-        if (a.Source != b.Source) Debug.LogError("The edge path is not an actual edge path.");
+        if (!Equals(a.Source, b.Source)) Debug.LogError("The edge path is not an actual edge path.");
         if (!FindGate(a).Edges.Contains(b)) return null; // not inefficient
         
         return new Inefficiency(edgePoint);
         
-        Gate FindGate(Strip edge) => gates.First(gate => gate.Edges.Contains(edge));     
+        Gate<Junction> FindGate(Strip edge) => gates.First(gate => gate.Edges.Contains(edge));     
         // The gates should form a partition of the set of oriented edges, so this should be well-defined.
     }
 
@@ -490,12 +573,89 @@ public class FibredSurface: IPatchedTransformable
         // Now p is an inefficiency of degree one lower.
         
         var pNew = updateEdgePoints[0];
-        var pNewIneff = CheckEfficiency(pNew);
+        var newInefficiency = CheckEfficiency(pNew, Gate.FindGates(graph));
         
-        if (pNewIneff == null || pNewIneff.order != p.order - 1)
-            Debug.LogError($"Bug: The inefficiency was not turned into an efficiency of order one less: {p} was turned into {pNewIneff ?? pNew}");
-        if (pNewIneff != null && pNewIneff.order < p.order)    
-            RemoveInefficiency(pNewIneff);
+        if (newInefficiency == null || newInefficiency.order != p.order - 1)
+            Debug.LogError($"Bug: The inefficiency was not turned into an efficiency of order one less: {p} was turned into {newInefficiency ?? pNew}");
+        if (newInefficiency != null && newInefficiency.order < p.order)    
+            RemoveInefficiency(newInefficiency);
+    }
+
+    FibredGraph GetMaximalPeripheralSubgraph()
+    {
+        var Q = new FibredGraph(true);
+        Q.AddVerticesAndEdgeRange(peripheralSubgraph.Edges);
+        foreach (var strip in graph.Edges)
+        {
+            if (Q.Edges.Contains(strip)) continue;
+            var orbit = OrbitOfEdge(strip);
+            if (IsPeripheryFriendlySubforest(orbit, Q, true))
+                // this means that after adding the orbit to Q, it still deformation retracts onto Q (thus P).
+                Q.AddVerticesAndEdgeRange(orbit.Edges);
+        }
+        return Q;
+    }
+
+    public bool AbsorbIntoPeriphery(bool testDry = false)
+    {
+        var Q = GetMaximalPeripheralSubgraph();
+        if (testDry && Q.Edges.Any(edge => !peripheralSubgraph.ContainsEdge(edge))) return true;
+        
+        var starQ = (
+            from vertex in Q.Vertices
+            let starV = vertex.Star()
+            from strip in starV
+            where !Q.Edges.Contains(strip.UnderlyingEdge)
+            select strip
+        ).ToList();
+        foreach (var strip in starQ)
+        {
+            while (Q.Edges.Contains(strip.Dg?.UnderlyingEdge))
+            {
+                if (testDry) return true;
+                strip.EdgePath.RemoveAt(0);
+            }
+            if (strip.EdgePath.Count == 0) Debug.LogError("The strip has been absorbed into the periphery.");
+        }
+        if (testDry) return peripheralSubgraph.Vertices.Any(v => v.Star().Count() <= 2); 
+            // the periphery is maximal, nothing to do.
+            // todo? check also when !testDry and return here with only removing valence-two vertices.
+
+        var components = new Dictionary<Junction, int>();
+        Q.ConnectedComponents(components);
+        var gates = Gate.FindGates(Q, vertex => components[vertex]);
+        var newJunctions = new List<Junction>();
+        foreach (var gate in gates)
+        {
+            var frontiers = from edge in gate.Edges select edge.Curve.Restrict(0, 0.1f);
+            // todo: give each gate γ the fr(γ) from joining the fr(e) for e in the gate.
+            var newJunction = new Junction(graph, frontiers, null);
+            newJunctions.Add(newJunction);
+            foreach (var edge in gate.Edges)
+                edge.Source = newJunction;
+        }
+
+        graph.AddVertexRange(newJunctions);
+
+        for (var i = 0; i < gates.Count; i++)
+        {
+            Gate<int> gate = gates[i];
+            var Dg = gate.Edges.First().Dg;
+            var Dg_gate = Enumerable.Range(0, gates.Count).First(j => gates[j].Edges.Contains(Dg));
+            newJunctions[i].image = newJunctions[Dg_gate];
+            // todo: new edges between the new junctions; map them accordingly (uniquely defined by the images of the new junctions: g still acts as a graph automorphism on the new P). Needs the order of the gates! (we know that they are connected in the cyclic order)
+        }
+
+        foreach (var edge in starQ)
+        {
+            var gateId = Enumerable.Range(0, gates.Count).First(j => gates[j].Edges.Contains(edge));
+            edge.Source = newJunctions[gateId];
+        }
+
+        graph.RemoveEdges(Q.Edges);
+        foreach (var oldJunction in Q.Vertices)
+            graph.RemoveVertex(oldJunction); // todo: check if the implementation realized that no edges are left at this junction.
+        return true;
     }
 
 }
