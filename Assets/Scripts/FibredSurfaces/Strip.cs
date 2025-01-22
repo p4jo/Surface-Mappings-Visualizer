@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using QuikGraph;
+using UnityEngine;
 
 public abstract class Strip: IEdge<Junction>
 {
@@ -44,6 +45,18 @@ public abstract class Strip: IEdge<Junction>
     public EdgePoint this[int i] => new(this, i);
 
     public override string ToString() => $"Strip {Curve.Name}";
+
+    public static int SharedInitialSegment(IList<Strip> strips)
+    {
+        IEnumerable<Strip> initialSegment = strips[0].EdgePath;
+        foreach (var strip in strips.Skip(1)) 
+            initialSegment = initialSegment.Zip(strip.EdgePath, (a, b) => Equals(a, b) ? a : null);
+
+        int i = initialSegment.TakeWhile(strip => strip != null).Count();
+        if (i == 0) Debug.LogError("The edges do not have a common initial segment.");
+        return i;
+
+    }
 }
 
 public class UnorientedStrip : Strip

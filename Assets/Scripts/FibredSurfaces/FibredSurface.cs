@@ -14,6 +14,7 @@ public class FibredSurface: IPatchedTransformable
 {
     public FibredGraph graph;
     /// <summary>
+    /// The peripheral subgraph contains one loop around every puncture of the surface apart from one orbit of punctures.
     /// The peripheral subgraph is assumed to have only valence-two vertices (that have higher valence in the main graph).
     /// We also assume that g acts on it as a graph automorphism.
     /// </summary>
@@ -61,6 +62,8 @@ public class FibredSurface: IPatchedTransformable
         return new FibredSurface(newGraph, newPeripheralSubgraph);
     }
 
+    
+    
     public BHDisplayOptions NextSuggestion()
     {
         // Iterate through the steps and give the possible steps to the user
@@ -71,6 +74,13 @@ public class FibredSurface: IPatchedTransformable
             description = "Collapse an invariant subforest.",
             buttons = new[] {"Collapse"}
         };
+        var b = GetLoosePositions();
+        if (b.Any()) return new BHDisplayOptions()
+        {
+            options = b.Cast<object>(),
+            description = "Pull tight a loose position.",
+            buttons = new[] {"Pull tight"}
+        };
         return null;
     }
     
@@ -80,13 +90,14 @@ public class FibredSurface: IPatchedTransformable
         switch (button)
         {
             case "Collapse":
-                CollapseInvariantSubforest((FibredGraph) suggestion);
+                if (suggestion.FirstOrDefault() is FibredGraph subforest)
+                {
+                    CollapseInvariantSubforest(subforest);
+                    // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
+                }
                 break;
             
-        }
-        if (suggestion is FibredGraph subforest)
-        {
-            CollapseInvariantSubforest(subforest);
+            
         }
     }
 
@@ -201,35 +212,75 @@ public class FibredSurface: IPatchedTransformable
         from vertex in graph.Vertices where vertex.Star().Count() == 2 select vertex;
     public void RemoveValenceTwoJunction(Junction junction, UnorientedStrip removeStrip)
     {
+        // todo: select the strip to keep
         var star = junction.Star().ToArray();
         if (star.Length != 2) Debug.LogError($"Supposed valence-two junction has valence {star.Length}");
         OrderedStrip keptStrip = star[0].UnderlyingEdge == removeStrip ? star[1] : star[0];
         Junction enlargedJunction = removeStrip.Source == junction ? removeStrip.Target : removeStrip.Source;
-        // todo: include removedStrip and junction into the enlargedJunction
+        // two options: a) isotope along removeStrip to move junctions that map there to the "enlargedJunction" (but don't actually enlarge it)
+        // and enlarge keptStrip to include the removed strip and the removed junction, reinterpreted as a section of a strip.
+        // or: b) include removedStrip and junction into the enlargedJunction and isotope along f(removeStrip), so that it lands in f(enlJun).
+        // This isotopy could be faked pretty well! Just display f(keptStrip) as f(removedStrip).Reverse u f(removeJunction) u f(keptStrip)
+        // and f(enlJun) as what it was before enlarging.
+        // In both cases, the same thing happens combinatorially
         keptStrip.Source = enlargedJunction;
         graph.RemoveVertex(junction);
         graph.RemoveEdge(removeStrip);
+        
+        keptStrip.EdgePath.InsertRange(0, OrderedStrip.ReversedEdgePath(removeStrip.EdgePath));
         foreach (var strip in graph.Edges) 
             strip.EdgePath = strip.EdgePath.Where(edge => edge.UnderlyingEdge != removeStrip).ToList();
+        foreach (var vertex in graph.Vertices)
+            if (vertex.image == junction)
+                vertex.image = enlargedJunction;
     }
 
+    
+    /// <summary>
+    /// These are the positions where the graph map is not tight, so we can pull tight here.
+    /// We have to assume that there are no invariant subforests because the isotopy would touch them!
+    /// </summary>
+    public IEnumerable<(Strip, EdgePoint[], Junction[])> GetLoosePositions() => 
+        from strip in Edges
+        let backTracks = GetBackTracks(strip).ToArray()
+        let extremalVertices = GetExtremalVertices(strip).ToArray()
+        where backTracks.Length != 0 || extremalVertices.Length != 0 
+        select (strip, backTracks, extremalVertices);
 
-    public IEnumerable<Junction> GetExtremalVertices() => 
-        from vertex in graph.Vertices 
-        let star = vertex.Star() 
-        let firstOutgoingEdge = star.FirstOrDefault()?.EdgePath.FirstOrDefault() 
-        where star.All(strip => Equals(strip.EdgePath.FirstOrDefault(), firstOutgoingEdge))
-        select vertex;
-
-    public IEnumerable<EdgePoint> GetBackTracks() =>
-        from strip in graph.Edges
-        from i in Enumerable.Range(0, strip.EdgePath.Count - 1)
-        where Equals(strip.EdgePath[i], strip.EdgePath[i + 1].Reversed())
-        select new EdgePoint(strip, i);
-
-    public void PullTightExtremalVertex(Junction vertex, Strip firstOutgoingEdge)
+    IEnumerable<Junction> GetExtremalVertices(Strip edge = null)
     {
-        vertex.image = firstOutgoingEdge.Target;
+        if (edge != null)
+            return from vertex in graph.Vertices 
+                let star = vertex.Star() 
+                // only null if vertex has valence 0, but then the graph is only a vertex and the surface is a disk.
+                where star.Any() && star.All(strip => Equals(strip.Dg, edge))
+                select vertex;
+        return from vertex in graph.Vertices
+            let star = vertex.Star()
+            let firstOutgoingEdge = star.FirstOrDefault()
+            // only null if vertex has valence 0, but then the graph is only a vertex and the surface is a disk.
+            where firstOutgoingEdge != null && star.All(strip => Equals(strip.Dg, firstOutgoingEdge.Dg))
+            select vertex;
+    }
+
+    IEnumerable<EdgePoint> GetBackTracks(Strip edge = null)
+    {
+        if (edge != null)
+            return from edgePoint in GetBackTracks()
+                where Equals(edgePoint.DgAfter(), edge)
+                select edgePoint;
+        
+        return from strip in graph.Edges
+            from i in Enumerable.Range(1, strip.EdgePath.Count - 1) 
+            // only internal points: Valence-2 extremal vertices are found in parallel anyways.
+            let edgePoint = new EdgePoint(strip, i)
+            where Equals(edgePoint.DgBefore(), edgePoint.DgAfter())
+            select edgePoint;
+    }
+
+    public void PullTightExtremalVertex(Junction vertex)
+    {
+        vertex.image = vertex.Star().First()[0].Image;
         foreach (var strip in vertex.Star())
         {
             strip.EdgePath = strip.EdgePath.Skip(1).ToList();
@@ -238,8 +289,11 @@ public class FibredSurface: IPatchedTransformable
         // todo: isotopy: Move vertex and shorten the strips
     }
     
-    public void PullTightBackTrack(Strip strip, int i)
+    public void PullTightBackTrack(EdgePoint backTrack)
     {
+        var strip = backTrack.edge;
+        var i = backTrack.i;
+        if (i == -1) PullTightExtremalVertex(strip.Source); 
         strip.EdgePath = strip.EdgePath.Take(i).Concat(strip.EdgePath.Skip(i + 2)).ToList();
         // todo: isotopy to make the strip shorter
     }
@@ -323,7 +377,7 @@ public class FibredSurface: IPatchedTransformable
 
     public void FoldInitialSegment(IList<Strip> strips, int? i = null, IList<EdgePoint> updateEdgePoints = null)
     {
-        i ??= SharedInitialSegment(strips);
+        i ??= Strip.SharedInitialSegment(strips);
         updateEdgePoints ??= new List<EdgePoint>();
 
         var initialStripSegments = new List<Strip>(strips.Count);
@@ -345,58 +399,38 @@ public class FibredSurface: IPatchedTransformable
         FoldEdges(initialStripSegments, updateEdgePoints);
     }
 
-    private static int SharedInitialSegment(IList<Strip> strips)
-    {
-        IEnumerable<Strip> initialSegment = strips[0].EdgePath;
-        foreach (var strip in strips.Skip(1)) 
-            initialSegment = initialSegment.Zip(strip.EdgePath, (a, b) => Equals(a, b) ? a : null);
-
-        int i = initialSegment.TakeWhile(strip => strip != null).Count();
-        if (i == 0) Debug.LogError("The edges do not have a common initial segment.");
-        return i;
-    }
-
     public IEnumerable<Inefficiency> GetInefficiencies()
     {
         gates = Gate.FindGates(graph);
         foreach (var edge in graph.Edges)
         {
-            for (int i = 0; i < edge.EdgePath.Count - 1; i++)
+            for (int i = 0; i <= edge.EdgePath.Count; i++)
             {
-                var inefficiency = CheckEfficiency(edge, i);
-                if (inefficiency != null) yield return inefficiency;
+                var inefficiency = CheckEfficiency(edge[i]);
+                if (inefficiency != null)
+                {
+                    if (i==0 || i == edge.EdgePath.Count) Debug.Log("Interpreted a valence-two gate-wise extremal vertex as an inefficiency.");
+                    yield return inefficiency;
+                }
             }
         }
         
     }
 
     [CanBeNull]
-    public Inefficiency CheckEfficiency(Strip edge, int i)
+    public Inefficiency CheckEfficiency(EdgePoint edgePoint)
     {
-        Strip a = edge.EdgePath[i].Reversed();
-        Strip b = edge.EdgePath[i + 1];
+        var a = edgePoint.DgBefore();
+        var b = edgePoint.DgAfter();
+        if (a == null || b == null) return null; // the edgePoints is actually a vertex of valence other than two
+        
         if (a.Source != b.Source) Debug.LogError("The edge path is not an actual edge path.");
-        if (!FindGate(a).Edges.Contains(b)) return null;
-        // Gatewise backtracking detected.
-        Strip aOld = a;
-        for (int j = 0; j <= 2 * graph.EdgeCount; j++)
-        {
-            if (!Equals(a, b))
-            {
-                aOld = a;
-                a = a!.Dg;
-                b = b!.Dg;
-                continue;
-            }
-
-            List<Strip> edgesToFold = (from e in aOld!.Source.Star() where Equals(e.Dg, a) select e).ToList<Strip>();
-            return new Inefficiency(edge, i, j, edgesToFold, SharedInitialSegment(edgesToFold));
-        }
-        throw new Exception("Bug: Two edges in the same gate didn't eventually get mapped to the same edge under Dg.");
+        if (!FindGate(a).Edges.Contains(b)) return null; // not inefficient
+        
+        return new Inefficiency(edgePoint);
         
         Gate FindGate(Strip edge) => gates.First(gate => gate.Edges.Contains(edge));     
         // The gates should form a partition of the set of oriented edges, so this should be well-defined.
-
     }
 
     /// <summary>
@@ -407,6 +441,15 @@ public class FibredSurface: IPatchedTransformable
     /// <exception cref="Exception"></exception>
     public void RemoveInefficiency(Inefficiency p)
     {
+        if (p.order == 0)
+        {
+            // The inefficiency is a back track
+            // todo: or a valence two extremal vertex
+            PullTightBackTrack(p);
+            return;
+        }
+        
+        
         while (p.edgesToFold.Any(edge => 
                 Equals(p, new EdgePoint(edge, p.initialSegmentToFold))
         )) p.initialSegmentToFold--;
@@ -435,8 +478,14 @@ public class FibredSurface: IPatchedTransformable
         FoldInitialSegment(p.edgesToFold, p.initialSegmentToFold, updateEdgePoints);
         
         // Now p is an inefficiency of degree one lower.
-        // todo Caution: It also might be a valence-two junction now
         
+        var pNew = updateEdgePoints[0];
+        var pNewIneff = CheckEfficiency(pNew);
+        
+        if (pNewIneff == null || pNewIneff.order != p.order - 1)
+            Debug.LogError($"Bug: The inefficiency was not turned into an efficiency of order one less: {p} was turned into {pNewIneff ?? pNew}");
+        if (pNewIneff != null && pNewIneff.order < p.order)    
+            RemoveInefficiency(pNewIneff);
     }
 
 }
