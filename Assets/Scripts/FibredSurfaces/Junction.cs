@@ -21,13 +21,13 @@ public class Junction: IPatchedTransformable, IEquatable<Junction>
     private static int _lastId = 0;
     private readonly int id = _lastId++;
     
-    public Junction(FibredGraph graph, IEnumerable<ITransformable> drawables, Junction image)
+    public Junction(FibredGraph graph, IEnumerable<ITransformable> drawables, Junction image = null)
     {
         this.graph = graph;
         Patches = drawables;
         this.image = image;
     }
-    public Junction(FibredGraph graph, ITransformable drawable, Junction image) : this(graph, new[] {drawable}, image)
+    public Junction(FibredGraph graph, ITransformable drawable, Junction image = null) : this(graph, new[] {drawable}, image)
     { }
     
     public Junction Copy(FibredGraph graph) => new(graph, Patches, image);

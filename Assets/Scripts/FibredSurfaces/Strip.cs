@@ -23,7 +23,7 @@ public abstract class Strip: IEdge<Junction>
 
     public virtual Junction OtherVertex(Junction vertex) => vertex == Source ? Target : Source;
     
-    public abstract OrderedStrip Reversed();
+    public abstract Strip Reversed();
 
     public override bool Equals(object other) =>
         other switch
@@ -63,7 +63,9 @@ public class UnorientedStrip : Strip
 {
     public ITransformable Drawable => Curve;
     public override UnorientedStrip UnderlyingEdge => this;
-    public override OrderedStrip Reversed() => new(this, true);
+
+    private OrderedStrip reversed;
+    public override Strip Reversed() => reversed ??= new OrderedStrip(this, true);
 
 }
 
@@ -72,8 +74,14 @@ public class OrderedStrip: Strip
     public override Curve Curve => reverse ? UnderlyingEdge.Curve.Reverse() : UnderlyingEdge.Curve;
     
     public override UnorientedStrip UnderlyingEdge { get; }
-    public override string Name => reverse ? "<s>" + UnderlyingEdge.Name + "</s>" : UnderlyingEdge.Name;
-    public readonly bool reverse;
+    public override string Name => reverse ? UnderlyingEdge.Name.ToUpper() : UnderlyingEdge.Name;
+    // "<s>" + UnderlyingEdge.Name + "</s>"   (strikethrough in RichText; workaround for overbar; use for fancy display?
+    // For the moment, we just use the name of the underlying edge in UPPERCASE.
+    
+    /// <summary>
+    /// actually this should never be false.
+    /// </summary>
+    public readonly bool reverse; 
 
     public OrderedStrip(UnorientedStrip underlyingEdge, bool reverse)
     {
@@ -104,10 +112,10 @@ public class OrderedStrip: Strip
 
     public static List<Strip> ReversedEdgePath(IEnumerable<Strip> edgePath) =>
         edgePath.Reverse().Select(
-            strip => strip.Reversed() as Strip
+            strip => strip.Reversed()
         ).ToList();
 
-    public override OrderedStrip Reversed() => new(UnderlyingEdge, !reverse);
+    public override Strip Reversed() => reverse ? UnderlyingEdge : new OrderedStrip(UnderlyingEdge, true);
 
     public override bool Equals(object obj) =>
         obj switch

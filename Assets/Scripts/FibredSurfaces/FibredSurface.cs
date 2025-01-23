@@ -12,22 +12,79 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 /// </summary>
 public class FibredSurface: IPatchedTransformable
 {
-    public FibredGraph graph;
+    public readonly FibredGraph graph;
     /// <summary>
     /// The peripheral subgraph P contains one loop around every puncture of the surface apart from one orbit of punctures.
     /// P is assumed to have only valence-two vertices (that have higher valence in the main graph).
     /// We also assume that g acts on it as a graph automorphism.
     /// </summary>
-    public FibredGraph peripheralSubgraph;
-    
-    public List<Gate<Junction>> gates;
-    public IEnumerable<ITransformable> Patches => graph.Vertices.Concat<ITransformable>(from edge in graph.Edges select edge.Curve);
-    public IEnumerable<Strip> Edges => graph.Edges.Concat<Strip>(graph.Edges.Select(edge => edge.Reversed()));
+    public readonly FibredGraph peripheralSubgraph;
 
-    public FibredSurface(FibredGraph graph, FibredGraph peripheralSubgraph)
+    public IEnumerable<ITransformable> Patches => graph.Vertices.Concat<ITransformable>(from edge in graph.Edges select edge.Curve);
+    private IEnumerable<Strip> Edges => graph.Edges.Concat<Strip>(graph.Edges.Select(edge => edge.Reversed()));
+
+    public FibredSurface(FibredGraph graph, FibredGraph peripheralSubgraph = null)
     {
         this.graph = graph;
-        this.peripheralSubgraph = peripheralSubgraph;
+        this.peripheralSubgraph = peripheralSubgraph ?? new FibredGraph();
+    }
+
+    public FibredSurface(IList<(Curve, string, string, string[])> edgeDescriptions, IEnumerable<string> peripheralEdges = null, IDictionary<string, ITransformable> junctionDrawables = null)
+    {
+        junctionDrawables ??= new Dictionary<string, ITransformable>();
+        peripheralEdges ??= new List<string>();
+        
+        var vertexNames = 
+            (from v in edgeDescriptions select v.Item2)
+            .Concat(from v in edgeDescriptions select v.Item3).ToHashSet();
+        var junctions = new Dictionary<string, Junction>(
+            from name in vertexNames
+            select new KeyValuePair<string, Junction>(name,
+                new Junction(graph, 
+                    junctionDrawables.TryGetValue(name, out var displayable) ? displayable : 
+                        edgeDescriptions.FirstOrDefault(tuple => tuple.Item2 == name).Item1?.StartPosition 
+                        ?? edgeDescriptions.FirstOrDefault(tuple => tuple.Item3 == name).Item1?.EndPosition)
+            )
+        );
+        var strips = (
+            from tuple in edgeDescriptions
+            let curve = tuple.Item1
+            let source = tuple.Item2
+            let target = tuple.Item3
+            select new UnorientedStrip()
+            {
+                Source = junctions[source],
+                Target = junctions[target],
+                Curve = curve
+            }
+        ).ToList();
+        var edges = new Dictionary<string, Strip>((
+                from strip in strips select new KeyValuePair<string, Strip>(strip.Name.ToLower(), strip)
+            ).Concat(
+                from strip in strips select new KeyValuePair<string, Strip>(strip.Name.ToUpper(), strip.Reversed())
+            )
+        );
+        foreach (var (strip, edgePathText) in strips.Zip(edgeDescriptions, (strip, tuple) => (strip, tuple.Item4)))
+        {
+            strip.EdgePath = edgePathText.Select(edgeName => edges[edgeName]).ToList();
+        }
+
+        foreach (var (name, strip) in edges)
+        {
+            if (strip.Source.image != null && strip.Source.image != strip.Dg?.Source)
+                Debug.LogError($"Two edges at the same vertex have images that don't start at the same vertex! g({name}) = {string.Join(' ', strip.EdgePath.Select(e => e.Name))} starts at o(g({name})) = {strip.Dg?.Source}, but we already set g(o({name})) = {strip.Source.image}.");
+            strip.Source.image ??= strip.Dg?.Source;
+        }
+
+        graph = new FibredGraph();
+        graph.AddVerticesAndEdgeRange(strips);
+        
+        peripheralSubgraph = new FibredGraph();
+        peripheralSubgraph.AddVerticesAndEdgeRange((
+            from edgeName in peripheralEdges
+            select edges[edgeName].UnderlyingEdge
+            ).Distinct()
+        );
     }
 
     public FibredSurface Copy()
@@ -106,7 +163,13 @@ public class FibredSurface: IPatchedTransformable
             buttons = new[] {"Remove Selected", "Remove All"},
             allowMultipleSelection = true
         };
-        // todo: remove peripheral inefficiencies
+        var e = GetPeripheralInefficiencies();
+        if (e.Any()) return new BHDisplayOptions()
+        {
+            options = e,
+            description = "Fold initial segments of edges that map to edges in the pre-periphery.",
+            buttons = new[] { "Fold Selected" }
+        };
         var f = GetInefficiencies();
         if (f.Any()) return new BHDisplayOptions()
         {
@@ -115,15 +178,15 @@ public class FibredSurface: IPatchedTransformable
             buttons = new[] {"Remove Inefficiency"},
         };
         
-        return null;
+        return null; // finished!
     }
 
     public bool ApplyNextSuggestion()
     {
         var suggestion = NextSuggestion();
-        if (suggestion == null) return false; // done!
+        if (suggestion == null) return true; // done!
         ApplySuggestion(suggestion.options, suggestion.buttons.First()); // selected ones (all!)
-        return true;
+        return false;
     }
     
     public void BestvinaHandelAlgorithm()
@@ -170,6 +233,10 @@ public class FibredSurface: IPatchedTransformable
             case "Remove All":
                 foreach (var junction in GetValenceTwoJunctions()) 
                     RemoveValenceTwoJunction(junction, null);
+                break;
+            case "Fold Selected":
+                if (suggestion.FirstOrDefault() is IEnumerable<Strip> edges) 
+                    RemovePeripheralInefficiency(edges.ToList());
                 break;
             case "Remove Inefficiency":
                 if (suggestion.FirstOrDefault() is Inefficiency inefficiency) 
@@ -494,7 +561,7 @@ public class FibredSurface: IPatchedTransformable
 
     public IEnumerable<Inefficiency> GetInefficiencies()
     {
-        gates = Gate.FindGates(graph);
+        var gates = Gate.FindGates(graph);
         foreach (var edge in graph.Edges)
         {
             for (int i = 0; i <= edge.EdgePath.Count; i++)
@@ -507,7 +574,6 @@ public class FibredSurface: IPatchedTransformable
                 }
             }
         }
-        
     }
 
     [CanBeNull]
@@ -595,6 +661,7 @@ public class FibredSurface: IPatchedTransformable
         }
         return Q;
     }
+    
 
     public bool AbsorbIntoPeriphery(bool testDry = false)
     {
@@ -628,7 +695,7 @@ public class FibredSurface: IPatchedTransformable
         foreach (var gate in gates)
         {
             var frontiers = from edge in gate.Edges select edge.Curve.Restrict(0, 0.1f);
-            // todo: give each gate γ the fr(γ) from joining the fr(e) for e in the gate.
+            // todo: give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
             var newJunction = new Junction(graph, frontiers, null);
             newJunctions.Add(newJunction);
             foreach (var edge in gate.Edges)
@@ -656,6 +723,47 @@ public class FibredSurface: IPatchedTransformable
         foreach (var oldJunction in Q.Vertices)
             graph.RemoveVertex(oldJunction); // todo: check if the implementation realized that no edges are left at this junction.
         return true;
+    }
+    
+    public List<HashSet<UnorientedStrip>> prePeripheralDegree()
+    {
+        var degrees = new List<HashSet<UnorientedStrip>> {
+            [0] = peripheralSubgraph.Edges.ToHashSet()
+        };
+        var remainingEdges = graph.Edges.ToHashSet();
+        remainingEdges.ExceptWith(degrees[0]);
+        for (int i = 1; i <= 2 * graph.EdgeCount; i++) // should never reach this limit
+        {
+            var P_i = (from strip in remainingEdges
+                where strip.EdgePath.All(edge => degrees[i - 1].Contains(edge.UnderlyingEdge))
+                select strip).ToHashSet();
+            degrees.Add(P_i);
+            remainingEdges.ExceptWith(P_i);
+            if (P_i.Count == 0) break;
+        }
+        return degrees;
+    }
+
+    public IEnumerable<List<Strip>> GetPeripheralInefficiencies()
+    {
+        var prePeripheralDegrees = prePeripheralDegree();
+        var prePeriphery = new HashSet<UnorientedStrip>();
+        foreach (var degree in prePeripheralDegrees)
+            prePeriphery.UnionWith(degree);
+        foreach (var edge in Edges)
+        {
+            if (!prePeriphery.Contains(edge.Dg)) 
+                continue;
+            var otherEdges = edge.Source.Star().Where(
+                e => Equals(e.Dg, edge.Dg) ).Cast<Strip>().ToList();
+            if (otherEdges.Count > 1)
+                yield return otherEdges;
+        }
+    }
+
+    public void RemovePeripheralInefficiency(List<Strip> foldableEdges)
+    {
+        FoldInitialSegment(foldableEdges);
     }
 
 }

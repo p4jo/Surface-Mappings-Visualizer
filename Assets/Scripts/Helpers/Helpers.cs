@@ -163,6 +163,13 @@ public static class Helpers
         list.RemoveAt(list.Count - 1);
         return last;
     }
+    
+    public static void Deconstruct<T>(this IEnumerable<T> list, out T first, out T second)
+    {
+        using var enumerator = list.GetEnumerator();
+        first = enumerator.MoveNext() ? enumerator.Current : default;
+        second = enumerator.MoveNext() ? enumerator.Current : default;
+    }
 
     public static ObjectWithString WithToString(this object obj, string toString) => new(obj, toString);
 
