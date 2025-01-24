@@ -64,16 +64,19 @@ public class EdgeCycle
                 if (l >= 0)
                 {
                     for (int m = 0; m < i; m++)
-                        edgeCycle.attractedEdges.Add((orbit[m], l + i - m));
+                        if (edgeCycle.CycleIndexOf(orbit[m]) == -1)
+                            edgeCycle.attractedEdges.Add((orbit[m], l + i - m));
                     break;
                 }
 
                 int j = orbit.IndexOf(e_i); // todo: debug to see if this uses my equality comparison
                 if (j < 0) continue;
-                edgeCycle = new EdgeCycle(e_i, i - j); // this assigns the Dg∞ to the cycle
+                edgeCycle = new EdgeCycle(e_i, i - j); 
+                edgeCycles.Add(edgeCycle); // this assigns the Dg∞ to the cycle
 
                 for (int m = 0; m < j; m++)
-                    edgeCycle.attractedEdges.Add((orbit[m], j - m));
+                    if (edgeCycle.CycleIndexOf(orbit[m]) == -1)
+                        edgeCycle.attractedEdges.Add((orbit[m], j - m));
 
                 break;
             }

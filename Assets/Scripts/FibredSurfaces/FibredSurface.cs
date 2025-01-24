@@ -33,7 +33,8 @@ public class FibredSurface: IPatchedTransformable
     {
         junctionDrawables ??= new Dictionary<string, ITransformable>();
         peripheralEdges ??= new List<string>();
-        
+        graph = new FibredGraph(); // up here, so that the junctions reference this
+
         var vertexNames = 
             (from v in edgeDescriptions select v.Item2)
             .Concat(from v in edgeDescriptions select v.Item3).ToHashSet();
@@ -51,12 +52,7 @@ public class FibredSurface: IPatchedTransformable
             let curve = tuple.Item1
             let source = tuple.Item2
             let target = tuple.Item3
-            select new UnorientedStrip()
-            {
-                Source = junctions[source],
-                Target = junctions[target],
-                Curve = curve
-            }
+            select new UnorientedStrip(curve, junctions[source], junctions[target], new List<Strip>(), graph)
         ).ToList();
         var edges = new Dictionary<string, Strip>((
                 from strip in strips select new KeyValuePair<string, Strip>(strip.Name.ToLower(), strip)
@@ -76,7 +72,6 @@ public class FibredSurface: IPatchedTransformable
             strip.Source.image ??= strip.Dg?.Source;
         }
 
-        graph = new FibredGraph();
         graph.AddVerticesAndEdgeRange(strips);
         
         peripheralSubgraph = new FibredGraph();
@@ -110,7 +105,7 @@ public class FibredSurface: IPatchedTransformable
             newEdges[edge] = newEdge;
         }
         
-        newGraph.AddVerticesAndEdgeRange(newEdges.Values);
+        newGraph.AddVerticesAndEdgeRange(newEdges.Values); // technically happens in the Source.set and Target.set accessors
         var newPeripheralSubgraph = new FibredGraph(true);
         newPeripheralSubgraph.AddVerticesAndEdgeRange(
             from edge in peripheralSubgraph.Edges select newEdges[edge]
@@ -184,14 +179,16 @@ public class FibredSurface: IPatchedTransformable
     public bool ApplyNextSuggestion()
     {
         var suggestion = NextSuggestion();
-        if (suggestion == null) return true; // done!
+        if (suggestion == null) return false; // done!
         ApplySuggestion(suggestion.options, suggestion.buttons.First()); // selected ones (all!)
-        return false;
+        return true;
     }
     
     public void BestvinaHandelAlgorithm()
     {
-        while (ApplyNextSuggestion()) { }
+        var limit = 20 * graph.EdgeCount;
+        for (int i = 0; i < limit && ApplyNextSuggestion(); i++)
+        { }
         // todo: save result (reducible / growth)
     }
     
@@ -208,16 +205,30 @@ public class FibredSurface: IPatchedTransformable
                 foreach (object o in suggestion)
                 {
                     if (o is not ValueTuple<Strip, EdgePoint[], Junction[]> s) continue;
-                    foreach (var edgePoint in s.Item2) PullTightBackTrack(edgePoint);
-                    foreach (var junction in s.Item3) PullTightExtremalVertex(junction);
+                    
+                    var backTracks = s.Item2.ToArray();
+                    // ReSharper disable once ForCanBeConvertedToForeach // we modify the list!
+                    for (var i = 0; i < backTracks.Length; i++) 
+                        PullTightBackTrack(backTracks[i], backTracks);
+                    
+                    foreach (var junction in s.Item3.ToArray() ) 
+                        PullTightExtremalVertex(junction);
+                    // todo: pulling tight along an edge and along the reverse edge do not commute! If you do both, some extremal vertices might not be extremal anymore, and some backtracks might not be backtracks anymore. (e.g. if St(v) = {e,f} and g(e) = dDa, g(f) = d, then v is extremal and e has a backtrack, both in d. But ?? maybe no problem?? TODO 
                 }
                 break;
             case "Tighten All":
-                foreach (var vertex in GetExtremalVertices()) PullTightExtremalVertex(vertex);
-                foreach (var backTrack in GetBackTracks()) PullTightBackTrack(backTrack);
+                foreach (var vertex in GetExtremalVertices().ToArray()) // to avoid concurrent modification 
+                    PullTightExtremalVertex(vertex);
+                
+                var backTracks2 = GetBackTracks().ToArray();
+                // ReSharper disable once ForCanBeConvertedToForeach // we modify the list!
+                for (var i = 0; i < backTracks2.Length; i++) 
+                    PullTightBackTrack(backTracks2[i], backTracks2);
+
                 break;
             case "Valence-1 Removal":
-                foreach (var junction in suggestion.Cast<Junction>()) RemoveValenceOneJunction(junction);
+                foreach (var junction in suggestion.Cast<Junction>()) 
+                    RemoveValenceOneJunction(junction);
                 break;
             case "Absorb":
                 AbsorbIntoPeriphery();
@@ -302,13 +313,23 @@ public class FibredSurface: IPatchedTransformable
         return subforests.Values;
     }
     
-    bool IsPeripheryFriendlySubforest(FibredGraph subgraph, FibredGraph peripheralSubgraph = null, bool remove = false)
+    /// <summary>
+    /// This checks if the graph is a subforest at each component touches the peripheral subgraph in at most one vertex.
+    /// Thus if touching and remove are true, this checks if subgraph deformation retracts to the peripheral subgraph.
+    /// </summary>
+    /// <param name="subgraph"></param>
+    /// <param name="peripheralSubgraph">If not present, the saved peripheral subgraph P is taken.</param>
+    /// <param name="remove">If remove is true, subgraph is replaced by (subgraph \ peripheralSubgraph)</param>
+    /// <param name="touching">If touching is true, each component must touch the peripheral subgraph in exactly one vertex.</param>
+    /// <returns></returns>
+    bool IsPeripheryFriendlySubforest(FibredGraph subgraph, FibredGraph peripheralSubgraph = null, bool remove = false,
+        bool touching = false)
     {
         peripheralSubgraph ??= this.peripheralSubgraph;
         if (remove)
         {
             var edges = subgraph.Edges.ToHashSet();
-            edges.IntersectWith(peripheralSubgraph.Edges);
+            edges.ExceptWith(peripheralSubgraph.Edges);
             subgraph = new FibredGraph(true); 
             subgraph.AddVerticesAndEdgeRange(edges);
         };
@@ -321,11 +342,11 @@ public class FibredSurface: IPatchedTransformable
         {
             if (components.TryGetValue(vertex, out var comp))
                 componentIntersections[comp]++;
-            if (componentIntersections[comp] > 1) return false;  
+            if (componentIntersections[comp] > 1) return false; 
+            // one component of the subforest contains more than one vertex of the peripheral subgraph. Collapsing it would destroy the peripheral subgraph.
+            // this is what we call "not periphery-friendly"
         }
-
-        return true;
-        // one component of the subforest contains more than one vertex of the peripheral subgraph. Collapsing it would destroy the peripheral subgraph.
+        return !touching || componentIntersections.All(i => i == 1);
     }
     
     public void CollapseInvariantSubforest(FibredGraph subforest)
@@ -447,14 +468,26 @@ public class FibredSurface: IPatchedTransformable
             // for self-loops, this takes one from both ends.
         }
         // todo: isotopy: Move vertex and shorten the strips
+        // todo? update EdgePoints?
     }
     
-    public void PullTightBackTrack(EdgePoint backTrack)
+    public void PullTightBackTrack(EdgePoint backTrack, IList<EdgePoint> updateEdgePoints = null)
     {
+        updateEdgePoints ??= new List<EdgePoint>();
+        
         var strip = backTrack.edge;
-        var i = backTrack.i;
+        var i = backTrack.index;
         if (i == -1) PullTightExtremalVertex(strip.Source); 
-        strip.EdgePath = strip.EdgePath.Take(i).Concat(strip.EdgePath.Skip(i + 2)).ToList();
+        strip.EdgePath = strip.EdgePath.Take(i - 1).Concat(strip.EdgePath.Skip(i + 1)).ToList();
+        
+        for (int k = 0; k < updateEdgePoints.Count; k++)
+        {
+            var j = updateEdgePoints[k].AlignedIndex(strip, out var reverse);
+            if (j < i) continue;
+            var res = j == i ? new EdgePoint(strip, j - 1) : new EdgePoint(strip, j - 2);
+            updateEdgePoints[k] = reverse ? res.Reversed() : res;
+        }
+        
         // todo: isotopy to make the strip shorter
     }
 
@@ -471,7 +504,7 @@ public class FibredSurface: IPatchedTransformable
         graph.RemoveEdges(from edge in edges.Skip(1) select edge.UnderlyingEdge);
         foreach (var vertex in targetVerticesToFold)
         {
-            foreach (var edge in vertex.Star()) 
+            foreach (var edge in vertex.Star().ToArray()) // to avoid concurrent modification 
                 edge.Source = newVertex;
             graph.RemoveVertex(vertex);
         }
@@ -480,10 +513,18 @@ public class FibredSurface: IPatchedTransformable
         {
             for (int k = 0; k < updateEdgePoints.Count; k++)
             {
-                var j = updateEdgePoints[k].IndexDirectionFixed(edge);
+                var j = updateEdgePoints[k].AlignedIndex(edge);
                 if (j < 0) continue;
                 updateEdgePoints[k] = new EdgePoint(newEdge, j);
             }
+        }
+
+        foreach (var strip in graph.Edges)
+        {
+            strip.EdgePath = strip.EdgePath.Select(
+                edge => edges.Contains(edge) ? newEdge : 
+                    edges.Contains(edge.Reversed()) ? newEdge.Reversed() : edge
+            ).ToList();
         }
         
     }
@@ -492,29 +533,58 @@ public class FibredSurface: IPatchedTransformable
     {
         updateEdgePoints ??= new List<EdgePoint>();
         var splitEdge = splitPoint.edge;
-        var i = splitPoint.i;
         var edgePath = splitEdge.EdgePath;
         var splitTime = splitPoint.GetCurveTimeInJunction();
         
         var newVertex = new Junction(graph, splitEdge.Curve[splitTime], splitPoint.Image);
 
         var firstSegment = splitEdge.Copy();
-        firstSegment.EdgePath = edgePath.Take(i).ToList();
+        firstSegment.EdgePath = edgePath.Take(splitPoint.index).ToList();
         firstSegment.Target = newVertex;
         firstSegment.Curve = firstSegment.Curve.Restrict(0, splitTime);
         
         var secondSegment = splitEdge.Copy();
-        secondSegment.EdgePath = edgePath.Skip(i).ToList();
+        secondSegment.EdgePath = edgePath.Skip(splitPoint.index).ToList();
         secondSegment.Source = newVertex;
         secondSegment.Curve = secondSegment.Curve.Restrict(splitTime, secondSegment.Curve.Length);
-        
-        graph.AddVertex(newVertex);
-        graph.AddEdge(firstSegment);
-        graph.AddEdge(secondSegment);
-        graph.RemoveEdge(splitEdge.UnderlyingEdge);
 
-        foreach (var strip in graph.Edges)
+        if (splitEdge is OrderedStrip { reverse: true }) { // this should be avoided
+            firstSegment.Name = splitEdge.UnderlyingEdge.Name + "-1"; // the first segment from the end; but it is by default reversed; when it is reversed, it looks like D-1. I.E. if we split at D[1], D becomes d-1 d-2 and d becomes D-2 D-1.
+            secondSegment.Name = splitEdge.UnderlyingEdge.Name + "-2";
+        }
+        else {
+            firstSegment.Name = splitEdge.Name + "1";
+            secondSegment.Name = splitEdge.Name + "2";
+        }
+        
+
+        for (var k = 0; k < updateEdgePoints.Count; k++)
         {
+            var splitPointAligned = splitPoint.AlignedWith(updateEdgePoints[k].edge, out var reverse);
+            if (splitPointAligned is null) continue;
+            
+            var j = updateEdgePoints[k].index;
+            var i = splitPointAligned.index;
+            // if the edge point was on the split edge, it is now on the first or second segment
+            // if it was on the reversed edge, it is now on the reversed first or second segment
+            if (j < i) updateEdgePoints[k] = new EdgePoint(reverse ? secondSegment.Reversed() : firstSegment, j);
+            else updateEdgePoints[k] = new EdgePoint(reverse ? firstSegment.Reversed() : secondSegment, j - i);
+        }
+
+        for (var k = 0; k < updateEdgePoints.Count; k++)
+        { // move the edge point index to the right in preparation for the replacement in the next step
+            var edgePoint = updateEdgePoints[k];
+            updateEdgePoints[k] = new EdgePoint(edgePoint.edge, 
+                edgePoint.index + edgePoint.edge.EdgePath.Take(edgePoint.index).Count(edge => edge.UnderlyingEdge.Equals(splitEdge.UnderlyingEdge)));
+        }
+        // these three things now already happen in the Strip.set_Target and Strip.set_Source accessors
+        // graph.AddVertex(newVertex);
+        // graph.AddEdge(firstSegment);
+        // graph.AddEdge(secondSegment);
+        graph.RemoveEdge(splitEdge.UnderlyingEdge);
+        
+        foreach (var strip in graph.Edges)
+        { // in each edgePath, replace the splitEdge by the two new edges
             strip.EdgePath = strip.EdgePath.SelectMany(
                 edge => edge.Equals(splitEdge)
                     ? new() {firstSegment, secondSegment}
@@ -524,13 +594,6 @@ public class FibredSurface: IPatchedTransformable
             ).ToList();
         }
         
-        for (var k = 0; k < updateEdgePoints.Count; k++)
-        {
-            var j = updateEdgePoints[k].IndexDirectionFixed(splitEdge);
-            if (j < 0) continue;
-            if (j < i) updateEdgePoints[k] = new EdgePoint(firstSegment, j);
-            else updateEdgePoints[k] = new EdgePoint(secondSegment, j - i);
-        }
 
         return (firstSegment, secondSegment);
     }
@@ -538,24 +601,49 @@ public class FibredSurface: IPatchedTransformable
     public void FoldInitialSegment(IList<Strip> strips, int? i = null, IList<EdgePoint> updateEdgePoints = null)
     {
         i ??= Strip.SharedInitialSegment(strips);
+        if (i == 0)
+        {
+            Debug.LogError("The edges do not have a common initial segment.");
+            return;
+        }
         updateEdgePoints ??= new List<EdgePoint>();
+        var l = updateEdgePoints.Count;
+        foreach (var strip in strips) 
+            updateEdgePoints.Add(strip[i.Value]);
+        // we have to update the edge points after each split, as else we might split an edge and its reverse (which doesn't exist anymore after we split the original edge), thus creating 4 instead of 3 new edges! (or instead of 2)
+            
 
         var initialStripSegments = new List<Strip>(strips.Count);
         // var terminalStripSegments = new List<Strip>(strips.Length);
-        foreach (var edge in strips)
+        for (var index = 0; index < strips.Count; index++)
         {
-            if (edge.EdgePath.Count == i)
+            var splitEdgePoint = updateEdgePoints[l + index];
+            var edge = splitEdgePoint.edge; // instead of strips[index]
+            var splitIndex = splitEdgePoint.index;
+            if (splitIndex == edge.EdgePath.Count) // it is never 0
             {
                 initialStripSegments.Add(edge);
                 // terminalStripSegments.Add(null);
                 continue;
             }
-
-            var (firstSegment, secondSegment) = SplitEdge(new EdgePoint(edge, i.Value), updateEdgePoints);
             
-            initialStripSegments.Add(firstSegment);
+            if (splitEdgePoint.edge is OrderedStrip { reverse: true })
+            {
+                // only split according to the chosen direction (of the "undirected" edge, which in fact is actually very directed, determining the orientation of the graph).
+                var (firstSegment, secondSegment) = SplitEdge(splitEdgePoint.Reversed(), updateEdgePoints);
+                firstSegment.Name = edge.UnderlyingEdge.Name;
+                initialStripSegments.Add(secondSegment.Reversed());
+            }
+            else
+            {
+                var (firstSegment, secondSegment) = SplitEdge(splitEdgePoint, updateEdgePoints);
+                secondSegment.Name = edge.Name;
+                initialStripSegments.Add(firstSegment);
+            }
+
             // terminalStripSegments.Add(secondSegment);
         }
+
         FoldEdges(initialStripSegments, updateEdgePoints);
     }
 
@@ -655,7 +743,7 @@ public class FibredSurface: IPatchedTransformable
         {
             if (Q.Edges.Contains(strip)) continue;
             var orbit = OrbitOfEdge(strip);
-            if (IsPeripheryFriendlySubforest(orbit, Q, true))
+            if (IsPeripheryFriendlySubforest(orbit, Q, true, true))
                 // this means that after adding the orbit to Q, it still deformation retracts onto Q (thus P).
                 Q.AddVerticesAndEdgeRange(orbit.Edges);
         }
@@ -727,9 +815,8 @@ public class FibredSurface: IPatchedTransformable
     
     public List<HashSet<UnorientedStrip>> prePeripheralDegree()
     {
-        var degrees = new List<HashSet<UnorientedStrip>> {
-            [0] = peripheralSubgraph.Edges.ToHashSet()
-        };
+        var degrees = new List<HashSet<UnorientedStrip>>();
+        degrees.Add(peripheralSubgraph.Edges.ToHashSet());
         var remainingEdges = graph.Edges.ToHashSet();
         remainingEdges.ExceptWith(degrees[0]);
         for (int i = 1; i <= 2 * graph.EdgeCount; i++) // should never reach this limit

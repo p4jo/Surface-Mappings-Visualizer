@@ -39,6 +39,8 @@ public class MainMenu: MonoBehaviour
             foreach (ModelSurfaceSide side in modelSurface.sides) 
                 surfaceMenu.Display(side, surfaceName, false);
         }
+        
+        BHTest.Test();
     }
 
     private void OnStuffShown(ITransformable stuff, string surface)

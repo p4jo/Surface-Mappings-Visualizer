@@ -10,22 +10,22 @@ public class EdgePoint
     /// Represents the (equivalence class of) point in the edge that gets mapped into a vertex, in between the edges in the edgePath with index i-1 and i.
     /// (i.e. the i-th vertex after leaving the original vertex). If i=0, it is the source vertex, if i=edge.EdgePath.Count, it is the target vertex.
     /// </summary>
-    public EdgePoint(Strip edge, int i)
+    public EdgePoint(Strip edge, int index)
     {
         this.edge = edge;
-        this.i = i;
+        this.index = index;
     }
 
     public readonly Strip edge;
-    public readonly int i;
+    public readonly int index;
 
-    public Junction Image => edge.EdgePath[i].Source;
+    public Junction Image => edge.EdgePath[index].Source;
 
     public override bool Equals(object obj) => obj switch
     {
-        Junction other => i == 0 && Equals(other, edge.Source) || i == edge.EdgePath.Count && Equals(other, edge.Target),
-        EdgePoint other => i == 0 && Equals(other, edge.Source) || i == edge.EdgePath.Count && Equals(other, edge.Target) || 
-                           other.i == IndexDirectionFixed(other.edge),
+        Junction other => index == 0 && Equals(other, edge.Source) || index == edge.EdgePath.Count && Equals(other, edge.Target),
+        EdgePoint other => index == 0 && Equals(other, edge.Source) || index == edge.EdgePath.Count && Equals(other, edge.Target) || 
+                           other.index == AlignedIndex(other.edge),
         _ => false
     };
 
@@ -35,28 +35,58 @@ public class EdgePoint
         // Better have the entrance and exit times?
         // I.e. a) we have to know the homeo f.
         // b) we have to follow the curve until it enters a junction; i times.
-        return i * edge.Curve.Length / edge.EdgePath.Count;
+        return index * edge.Curve.Length / edge.EdgePath.Count;
     }
     
-    public int IndexDirectionFixed(Strip other)
+    public int AlignedIndex(Strip other)
     {
-        if (edge.Equals(other))
-            return i;
-        if (edge.Equals(other.Reversed()))
-            return edge.EdgePath.Count - i;
+        if (IsInEdge(other, out var reverse))
+            return reverse ? edge.EdgePath.Count - index : index;
         return -1;
     }
+    public int AlignedIndex(Strip other, out bool reverse)
+    {
+        if (IsInEdge(other, out reverse))
+            return reverse ? edge.EdgePath.Count - index : index;
+        return -1;
+    }
+
+    public bool IsInEdge(Strip other, out bool reverse)
+    {
+        reverse = edge.Equals(other.Reversed());
+        return edge.Equals(other) || reverse;
+    }
     
+    /// <summary>
+    /// The same point but with the edge reversed.
+    /// </summary>
+    /// <returns></returns>
+    public EdgePoint Reversed() => new(edge.Reversed(), edge.EdgePath.Count - index);
+    
+    public EdgePoint AlignedWith(Strip other)
+    {
+        if (IsInEdge(other, out var reverse))
+            return reverse ? Reversed() : this;
+        return null;
+    }
+    
+    public EdgePoint AlignedWith(Strip other, out bool reverse)
+    {
+        if (IsInEdge(other, out reverse))
+            return reverse ? Reversed() : this;
+        return null;
+    }
+
+
     public override string ToString()
     {
         var names = from e in edge.EdgePath select e.Name;
-        var textSegments = names.Take(i).Append("·").Concat(names.Skip(i));
-        return $"Point in {edge} at g({edge.Name}) = {string.Join("", textSegments)}";
+        return $"Point in Strip {edge.Name} at g({edge.Name}) = {string.Join(" ", names.Take(index))}|{string.Join(" ", names.Skip(index))}";
     }
 
     public Strip DgBefore()
     {
-        if (i != 0) return edge.EdgePath[i - 1].Reversed();
+        if (index != 0) return edge.EdgePath[index - 1].Reversed();
 
         var star = edge.Source.Star().ToArray();
         // we assume that in this case there is only one other edge in the star of the source.
@@ -68,7 +98,7 @@ public class EdgePoint
     
     public Strip DgAfter()
     {
-        if (i != edge.EdgePath.Count) return edge.EdgePath[i];
+        if (index != edge.EdgePath.Count) return edge.EdgePath[index];
         var edgeReversed = edge.Reversed();
         var star = edge.Target.Star().ToArray();
         // we assume that in this case there is only one other edge in the star of the target.
@@ -83,14 +113,14 @@ public class Inefficiency: EdgePoint
      public readonly List<Strip> edgesToFold;
      public int initialSegmentToFold;
      public readonly int order;
-     public Inefficiency(Strip edge, int i, int order, List<Strip> edgesToFold, int initialSegmentToFold) : base(edge, i)
+     public Inefficiency(Strip edge, int index, int order, List<Strip> edgesToFold, int initialSegmentToFold) : base(edge, index)
      {
          this.edgesToFold = edgesToFold;
          this.initialSegmentToFold = initialSegmentToFold;
          this.order = order;
      }
 
-     public Inefficiency(EdgePoint edgePoint) : base(edgePoint.edge, edgePoint.i)
+     public Inefficiency(EdgePoint edgePoint) : base(edgePoint.edge, edgePoint.index)
      {
          Strip a = edgePoint.DgBefore();
          Strip b = edgePoint.DgAfter();
@@ -105,9 +135,14 @@ public class Inefficiency: EdgePoint
                  continue;
              }
 
+             order = j;
+             if (j == 0) { // the case where the two edges are already the same.
+                 edgesToFold = new List<Strip> ();
+                 initialSegmentToFold = 0;
+                 return;
+             }
              edgesToFold = (from e in aOld!.Source.Star() where Equals(e.Dg, a) select e).ToList<Strip>();
              initialSegmentToFold = Strip.SharedInitialSegment(edgesToFold);
-             order = j;
              return;
          }
          throw new Exception("Bug: Two edges in the same gate didn't eventually get mapped to the same edge under Dg.");

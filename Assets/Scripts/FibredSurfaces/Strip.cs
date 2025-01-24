@@ -4,9 +4,18 @@ using System.Linq;
 using JetBrains.Annotations;
 using QuikGraph;
 using UnityEngine;
+using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
+
 
 public abstract class Strip: IEdge<Junction>
 {
+    public readonly FibredGraph graph;
+    
+    protected Strip(FibredGraph graph)
+    {
+        this.graph = graph;
+    }
+    
     public virtual Curve Curve { get; set; }
 
     /// <summary>
@@ -15,11 +24,34 @@ public abstract class Strip: IEdge<Junction>
     public virtual List<Strip> EdgePath { get; set; }
     
     [CanBeNull] public virtual Strip Dg => EdgePath.FirstOrDefault();
-    
-    public virtual Junction Source { get; set; }
-    public virtual Junction Target { get; set; }
+
+    protected Junction source;
+    public virtual Junction Source
+    {
+        get => source;
+        set { 
+            graph.RemoveEdge(UnderlyingEdge);
+            source = value;
+            graph.AddVerticesAndEdge(UnderlyingEdge);
+        }
+    }
+
+    protected Junction target;
+    public virtual Junction Target
+    {
+        get => target;
+        set {
+            graph.RemoveEdge(UnderlyingEdge);
+            target = value;
+            graph.AddVerticesAndEdge(UnderlyingEdge);
+        }
+    }
     public abstract UnorientedStrip UnderlyingEdge { get; }
-    public virtual string Name => Curve.Name;
+    public virtual string Name
+    {
+        get => Curve.Name;
+        set => Curve.Name = value.ToLower();
+    }
 
     public virtual Junction OtherVertex(Junction vertex) => vertex == Source ? Target : Source;
     
@@ -29,22 +61,18 @@ public abstract class Strip: IEdge<Junction>
         other switch
         {
             OrderedStrip orderedStrip => orderedStrip.Equals(this),
-            UnorientedStrip otherStrip => Source == otherStrip.Source && Target == otherStrip.Target &&
-                                Curve.Equals(otherStrip.Curve) && EdgePath.SequenceEqual(otherStrip.EdgePath),
-            // todo. this actually *should* be ReferenceEquals, shouldn't it? Parallel edges might be considered equal. (well no, because of the saved curve). However the "UnorderedStrip"s should not be doubled.
+            UnorientedStrip otherStrip => ReferenceEquals(this, otherStrip),
+                // Source == otherStrip.Source && Target == otherStrip.Target &&
+                // Curve.Equals(otherStrip.Curve) && EdgePath.SequenceEqual(otherStrip.EdgePath),
+            //  this actually *should* be ReferenceEquals, shouldn't it? Parallel edges might be considered equal. (well no, because of the saved curve). However the "UnorderedStrip"s should not be doubled. ALSO, THIS CAUSES A STACKOVERFLOW (self-reference in SequenceEqual)
             _ => false
         };
     
-    public virtual UnorientedStrip Copy() => new() {
-        Curve = Curve,
-        EdgePath = EdgePath,
-        Source = Source,
-        Target = Target
-    };
+    public virtual UnorientedStrip Copy() => new( Curve, Source, Target, EdgePath, graph);
 
     public EdgePoint this[int i] => new(this, i);
 
-    public override string ToString() => $"Strip {Curve.Name}";
+    public override string ToString() => $"Strip {Name} with g({Name}) = {string.Join(" ", EdgePath.Select(e => e.Name))}"; 
 
     public static int SharedInitialSegment(IList<Strip> strips)
     {
@@ -67,6 +95,13 @@ public class UnorientedStrip : Strip
     private OrderedStrip reversed;
     public override Strip Reversed() => reversed ??= new OrderedStrip(this, true);
 
+    public UnorientedStrip(Curve curve, Junction source, Junction target, List<Strip> edgePath, FibredGraph graph) : base(graph)
+    {
+        Curve = curve;
+        this.source = source;
+        this.target = target;
+        EdgePath = edgePath;
+    }
 }
 
 public class OrderedStrip: Strip
@@ -74,8 +109,12 @@ public class OrderedStrip: Strip
     public override Curve Curve => reverse ? UnderlyingEdge.Curve.Reverse() : UnderlyingEdge.Curve;
     
     public override UnorientedStrip UnderlyingEdge { get; }
-    public override string Name => reverse ? UnderlyingEdge.Name.ToUpper() : UnderlyingEdge.Name;
-    // "<s>" + UnderlyingEdge.Name + "</s>"   (strikethrough in RichText; workaround for overbar; use for fancy display?
+    public override string Name
+    {
+        get => reverse ? UnderlyingEdge.Name.ToUpper() : UnderlyingEdge.Name;
+        set => UnderlyingEdge.Name = value.ToLower();
+    }
+    // "<s>" + UnderlyingEdge.Name + "</s>"   (strikethrough in RichText; workaround for overbar; use for fancy display?)
     // For the moment, we just use the name of the underlying edge in UPPERCASE.
     
     /// <summary>
@@ -83,7 +122,7 @@ public class OrderedStrip: Strip
     /// </summary>
     public readonly bool reverse; 
 
-    public OrderedStrip(UnorientedStrip underlyingEdge, bool reverse)
+    public OrderedStrip(UnorientedStrip underlyingEdge, bool reverse): base(underlyingEdge.graph)
     {
         this.UnderlyingEdge = underlyingEdge;
         this.reverse = reverse;

@@ -45,34 +45,43 @@ public class ModelSurfaceParameter
 public static class SurfaceGenerator
 {
     
-    private static ModelSurface FlatTorusModelSurface(int punctures, string name)
+    public static ModelSurface FlatTorusModelSurface(int punctures, string name, string labelA = null, string labelB = null)
     {
+        labelA ??= "a";
+        labelB ??= "b";
+        
         var right = new Vector2(τ, 0);
         var up = new Vector2(0, τ);
         var sides = new List<ModelSurface.PolygonSide>
         {
-            new("a", Vector2.zero, right, false),
-            new("a", up, up + right, true),
-            new("b", Vector2.zero, up, true),
-            new("b", right, right + up, false),
+            new(labelA, Vector2.zero, right, false),
+            new(labelA, up, up + right, true),
+            new(labelB, Vector2.zero, up, true),
+            new(labelB, right, right + up, false),
         };
         var modelSurface = new ModelSurface(name, 1, punctures, GeometryType.Flat, sides);
         return modelSurface;
     }
-    private static ModelSurface ModelSurface4GGon(int genus, int punctures, string name)
+    public static ModelSurface ModelSurface4GGon(int genus, int punctures, string name, IEnumerable<string> labels = null)
     {
         if (genus < 1)
             throw new ArgumentException("genus must be at least 1");
+        if (labels == null)
+            labels = Enumerable.Range(0, 2 * genus).Select(i => ((char)('a' + i)).ToString());
         if (genus == 1)
-            return FlatTorusModelSurface(punctures, name); 
+        {
+            var (labelA, labelB) = labels;
+            return FlatTorusModelSurface(punctures, name, labelA, labelB); 
+        }
         int n = 4 * genus;
         double radius = Math.Sqrt(Math.Cos(τ / n)); 
-        // chosen s.t. the vertex has angle τ (angle sum) 
+        // chosen s.t. all interior angles are τ / n (and thus the vertex is a regular point for the metric) 
         var vertices = (
             from k in Enumerable.Range(0, n)
-            select Complex.FromPolarCoordinates(radius, τ * k / n).ToVector3()
+            select Complex.FromPolarCoordinates(radius, τ * k / n).ToVector2()
         ).ToArray();
         List<ModelSurface.PolygonSide> sides = new();
+        var labelArray = labels.ToArray();
         for (var l = 0; l < genus; l++)
         {
             int i = 4 * l;
@@ -81,10 +90,10 @@ public static class SurfaceGenerator
             var c = vertices[i + 2];
             var d = vertices[i + 3];
             var e = vertices[(i + 4) % n];
-            sides.Add(new ModelSurface.PolygonSide("a" + l, a, b, false));
-            sides.Add(new ModelSurface.PolygonSide("b" + l, b, c, false));
-            sides.Add(new ModelSurface.PolygonSide("a" + l, d, c, true));
-            sides.Add(new ModelSurface.PolygonSide("b" + l, e, d, true));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l], a, b, false));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l + 1], b, c, false));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l], d, c, true));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l + 1], e, d, true));
         }
         return new ModelSurface(name, genus, punctures, GeometryType.HyperbolicDisk, sides);
     }
