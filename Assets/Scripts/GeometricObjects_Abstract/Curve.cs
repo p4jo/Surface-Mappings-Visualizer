@@ -39,13 +39,13 @@ public abstract class Curve: ITransformable<Curve>
     
     public virtual Curve Concatenate(Curve curve) => new ConcatenatedCurve(new Curve[] { this, curve });
 
-    private Curve reverseCurve;
+    protected Curve reverseCurve;
     private static readonly List<Color> colors = new()
     {
         Color.red, Color.green, Color.blue, Color.yellow, Color.cyan, Color.magenta, new Color(1, 0.5f, 0), new Color(0.5f, 0, 1)
     };
 
-    public virtual Curve Reverse() => reverseCurve ??= new ReverseCurve(this);
+    public virtual Curve Reversed() => reverseCurve ??= new ReverseCurve(this);
 
     /// <summary>
     /// 
@@ -108,12 +108,9 @@ public abstract class Curve: ITransformable<Curve>
         );
     }
 
-    public virtual Curve Restrict(float start, float end)
-    {
-        if (start < 0 || end > Length || start > end)
-            throw new Exception("Invalid restriction");
-        return new RestrictedCurve(this, start, end);
-    }
+    public virtual Curve Restrict(float start, float end) => new RestrictedCurve(this, start, end);
+
+    public abstract Curve Copy();
 }
 
 public class TransformedCurve : Curve
@@ -150,6 +147,9 @@ public class TransformedCurve : Curve
 
     
     public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
+    public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism);
+
+    public override Curve Reversed() => reverseCurve ??= new TransformedCurve(curve.Reversed(), homeomorphism);
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) =>
         new TransformedCurve(curve, homeomorphism * this.homeomorphism);
@@ -268,6 +268,8 @@ public class ConcatenatedCurve : Curve
         throw new Exception("What the heck");
     }
 
+    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name + "'");
+
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
         if (homeomorphism.isIdentity)
@@ -276,6 +278,8 @@ public class ConcatenatedCurve : Curve
             Name + " --> " + homeomorphism.target.Name
         );
     }
+
+    public override Curve Copy() => new ConcatenatedCurve(from segment in segments select segment.Copy(), Name);
 
 
     private static List<ConcatenationSingularPoint> CalculateSingularPoints(IReadOnlyList<Curve> segments, bool expectClosedCurve = false, bool ignoreSubConcatenatedCurves = false)
@@ -351,8 +355,12 @@ public class ReverseCurve : Curve
     public override Point ValueAt(float t) => curve.ValueAt(Length - t);
     public override TangentVector DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
 
+    public override Curve Reversed() => curve;
+
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
-        => curve.ApplyHomeomorphism(homeomorphism).Reverse();
+        => curve.ApplyHomeomorphism(homeomorphism).Reversed();
+
+    public override Curve Copy() => new ReverseCurve(curve.Copy());
 }
 
 public class RestrictedCurve : Curve
@@ -364,6 +372,8 @@ public class RestrictedCurve : Curve
 
     public RestrictedCurve(Curve curve, float start, float end)
     {
+        if (start < 0 || end > curve.Length || start > end)
+            throw new Exception("Invalid restriction");
         this.curve = curve;
         this.start = start;
         this.end = end;
@@ -387,8 +397,16 @@ public class RestrictedCurve : Curve
     public override Point ValueAt(float t) => curve.ValueAt(t + start);
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);
 
+    public override Curve Reversed() => reverseCurve ??= new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start);
+
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
+
+    public override Curve Restrict(float start, float end) => new RestrictedCurve(curve, this.start + start, this.start + end);
+
+    public override Curve Copy() =>
+        new RestrictedCurve(curve.Copy(), start, end)
+        { Name = Name };
 }
 
 
@@ -412,6 +430,7 @@ public class BasicParametrizedCurve : Curve
     public override Point ValueAt(float t) => value(t);
 
     public override TangentVector DerivativeAt(float t) => new TangentVector(value(t), derivative(t));
+    public override Curve Copy() => new BasicParametrizedCurve(Name, Length, Surface, value, derivative);
 }
 
 public class SplineSegment : InterpolatingCurve
@@ -454,4 +473,6 @@ public class SplineSegment : InterpolatingCurve
 
         return new TangentVector(pos, velocity / Length);
     }
+
+    public override Curve Copy() => new SplineSegment(StartVelocity, EndVelocity, Length, Surface, Name);
 }

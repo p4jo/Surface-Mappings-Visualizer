@@ -4,6 +4,7 @@ using UnityEngine;
 
 public class AbstractSurface
 {
+    
     /// <summary>
     /// These represent the drawn representations of this abstract surface
     /// </summary>
@@ -15,6 +16,15 @@ public class AbstractSurface
     private readonly Dictionary<(string, string), Homeomorphism> homeomorphisms = new();
 
     public GeodesicSurface geodesicSurface;
+
+
+    public AbstractSurface()
+    { }
+    public AbstractSurface(Surface surface)
+    {
+        AddDrawingSurface(surface);
+    }
+
 
     public void AddDrawingSurface(Surface surface)
     {

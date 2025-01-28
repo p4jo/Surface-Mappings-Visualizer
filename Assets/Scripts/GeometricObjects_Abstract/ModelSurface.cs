@@ -39,7 +39,6 @@ public partial class ModelSurface: GeodesicSurface
     
     public readonly List<ModelSurfaceVertex> vertices = new();
     public readonly List<PolygonSide> sidesAsParameters;
-    private readonly GeodesicSurface geometrySurface; // Euclidean or Hyperbolic plane.
     
     public static readonly Dictionary<GeometryType, GeodesicSurface> BaseGeometrySurfaces = new()
     {
@@ -51,6 +50,8 @@ public partial class ModelSurface: GeodesicSurface
     
     public override Vector3 MinimalPosition { get; }
     public override Vector3 MaximalPosition { get; }
+
+    protected GeodesicSurface GeometrySurface => BaseGeometrySurfaces[geometryType]; // Euclidean or Hyperbolic plane.
 
     public ModelSurface(string name,
         int genus,
@@ -229,24 +230,25 @@ public partial class ModelSurface: GeodesicSurface
         // the corresponding homeomorphisms must be defined elsewhere (where this is called from)
     }
     
+    public Curve GetBasicGeodesic(Point startPoint, Point endPoint, string name) => GeometrySurface.GetGeodesic(startPoint, endPoint, name);
+    
     public override Curve GetGeodesic(Point startPoint, Point endPoint, string name)
     {
-        GeodesicSurface baseGeometrySurface = BaseGeometrySurfaces[geometryType];
         if (startPoint is not IModelSurfacePoint)
             startPoint = ClampPoint(startPoint.Position);
         if (endPoint is not IModelSurfacePoint)
             endPoint = ClampPoint(endPoint.Position);
 
-        var (_, centerPoint) = DistanceMinimizer(startPoint, endPoint, baseGeometrySurface);
+        var (_, centerPoint) = DistanceMinimizer(startPoint, endPoint, GeometrySurface);
         if (centerPoint == null)
-            return baseGeometrySurface.GetGeodesic(startPoint, endPoint, name);
+            return GetBasicGeodesic(startPoint, endPoint, name);
         
         var ((_, firstCenterPosition), _) = startPoint.ClosestPosition(centerPoint);
         var ((_, secondCenterPosition), _) = endPoint.ClosestPosition(centerPoint);
         if (secondCenterPosition == firstCenterPosition)
             Debug.Log("Weird reflection at the boundary. For some reason it thought that going to the boundary is efficient, but we actually don't go through it because that takes longer.");
-        var firstSegment = baseGeometrySurface.GetGeodesic(startPoint, firstCenterPosition, name + "pt 1");
-        var secondSegment = baseGeometrySurface.GetGeodesic(secondCenterPosition, endPoint, name + "pt 2");
+        var firstSegment = GetBasicGeodesic(startPoint, firstCenterPosition, name + "pt 1");
+        var secondSegment = GetBasicGeodesic(secondCenterPosition, endPoint, name + "pt 2");
         return new ConcatenatedCurve(new[] { firstSegment, secondSegment }, name); // .Smoothed(); // TODO: this doesn't work as expected
     }
 
@@ -422,7 +424,7 @@ public class ModelSurfaceSide: Curve
         Debug.Log($"side {Name} (at {StartVelocity} got other side {other.Name} at {other.StartVelocity} with color {Color}");
     }
     
-    public override Curve Reverse() => ReverseModelSide();
+    public override Curve Reversed() => ReverseModelSide();
     
     /// <summary>
     /// The closest point on either this or the other curve.
@@ -444,7 +446,7 @@ public class ModelSurfaceSide: Curve
     {
         if (reverseSide != null) // this method will be called in AddOther from below in other.Reverse()!
             return reverseSide;
-        reverseSide = new(curve.Reverse(), !rightIsInside);
+        reverseSide = new(curve.Reversed(), !rightIsInside);
         reverseSide.reverseSide = this;
         reverseSide.Color = Color;
         reverseSide.AddOther(other.ReverseModelSide());
@@ -468,5 +470,12 @@ public class ModelSurfaceSide: Curve
         result.other.other = result;
         return result;
     }
-    
+
+    public override Curve Copy()
+    {
+        var copy = new ModelSurfaceSide(curve.Copy(), rightIsInside) { Name = Name };
+        var otherCopy = new ModelSurfaceSide(other.curve.Copy(), other.rightIsInside) { Name = other.Name };
+        copy.AddOther(otherCopy);
+        return copy;
+    }
 }

@@ -1,9 +1,7 @@
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Security.Claims;
 using UnityEngine;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
@@ -102,7 +100,6 @@ public static class Helpers
             Mathf.Min(a.z, b.z)
         );
     }
-    
     public static (T, float) ArgMin<T>(this IEnumerable<T> enumerable, System.Func<T, float> selector)
     {
         var min = float.MaxValue;
@@ -120,7 +117,7 @@ public static class Helpers
         return (argMin, min);
     }
 
-    public static (int, float) ArgMinIndex<T>(this IEnumerable<T> enumerable, Func<T, float> selector)
+    public static (int, float) ArgMinIndex<T>(this IEnumerable<T> enumerable, Func<T, float> selector) 
     {
         var min = float.MaxValue;
         var argMin = -1;
@@ -139,7 +136,19 @@ public static class Helpers
         return (argMin, min);
     }
     
+    public static (T, float) ArgMax<T>(this IEnumerable<T> enumerable, System.Func<T, float> selector)
+    {
+        var res = enumerable.ArgMin(t => -selector(t));
+        return (res.Item1, -res.Item2);
+    }
     
+    public static (int, float) ArgMaxIndex<T>(this IEnumerable<T> enumerable, Func<T, float> selector)
+    {
+        var res = enumerable.ArgMinIndex(t => -selector(t));
+        return (res.Item1, -res.Item2);
+    }
+
+
     public static IEnumerable<(T, T2)> CartesianProduct<T, T2>(this IEnumerable<T> enumerable, IEnumerable<T2> other)
     {
         return from t in enumerable from t2 in other select (t, t2);
@@ -170,6 +179,22 @@ public static class Helpers
         first = enumerator.MoveNext() ? enumerator.Current : default;
         second = enumerator.MoveNext() ? enumerator.Current : default;
     }
+    
+    public static bool ContainsDuplicates<T>(this IEnumerable<T> list)
+        => !list.All(new HashSet<T>().Add); // this is some weird way of writing this. From 
+    // the function is not x => new HashSet<T>().Add(x) but rather x => y.Add(x) where y = new HashSet<T>() is only created once.
+    
+    public static T FirstDuplicate<T>(this IEnumerable<T> list)
+    {
+        var hashSet = new HashSet<T>();
+        return list.FirstOrDefault(t => !hashSet.Add(t));
+    }
+    
+    public static T FirstDuplicate<T, T2>(this IEnumerable<T> list, Func<T, T2> selector)
+    {
+        var hashSet = new HashSet<T2>();
+        return list.FirstOrDefault(t => !hashSet.Add(selector(t)));
+    }
 
     public static ObjectWithString WithToString(this object obj, string toString) => new(obj, toString);
 
@@ -185,6 +210,12 @@ public static class Helpers
         }
 
         public override string ToString() => toString;
+    }
+    
+    public static string AddDots(this string s, int maxLength)
+    {
+        if (s.Length <= maxLength) return s;
+        return s[..(maxLength - 3)] + "...";
     }
 }
 

@@ -106,7 +106,8 @@
                 case IPatchedTransformable patchedTransformable:
                     foreach (var patch in patchedTransformable.Patches) 
                         Display(patch, preview);
-                    lastPreviewObject = patchedTransformable; 
+                    if (preview)
+                        lastPreviewObject = patchedTransformable; 
                     break;
                 default:
                     throw new NotImplementedException();
@@ -117,6 +118,8 @@
         {
             switch (input)
             {
+                case null:
+                    break;
                 case Point point:
                     RemovePoint(point);
                     break;

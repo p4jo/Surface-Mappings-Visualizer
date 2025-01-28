@@ -21,7 +21,7 @@ public abstract class Strip: IEdge<Junction>
     /// <summary>
     /// f maps this strip into the fibred Surface, and it traces out the edgePath g(this) = edgePath;
     /// </summary>
-    public virtual List<Strip> EdgePath { get; set; }
+    public virtual IReadOnlyList<Strip> EdgePath { get; set; }
     
     [CanBeNull] public virtual Strip Dg => EdgePath.FirstOrDefault();
 
@@ -47,11 +47,7 @@ public abstract class Strip: IEdge<Junction>
         }
     }
     public abstract UnorientedStrip UnderlyingEdge { get; }
-    public virtual string Name
-    {
-        get => Curve.Name;
-        set => Curve.Name = value.ToLower();
-    }
+    public abstract string Name { get; set; }
 
     public virtual Junction OtherVertex(Junction vertex) => vertex == Source ? Target : Source;
     
@@ -68,11 +64,10 @@ public abstract class Strip: IEdge<Junction>
             _ => false
         };
     
-    public virtual UnorientedStrip Copy() => new( Curve, Source, Target, EdgePath, graph);
 
     public EdgePoint this[int i] => new(this, i);
 
-    public override string ToString() => $"Strip {Name} with g({Name}) = {string.Join(" ", EdgePath.Select(e => e.Name))}"; 
+    public override string ToString() => $"{Name}: {Source} -> {Target} with g({Name}) = {string.Join(" ", EdgePath.Select(e => e.Name))}"; 
 
     public static int SharedInitialSegment(IList<Strip> strips)
     {
@@ -85,6 +80,18 @@ public abstract class Strip: IEdge<Junction>
         return i;
 
     }
+
+    public virtual UnorientedStrip CopyUnoriented(FibredGraph graph = null, Curve curve = null, Junction source = null,
+        Junction target = null, IReadOnlyList<Strip> edgePath = null, string name = null)
+    {
+        var res = new UnorientedStrip(curve ?? Curve.Copy(), source ?? Source, target ?? Target, edgePath ?? EdgePath.ToList(),
+            graph ?? this.graph);
+        if (name != null) res.Name = name;
+        return res;
+    }
+    
+    public abstract Strip Copy(FibredGraph graph = null, Curve curve = null, Junction source = null,
+        Junction target = null, IReadOnlyList<Strip> edgePath = null, string name = null);
 }
 
 public class UnorientedStrip : Strip
@@ -92,27 +99,43 @@ public class UnorientedStrip : Strip
     public ITransformable Drawable => Curve;
     public override UnorientedStrip UnderlyingEdge => this;
 
+    public override string Name
+    {
+        get => Curve.Name;
+        set
+        {
+            if (value.Any(char.IsUpper)) Debug.LogError("An unoriented strip should have a lowercase name!");
+            Curve.Name = value.ToLower();
+        }
+    }
+
     private OrderedStrip reversed;
     public override Strip Reversed() => reversed ??= new OrderedStrip(this, true);
 
-    public UnorientedStrip(Curve curve, Junction source, Junction target, List<Strip> edgePath, FibredGraph graph) : base(graph)
+    public UnorientedStrip(Curve curve, Junction source, Junction target, IReadOnlyList<Strip> edgePath, FibredGraph graph) : base(graph)
     {
         Curve = curve;
         this.source = source;
         this.target = target;
         EdgePath = edgePath;
     }
+    public override Strip Copy(FibredGraph undirectedGraph = null, Curve curve = null, Junction source = null,
+        Junction target = null, IReadOnlyList<Strip> edgePath = null, string name = null) => CopyUnoriented(undirectedGraph, curve, source, target, edgePath, name);
 }
 
 public class OrderedStrip: Strip
 {
-    public override Curve Curve => reverse ? UnderlyingEdge.Curve.Reverse() : UnderlyingEdge.Curve;
+    public override Curve Curve => reverse ? UnderlyingEdge.Curve.Reversed() : UnderlyingEdge.Curve;
     
     public override UnorientedStrip UnderlyingEdge { get; }
     public override string Name
     {
         get => reverse ? UnderlyingEdge.Name.ToUpper() : UnderlyingEdge.Name;
-        set => UnderlyingEdge.Name = value.ToLower();
+        set
+        {
+            if (reverse && value.Any(char.IsLower)) Debug.LogError("A reverse strip should have an uppercase Name!");
+            UnderlyingEdge.Name = value.ToLower();
+        }
     }
     // "<s>" + UnderlyingEdge.Name + "</s>"   (strikethrough in RichText; workaround for overbar; use for fancy display?)
     // For the moment, we just use the name of the underlying edge in UPPERCASE.
@@ -147,9 +170,13 @@ public class OrderedStrip: Strip
         }
     }
 
-    public override List<Strip> EdgePath => reverse ? ReversedEdgePath(UnderlyingEdge.EdgePath) : UnderlyingEdge.EdgePath;
+    public override IReadOnlyList<Strip> EdgePath // it is always an actual list, but editing it would lead to errors here!
+    {
+        get => reverse ? ReversedEdgePath(UnderlyingEdge.EdgePath) : UnderlyingEdge.EdgePath;
+        set => UnderlyingEdge.EdgePath = reverse ? ReversedEdgePath(value) : value;
+    }
 
-    public static List<Strip> ReversedEdgePath(IEnumerable<Strip> edgePath) =>
+    public static IReadOnlyList<Strip> ReversedEdgePath(IEnumerable<Strip> edgePath) =>
         edgePath.Reverse().Select(
             strip => strip.Reversed()
         ).ToList();
@@ -163,6 +190,18 @@ public class OrderedStrip: Strip
             UnorientedStrip otherStrip => !reverse && UnderlyingEdge.Equals(otherStrip),
             _ => false
         };
+
+    public override Strip Copy(FibredGraph undirectedGraph = null, Curve curve = null,
+        Junction source = null, Junction target = null, IReadOnlyList<Strip> edgePath = null, string name = null)
+    {
+        if (!reverse) return UnderlyingEdge.CopyUnoriented(undirectedGraph, curve, source, target, edgePath, name); 
+        
+        if (edgePath != null) edgePath = ReversedEdgePath(edgePath);
+        if (curve != null) curve = curve.Reversed();
+        (source, target) = (target, source);
+        var unorientedCopy = UnderlyingEdge.CopyUnoriented(undirectedGraph, curve, source, target, edgePath, name);
+        return unorientedCopy.Reversed();
+    }
 
     public override Junction OtherVertex(Junction vertex) => UnderlyingEdge.OtherVertex(vertex);
 }

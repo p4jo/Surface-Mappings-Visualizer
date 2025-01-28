@@ -21,26 +21,36 @@ public class MainMenu: MonoBehaviour
     public event Action UIMoved;
     public virtual void OnUIMoved() => UIMoved?.Invoke();
     public string selectedCurve;
-    
+    [SerializeField] private FibredSurfaceMenu fibredSurfaceMenu;
+
     private void Start()
     {
-        var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
-        var surface = SurfaceGenerator.CreateSurface(parameters);
-        
+        var testSurface = SurfaceGenerator.ModelSurface4GGon(2, 0, "Genus-2 surface", 
+                new string[] { "side d", "side c", "side a", "side b" } // labelling from [BH] example 6.1.
+            );
+        var surface = new AbstractSurface(testSurface);
+        // var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
+        // var surface = SurfaceGenerator.CreateSurface(parameters);
+        Initialize(surface);
+    }
+    
+    public void Initialize(AbstractSurface surface)
+    {
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
         var surfaceMenu = gameObject.GetComponent<SurfaceMenu>();
         surfaceMenu.Initialize(surface, canvas, cameraManager, this); 
         surfaceMenu.StuffShown += OnStuffShown;
+        surfaceMenu.StuffDeleted += OnStuffDeleted;
         surfaceMenus.Add(surfaceMenu);
         
         foreach (var (surfaceName, drawingSurface) in surface.drawingSurfaces)
         {
             if (drawingSurface is not ModelSurface modelSurface) continue;
             foreach (ModelSurfaceSide side in modelSurface.sides) 
-                surfaceMenu.Display(side, surfaceName, false);
+                surfaceMenu.Display(side, surfaceName, preview: false);
         }
         
-        BHTest.Test();
+        InitializeFibredSurface();
     }
 
     private void OnStuffShown(ITransformable stuff, string surface)
@@ -49,6 +59,17 @@ public class MainMenu: MonoBehaviour
         {
             curveDropdown.options.Add(new TMP_Dropdown.OptionData(curve.Name, null, curve.Color));
         }
+    }
+    
+    private void OnStuffDeleted(ITransformable stuff, string surface)
+    {
+        if (stuff is not Curve curve) return;
+        var index = curveDropdown.options.FindIndex(option => option.text == curve.Name);
+        if (index == -1) return;
+        curveDropdown.options.RemoveAt(index);
+        if (selectedCurve != curve.Name) return;
+        selectedCurve = curveDropdown.options[0].text;
+        curveDropdown.value = 0;
     }
 
     public void DropdownValueChanged()
@@ -88,4 +109,21 @@ public class MainMenu: MonoBehaviour
         surfaceMenus.Add(menu);
     }
 
+    public void InitializeFibredSurface() // todo: let user draw / select own graph?
+    {
+        if (fibredSurfaceMenu.FibredSurface is not null) return;
+        
+        var surfaceMenu = surfaceMenus[0]; 
+        fibredSurfaceMenu.gameObject.SetActive(true);
+        
+        // if (surface.Name)
+        var map = new Dictionary<string, string> // todo: Menu for entering the map before this menu.
+        {
+            ["a"] = "a B A b D C A",
+            ["b"] = "a c d B a b c d B",
+            ["c"] = "c c d B",
+            ["d"] = "b c d B"
+        };
+        fibredSurfaceMenu.Initialize(FibredSurfaceFactory.RoseSpine(surfaceMenu.geodesicSurface as ModelSurface, map), surfaceMenu);
+    }
 }

@@ -5,14 +5,6 @@ using Vector3 = UnityEngine.Vector3;
 
 public abstract class InterpolatingCurve: Curve
 {
-    public override string Name { get; set; }
-    public override Point StartPosition => StartVelocity.point;
-    public override Point EndPosition => EndVelocity.point;
-    public override TangentVector StartVelocity { get; }
-    public override TangentVector EndVelocity { get; }
-    public override Surface Surface { get; }
-    public override float Length { get; }
-
     protected InterpolatingCurve(TangentVector startVelocity, TangentVector endVelocity, float length, Surface surface, string name)
     {
         StartVelocity = startVelocity;
@@ -24,6 +16,13 @@ public abstract class InterpolatingCurve: Curve
     
     protected InterpolatingCurve((TangentVector, TangentVector, float) data, Surface surface, string name)
         : this(data.Item1, data.Item2, data.Item3, surface, name) { }
+    public override string Name { get; set; }
+    public override Point StartPosition => StartVelocity.point;
+    public override Point EndPosition => EndVelocity.point;
+    public override TangentVector StartVelocity { get; }
+    public override TangentVector EndVelocity { get; }
+    public override Surface Surface { get; }
+    public override float Length { get; }
 }
 
 public class FlatGeodesicSegment : InterpolatingCurve
@@ -44,6 +43,7 @@ public class FlatGeodesicSegment : InterpolatingCurve
 
     public override Point ValueAt(float t) => StartPosition.Position + StartVelocity.vector * t;
     public override TangentVector DerivativeAt(float t) => new(ValueAt(t), StartVelocity.vector);
+    public override Curve Copy() => new FlatGeodesicSegment(StartPosition, EndPosition, Surface, Name);
 }
 
 public class HyperbolicGeodesicSegment : Curve
@@ -182,6 +182,9 @@ public class HyperbolicGeodesicSegment : Curve
         var derivative = (α * x * denominator - numerator * γ * x) / denominator / denominator;
         return new TangentVector(value.ToVector3(), derivative.ToVector3());
     }
+
+    public override Curve Reversed() => reverseCurve ??= new HyperbolicGeodesicSegment(EndPosition, StartPosition, Surface, Name, diskModel);
+    public override Curve Copy() => new HyperbolicGeodesicSegment(StartPosition, EndPosition, Surface, Name, diskModel);
 }
 
 public class SphericalGeodesicSegment : InterpolatingCurve
@@ -193,4 +196,5 @@ public class SphericalGeodesicSegment : InterpolatingCurve
     public override Point ValueAt(float t) => throw new System.NotImplementedException();
 
     public override TangentVector DerivativeAt(float t) => throw new System.NotImplementedException();
+    public override Curve Copy() => new SphericalGeodesicSegment(StartPosition.Position, EndPosition.Position, Surface, Name);
 }

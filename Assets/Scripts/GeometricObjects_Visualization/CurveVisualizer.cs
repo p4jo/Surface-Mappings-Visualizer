@@ -30,9 +30,10 @@ public class CurveVisualizer : MonoBehaviour
         }
         for (int i = 0; i < boundaryTimes.Length - 1; i++)
         {
+            float resolutionLocal = resolution;
             float length = boundaryTimes[i+1] - boundaryTimes[i];
-            if (length < resolution) resolution = length; // continue;
-            float ε = 1e-2f * resolution;
+            if (length < resolutionLocal) resolutionLocal = length; // continue;
+            float ε = 1e-2f * resolutionLocal;
             length -= 2 * ε;
             if (length <= 0)
                 continue;
@@ -59,7 +60,7 @@ public class CurveVisualizer : MonoBehaviour
                 splineComputer = activeSplines[i];
 
 
-            float pts = length / resolution;
+            float pts = length / resolutionLocal;
             int pointsCount = Mathf.RoundToInt(pts);
             float newResolution = length / pointsCount;
             float start = boundaryTimes[i] + ε;

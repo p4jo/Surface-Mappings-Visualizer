@@ -20,17 +20,19 @@ public class Junction: IPatchedTransformable, IEquatable<Junction>
 
     private static int _lastId = 0;
     private readonly int id = _lastId++;
+    public string Name { get; set; }
     
-    public Junction(FibredGraph graph, IEnumerable<ITransformable> drawables, Junction image = null)
+    public Junction(FibredGraph graph, IEnumerable<ITransformable> drawables, string name, Junction image = null)
     {
         this.graph = graph;
         Patches = drawables;
         this.image = image;
+        Name = "v" + id;
     }
-    public Junction(FibredGraph graph, ITransformable drawable, Junction image = null) : this(graph, new[] {drawable}, image)
+    public Junction(FibredGraph graph, ITransformable drawable, string name = null, Junction image = null) : this(graph, new[] {drawable}, name, image)
     { }
     
-    public Junction Copy(FibredGraph graph) => new(graph, Patches, image);
+    public Junction Copy(FibredGraph graph, string name = null) => new(graph, Patches.ToArray(), name ?? Name, image);
 
     public IEnumerable<OrderedStrip> Star(FibredGraph graph = null)
     {
@@ -44,7 +46,7 @@ public class Junction: IPatchedTransformable, IEquatable<Junction>
         );
     }
 
-    public override string ToString() => "Junction " + id;
+    public override string ToString() => Name;
 
     public bool Equals(Junction other) => id == other?.id;
 

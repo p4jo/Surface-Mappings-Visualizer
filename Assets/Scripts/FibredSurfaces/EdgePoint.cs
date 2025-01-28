@@ -124,12 +124,15 @@ public class Inefficiency: EdgePoint
      {
          Strip a = edgePoint.DgBefore();
          Strip b = edgePoint.DgAfter();
-         Strip aOld = a;
+         Strip aOld = a, bOld = b;
          for (int j = 0; j <= 2 * 1000; j++) // should be graph.Edges.Count but we don't have access to that here
          {
+             if (a.Source != b.Source) throw new Exception("Bug: Two edges stopped starting from the same vertex after mapping with Dg.");
+
              if (!Equals(a, b))
              {
                  aOld = a;
+                 bOld = b;
                  a = a!.Dg;
                  b = b!.Dg;
                  continue;
@@ -141,12 +144,23 @@ public class Inefficiency: EdgePoint
                  initialSegmentToFold = 0;
                  return;
              }
-             edgesToFold = (from e in aOld!.Source.Star() where Equals(e.Dg, a) select e).ToList<Strip>();
-             initialSegmentToFold = Strip.SharedInitialSegment(edgesToFold);
+
+             if (AlwaysFoldAllEdgesWithShortSharedInitialSegment) // this is the way the algorithm is described in [BH]
+             {
+                 edgesToFold = (from e in aOld!.Source.Star() where Equals(e.Dg, a) select e).ToList<Strip>();
+                 initialSegmentToFold = Strip.SharedInitialSegment(edgesToFold);
+             }
+             else // this is how it is handled in the first example in [BH]. This is "cooler" since the initial segment is longer.
+             {
+                 initialSegmentToFold = Strip.SharedInitialSegment(new List<Strip> {aOld, bOld});
+                 var initialSegment = aOld.EdgePath.Take(initialSegmentToFold).ToList();
+                 edgesToFold = (from e in aOld.Source.Star() where e.EdgePath.Take(initialSegmentToFold).SequenceEqual(initialSegment) select e).ToList<Strip>();
+             }
              return;
          }
          throw new Exception("Bug: Two edges in the same gate didn't eventually get mapped to the same edge under Dg.");
 
      }
 
+     private const bool AlwaysFoldAllEdgesWithShortSharedInitialSegment = false;
 }

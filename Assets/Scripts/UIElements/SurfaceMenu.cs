@@ -10,10 +10,9 @@ public enum MenuMode
 {
     AddPoint,
     AddCurve,
-    AddGrid,
+    PreviewGrid,
     SelectPoint,
     SelectCurve,
-    SelectGrid,
 }
 
 
@@ -53,6 +52,8 @@ public class SurfaceMenu: MonoBehaviour
     private readonly HashSet<(ITransformable, string)> currentStuffShown = new();
 
     public event Action<ITransformable, string> StuffShown;
+    public event Action<ITransformable, string> StuffDeleted;
+    
 
 
     public void Initialize(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager, MainMenu mainMenu)
@@ -124,6 +125,7 @@ public class SurfaceMenu: MonoBehaviour
         }
         if (this.geodesicSurface is null)
             throw new Exception("None of the surfaces provides geodesics");
+        
     }
 
     public void Initialize(SurfaceMenu lastMenu, Dictionary<string, Homeomorphism> automorphisms)
@@ -138,7 +140,7 @@ public class SurfaceMenu: MonoBehaviour
         );
         foreach (var (drawnStuff, drawingSurfaceName) in lastMenu.currentStuffShown)
         {
-            Display(drawnStuff, drawingSurfaceName, false, propagateBackwards: false, propagateToDrawingSurfaces: false);
+            Display(drawnStuff, drawingSurfaceName, preview: false, propagateBackwards: false, propagateToDrawingSurfaces: false);
             // currentStuffShown should contain drawnStuff once for every DrawingSurface (transformed)! 
         }
     }
@@ -166,15 +168,23 @@ public class SurfaceMenu: MonoBehaviour
                     return (location, drawingSurfaceName);
                 var homeo = surface.GetHomeomorphism(drawingSurfaceName, geodesicSurface.Name);
                 return (geodesicSurface.GetGeodesic(lastPoint, location.ApplyHomeomorphism(homeo), "previewGeodesicSegment"), geodesicSurface.Name);
+                // todo: ends for curves, ends at points (-> vertices)
+            case MenuMode.AddPoint:
+                return (location, drawingSurfaceName);
+            case MenuMode.SelectPoint:
+                return (location, drawingSurfaceName);
+            case MenuMode.PreviewGrid:
+                // todo: implement grid
+                return (location, drawingSurfaceName); 
             default:
-                return Drawable(location, drawingSurfaceName);
+                return (null, drawingSurfaceName);
         }
     }
 
     private (ITransformable, string) Drawable(Point location, string drawingSurfaceName)
     {
         if (location is null) return (null, drawingSurfaceName);
-        switch (Mode)
+        switch (Mode) 
         {
             case MenuMode.AddCurve:
             {
@@ -199,10 +209,13 @@ public class SurfaceMenu: MonoBehaviour
                     return (curve, geodesicSurface.Name);
                 }
 
-                break;
+                goto case MenuMode.AddPoint;
+            }
+            case MenuMode.AddPoint:
+                return (location, drawingSurfaceName);
+            default:
+                return (null, drawingSurfaceName);
         }
-        }
-        return (location, drawingSurfaceName);
     }
 
 
@@ -212,31 +225,43 @@ public class SurfaceMenu: MonoBehaviour
         if (button < 0)
         {
             var (drawable, drawingSurfaceName) = PreviewDrawable(location, surfaceName);
-            Display(drawable, drawingSurfaceName, true);
+            Display(drawable, drawingSurfaceName, preview: true);
         }
 
         if (button == 0)
         {
             var (drawable, drawingSurfaceName) = Drawable(location, surfaceName);
-            Display(drawable, drawingSurfaceName, false);
+            Display(drawable, drawingSurfaceName, preview: false);
         }
-        // todo: add waypoints for curve
+        // todo: selection and deletion
     }
 
+    /// <summary>
+    /// Display the input on the drawing surface and display the transformed input on the other drawing surfaces.
+    /// If not selected otherwise, this is also displayed on all other SurfaceMenus that are connected via homeomorphisms.
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="drawingSurfaceName"></param>
+    /// <param name="preview">Mark as preview. I.e. it will be overwritten by the next preview of the same type (Point, Curve)</param>
+    /// <param name="remove"></param>
+    /// <param name="propagateBackwards">View the transformed versions on the previous SurfaceMenus</param>
+    /// <param name="propagateForwards">View the transformed versions on the next SurfaceMenus</param>
+    /// <param name="propagateToDrawingSurfaces">View the transformed versions on the other drawing surfaces</param>
+    /// <param name="skipDrawingSurfaces">Do not propagate to these drawing surfaces</param>
     public void Display([CanBeNull] ITransformable input,
-        string drawingSurfaceName,
-        bool preview,
+        string drawingSurfaceName = null,
+        bool preview = false,
+        bool remove = false,
         bool propagateBackwards = true,
         bool propagateForwards = true,
         bool propagateToDrawingSurfaces = true,
         IEnumerable<string> skipDrawingSurfaces = null)
     {
+        drawingSurfaceName ??= geodesicSurface.Name;
         propagateForwards = propagateForwards && nextMenu != null;
         string preferredForwardSurfaceName = forwardHomeos.Keys.FirstOrDefault();
         propagateBackwards = propagateBackwards && lastMenu != null;
         string preferredBackwardSurfaceName = backwardsHomeos.Keys.FirstOrDefault();
-        // todo: different modes in the menu will show different things, e.g. drawing a curve by waypoints,
-        // showing a grid, placing points, grids etc.
         var propagateToDrawingSurfacesSet = new HashSet<string>();
         if (propagateToDrawingSurfaces)
             propagateToDrawingSurfacesSet = surface.drawingSurfaces.Keys.ToHashSet();
@@ -246,31 +271,39 @@ public class SurfaceMenu: MonoBehaviour
         foreach (string otherDrawingSurfaceName in propagateToDrawingSurfacesSet)
         {
             var homeomorphism = surface.GetHomeomorphism(drawingSurfaceName, otherDrawingSurfaceName);
-            var pt = input?.ApplyHomeomorphism(homeomorphism);  
-            visualizers[otherDrawingSurfaceName].Display(pt, preview);
-            if (!preview)
+            var drawable = input?.ApplyHomeomorphism(homeomorphism);
+            if (remove)
             {
-                currentStuffShown.Add((pt, otherDrawingSurfaceName));
-                StuffShown?.Invoke(pt, otherDrawingSurfaceName);
+                visualizers[otherDrawingSurfaceName].Remove(drawable);
+                if (!preview && currentStuffShown.Remove((drawable, otherDrawingSurfaceName))) 
+                    StuffDeleted?.Invoke(drawable, otherDrawingSurfaceName);
+            }
+            else
+            {
+                visualizers[otherDrawingSurfaceName].Display(drawable, preview);
+                currentStuffShown.Add((drawable, otherDrawingSurfaceName));
+                StuffShown?.Invoke(drawable, otherDrawingSurfaceName);
             }
                 
             if (propagateBackwards && backwardsHomeos.TryGetValue(otherDrawingSurfaceName, out var homeo)) 
-                lastMenu.Display(pt?.ApplyHomeomorphism(homeo),
+                lastMenu.Display(drawable?.ApplyHomeomorphism(homeo),
                     otherDrawingSurfaceName,
-                    preview,
-                    otherDrawingSurfaceName == preferredForwardSurfaceName,
-                    false, 
-                    otherDrawingSurfaceName == preferredBackwardSurfaceName, 
-                    backwardsHomeos.Keys
+                    preview: preview,
+                    remove: remove,
+                    propagateBackwards: otherDrawingSurfaceName == preferredForwardSurfaceName,
+                    propagateForwards: false, 
+                    propagateToDrawingSurfaces: otherDrawingSurfaceName == preferredBackwardSurfaceName, 
+                    skipDrawingSurfaces: backwardsHomeos.Keys
                 );
             if (propagateForwards && forwardHomeos.TryGetValue(otherDrawingSurfaceName, out homeo)) 
-                nextMenu.Display(pt?.ApplyHomeomorphism(homeo),
+                nextMenu.Display(drawable?.ApplyHomeomorphism(homeo),
                     otherDrawingSurfaceName,
-                    preview,
-                    false,
-                    otherDrawingSurfaceName == preferredForwardSurfaceName, 
-                    otherDrawingSurfaceName == preferredForwardSurfaceName,
-                    forwardHomeos.Keys
+                    preview: preview,
+                    remove: remove,
+                    propagateBackwards: false,
+                    propagateForwards: otherDrawingSurfaceName == preferredForwardSurfaceName, 
+                    propagateToDrawingSurfaces: otherDrawingSurfaceName == preferredForwardSurfaceName,
+                    skipDrawingSurfaces: forwardHomeos.Keys
                 );
         }
 
