@@ -5,26 +5,26 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 public static class FibredSurfaceFactory
 {
-    public static FibredSurface RoseSpine(ModelSurface surface, IDictionary<string, string[]> map, IDictionary<string, string> namesd = null)
+    public static FibredSurface RoseSpine(ModelSurface surface, IDictionary<string, string[]> map, IDictionary<string, string> names = null)
     {
         string defaultName(string sideName) => sideName[^1..];
-        string names(string sideName)
+        string nameMap(string sideName)
         {
-            if (namesd?.ContainsKey(sideName) ?? false)
-                return namesd[sideName];
+            if (names?.ContainsKey(sideName) ?? false)
+                return names[sideName];
             return defaultName(sideName);
         }
 
         // todo: map on the punctures and adding peripheral strips around them. 
         var junction = new BasicPoint(Vector3.zero);
         var edges = new List<(Curve, string, string, string[])>();
-        if (!map.Keys.ToHashSet().IsSupersetOf(surface.sides.Select(s => names(s.Name))))
-            throw new("Provide g(e) for all of the edges of the rose spine. Their names come from the sides of the surface (and are constructed to pass through this side). These names are " + string.Join(", ", surface.sides.Select(s => names(s.Name))));
+        if (!map.Keys.ToHashSet().IsSupersetOf(surface.sides.Select(s => nameMap(s.Name))))
+            throw new("Provide g(e) for all of the edges of the rose spine. Their names come from the sides of the surface (and are constructed to pass through this side). These names are " + string.Join(", ", surface.sides.Select(s => nameMap(s.Name))));
         
         foreach (var side in surface.sides)
         {
             var point = side[side.Length / 2];
-            var name = names(side.Name);
+            var name = nameMap(side.Name);
             var firstPart = surface.GetBasicGeodesic(junction, point, name); // saving the full point should mean that in ConcatenatedCurve, it will understand that this is not an actual jump point, just a visual one. // nvm, it is Clamp()ed anyway
             var secondPart = surface.GetBasicGeodesic(point.Positions.ElementAt(1), junction, name);
             var curve = firstPart.Concatenate(secondPart);
@@ -33,7 +33,7 @@ public static class FibredSurfaceFactory
             edges.Add(stripData);
         }
 
-        return new FibredSurface(edges);
+        return new FibredSurface(edges, surface);
     }
     
     /// <summary>

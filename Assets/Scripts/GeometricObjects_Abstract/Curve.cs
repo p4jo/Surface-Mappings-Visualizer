@@ -7,15 +7,8 @@ using UnityEngine;
 using Vector3 = UnityEngine.Vector3;
 
 
-public abstract class Curve: ITransformable<Curve>
+public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformable in other part.
 {
-    public readonly int id;
-    private static int _lastId;
-    protected Curve()
-    {
-        id = _lastId++;
-    }
-    
     public abstract string Name { get; set; }
     
     public abstract float Length { get; }
@@ -26,10 +19,6 @@ public abstract class Curve: ITransformable<Curve>
     public virtual TangentVector EndVelocity => DerivativeAt(Length);
 
     public abstract Surface Surface { get; }
-
-    private Color? color;
-    public virtual Color Color { get => color ?? DefaultColor; set => color = value; }
-    public virtual Color DefaultColor => colors[id % colors.Count];
     public virtual IEnumerable<float> VisualJumpTimes => Enumerable.Empty<float>();
 
     public virtual Point this[float t] => ValueAt(t);
@@ -40,10 +29,6 @@ public abstract class Curve: ITransformable<Curve>
     public virtual Curve Concatenate(Curve curve) => new ConcatenatedCurve(new Curve[] { this, curve });
 
     protected Curve reverseCurve;
-    private static readonly List<Color> colors = new()
-    {
-        Color.red, Color.green, Color.blue, Color.yellow, Color.cyan, Color.magenta, new Color(1, 0.5f, 0), new Color(0.5f, 0, 1)
-    };
 
     public virtual Curve Reversed() => reverseCurve ??= new ReverseCurve(this);
 
@@ -113,7 +98,7 @@ public abstract class Curve: ITransformable<Curve>
     public abstract Curve Copy();
 }
 
-public class TransformedCurve : Curve
+public partial class TransformedCurve : Curve
 {
     private readonly Curve curve;
     private readonly Homeomorphism homeomorphism;
@@ -139,7 +124,9 @@ public class TransformedCurve : Curve
     public override TangentVector EndVelocity => curve.EndVelocity.ApplyHomeomorphism(homeomorphism); 
     public override TangentVector StartVelocity => curve.StartVelocity.ApplyHomeomorphism(homeomorphism);
     public override Surface Surface => homeomorphism.target;
-    public override Color DefaultColor => curve.Color;
+
+    public override IEnumerable<float> VisualJumpTimes => curve.VisualJumpTimes;
+
     public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
 
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t).ApplyHomeomorphism(homeomorphism);
@@ -147,7 +134,7 @@ public class TransformedCurve : Curve
 
     
     public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
-    public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism);
+    public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism) {Color = Color} ;
 
     public override Curve Reversed() => reverseCurve ??= new TransformedCurve(curve.Reversed(), homeomorphism);
 
@@ -155,7 +142,7 @@ public class TransformedCurve : Curve
         new TransformedCurve(curve, homeomorphism * this.homeomorphism);
 }
 
-public class ConcatenatedCurve : Curve
+public partial class ConcatenatedCurve : Curve
 {
     private readonly Curve[] segments;
     private List<ConcatenationSingularPoint> nonDifferentiablePoints;
@@ -170,7 +157,6 @@ public class ConcatenatedCurve : Curve
     public override IEnumerable<float> VisualJumpTimes => from singularPoint in NonDifferentiablePoints where singularPoint.visualJump select singularPoint.time;
 
     private List<ConcatenationSingularPoint> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints(segments);
-    public override Color DefaultColor => segments.First().Color;
 
     public ConcatenatedCurve(IEnumerable<Curve> curves, string name = null)
     {
@@ -268,7 +254,7 @@ public class ConcatenatedCurve : Curve
         throw new Exception("What the heck");
     }
 
-    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name + "'");
+    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name + "'") {Color = Color};
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
@@ -279,7 +265,7 @@ public class ConcatenatedCurve : Curve
         );
     }
 
-    public override Curve Copy() => new ConcatenatedCurve(from segment in segments select segment.Copy(), Name);
+    public override Curve Copy() => new ConcatenatedCurve(from segment in segments select segment.Copy(), Name) { Color = Color };
 
 
     private static List<ConcatenationSingularPoint> CalculateSingularPoints(IReadOnlyList<Curve> segments, bool expectClosedCurve = false, bool ignoreSubConcatenatedCurves = false)
@@ -326,9 +312,51 @@ public class ConcatenatedCurve : Curve
         }
         return res;
     }
+
+    public override Curve Restrict(float start, float end)
+    {
+        if (start < 0 || end > Length || start > end)
+            throw new Exception("Invalid restriction");
+        var movedStartTime = start;
+        var movedEndTime = end;
+        int startSegmentIndex = -1, endSegmentIndex = segments.Length;
+        for (int i = 0; i < segments.Length; i++)
+        {
+            var segmentLength = segments[i].Length;
+            if (startSegmentIndex == -1)
+            {
+                if (movedStartTime >= segmentLength)
+                {
+                    movedStartTime -= segmentLength;
+                    movedEndTime -= segmentLength;
+                    continue;
+                }
+                startSegmentIndex = i;
+            }
+
+            if (movedEndTime >= segmentLength)
+            {
+                movedEndTime -= segmentLength;
+                continue;
+            }
+            endSegmentIndex = i;
+            break;
+        }
+        if (startSegmentIndex == endSegmentIndex)
+            return segments[startSegmentIndex].Restrict(movedStartTime, movedEndTime);
+        
+        var firstSegment = segments[startSegmentIndex].Restrict(movedStartTime, segments[startSegmentIndex].Length);
+        var curves = segments[(startSegmentIndex + 1)..endSegmentIndex].Prepend(firstSegment);
+        
+        if (endSegmentIndex < segments.Length) 
+            curves = curves.Append(
+                segments[endSegmentIndex].Restrict(0, movedEndTime)
+            );
+        return new ConcatenatedCurve(curves, Name + $"[{start:g2}, {end:g2}]");
+    }
 }
 
-public class ReverseCurve : Curve
+public partial class ReverseCurve : Curve
 {
     private readonly Curve curve;
 
@@ -350,7 +378,8 @@ public class ReverseCurve : Curve
     public override TangentVector EndVelocity => - curve.StartVelocity;
     public override TangentVector StartVelocity => - curve.EndVelocity;
     public override Surface Surface => curve.Surface;
-    public override Color DefaultColor => curve.Color;
+
+    public override IEnumerable<float> VisualJumpTimes => from t in curve.VisualJumpTimes select Length - t;
 
     public override Point ValueAt(float t) => curve.ValueAt(Length - t);
     public override TangentVector DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
@@ -360,7 +389,7 @@ public class ReverseCurve : Curve
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Reversed();
 
-    public override Curve Copy() => new ReverseCurve(curve.Copy());
+    public override Curve Copy() => new ReverseCurve(curve.Copy()) { Color = Color }; // in case it was changed
 }
 
 public class RestrictedCurve : Curve
@@ -392,7 +421,10 @@ public class RestrictedCurve : Curve
     public override TangentVector EndVelocity => curve.DerivativeAt(end);
     public override TangentVector StartVelocity => curve.DerivativeAt(start);
     public override Surface Surface => curve.Surface;
-    public override Color DefaultColor => curve.Color;
+
+    public override IEnumerable<float> VisualJumpTimes => from t in curve.VisualJumpTimes where t > start && t < end select t - start;
+
+    protected override Color DefaultColor => curve.Color;
 
     public override Point ValueAt(float t) => curve.ValueAt(t + start);
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);
@@ -406,7 +438,7 @@ public class RestrictedCurve : Curve
 
     public override Curve Copy() =>
         new RestrictedCurve(curve.Copy(), start, end)
-        { Name = Name };
+        { Name = Name, Color = Color };
 }
 
 
@@ -430,7 +462,7 @@ public class BasicParametrizedCurve : Curve
     public override Point ValueAt(float t) => value(t);
 
     public override TangentVector DerivativeAt(float t) => new TangentVector(value(t), derivative(t));
-    public override Curve Copy() => new BasicParametrizedCurve(Name, Length, Surface, value, derivative);
+    public override Curve Copy() => new BasicParametrizedCurve(Name, Length, Surface, value, derivative) { Color = Color };
 }
 
 public class SplineSegment : InterpolatingCurve
@@ -474,5 +506,5 @@ public class SplineSegment : InterpolatingCurve
         return new TangentVector(pos, velocity / Length);
     }
 
-    public override Curve Copy() => new SplineSegment(StartVelocity, EndVelocity, Length, Surface, Name);
+    public override Curve Copy() => new SplineSegment(StartVelocity, EndVelocity, Length, Surface, Name) { Color = Color };
 }

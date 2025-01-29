@@ -16,7 +16,7 @@
         List<GameObject> activePreviewPointers = new();
         public readonly int id;
         private static int lastID;
-        private ITransformable lastPreviewObject;
+        private IDrawable lastPreviewObject;
         [SerializeField] protected GameObject pointerPrefab;
         [SerializeField] protected float scale = 1f;
         [SerializeField] protected Vector3 imageOffset;
@@ -73,7 +73,7 @@
         /// <param name="input"></param>
         /// <param name="preview"></param>
         /// <exception cref="NotImplementedException"></exception>
-        public void Display(ITransformable input, bool preview = false)
+        public void Display(IDrawnsformable input, bool preview = false)
         {
             
             switch (input)
@@ -103,7 +103,7 @@
                     break;
                 case null:
                     break;
-                case IPatchedTransformable patchedTransformable:
+                case IPatchedDrawnsformable patchedTransformable:
                     foreach (var patch in patchedTransformable.Patches) 
                         Display(patch, preview);
                     if (preview)
@@ -114,7 +114,7 @@
             }
         }
 
-        public void Remove(ITransformable input)
+        public void Remove(IDrawable input)
         {
             switch (input)
             {
@@ -126,7 +126,7 @@
                 case Curve curve:
                     RemoveCurve(curve.Name);
                     break;
-                case IPatchedTransformable patchedTransformable:
+                case IPatchedDrawnsformable patchedTransformable:
                     foreach (var patch in patchedTransformable.Patches) 
                         Remove(patch);
                     break;
@@ -142,9 +142,12 @@
         {
             foreach (var position in point.Positions)   
             {
+                if (activePointers.ContainsKey(position)) 
+                    continue;
                 var pointer = inactivePointers.Pop() ?? Instantiate(pointerPrefab, transform);
                 pointer.SetActive(true);
                 pointer.transform.localPosition = displayPosition(position);
+                pointer.GetComponent<Renderer>().material.color = point.Color;
                 activePointers.Add(position, pointer);
             }
         }
@@ -171,6 +174,7 @@
                 var pointer = activePreviewPointers.Pop() ?? inactivePointers.Pop() ?? Instantiate(pointerPrefab, transform);
                 pointer.SetActive(true);
                 pointer.transform.localPosition = displayPosition(position);
+                pointer.GetComponent<Renderer>().material.color = point.Color;
                 newActivePointers.Add(pointer);
             }
 

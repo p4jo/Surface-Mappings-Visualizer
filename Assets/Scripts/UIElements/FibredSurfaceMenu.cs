@@ -63,9 +63,9 @@ public class FibredSurfaceMenu : MonoBehaviour
             button.GetComponent<Button>().onClick.AddListener(() => UpdateSelectedSurface(edgeTarget));
         }
         
-        graphStatusText.text = FibredSurface.GraphString();
-        
         var fibredSurfaceCopy = FibredSurface.Copy();
+        graphStatusText.text = fibredSurfaceCopy.GraphString();
+        
         var suggestions = fibredSurfaceCopy.NextSuggestion();
         if (suggestions == null)
             descriptionText.text = "The algorithm finishes: This is an efficient fibred surface.";

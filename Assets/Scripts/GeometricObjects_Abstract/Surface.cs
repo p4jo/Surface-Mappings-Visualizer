@@ -33,7 +33,7 @@ public abstract class Surface
     public abstract Vector3 MinimalPosition { get; }
     public abstract Vector3 MaximalPosition { get; }
 
-    public virtual Homeomorphism GetAutomorphism(AutomorphismType type, ITransformable[] parameters) => null;
+    public virtual Homeomorphism GetAutomorphism(AutomorphismType type, IDrawnsformable[] parameters) => null;
 }
 
 public abstract class GeodesicSurface: Surface

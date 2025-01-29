@@ -12,7 +12,7 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 /// This implements the Bestvina-Handel algorithm.
 /// All methods are in-place. Copy the graph before.
 /// </summary>
-public class FibredSurface: IPatchedTransformable
+public class FibredSurface: IPatchedDrawnsformable
 {
     public readonly FibredGraph graph;
     /// <summary>
@@ -22,23 +22,27 @@ public class FibredSurface: IPatchedTransformable
     /// </summary>
     public readonly FibredGraph peripheralSubgraph;
 
-    public IEnumerable<ITransformable> Patches => graph.Vertices.Concat<ITransformable>(from edge in Strips select edge.Curve);
+    public GeodesicSurface surface;
+
+    public IEnumerable<IDrawnsformable> Patches => graph.Vertices.Concat<IDrawnsformable>(from edge in Strips select edge.Curve);
     
     public IEnumerable<UnorientedStrip> Strips => graph.Edges;
     private IEnumerable<Strip> OrientedEdges => Strips.Concat<Strip>(Strips.Select(edge => edge.Reversed()));
 
     #region Constructors
     
-    public FibredSurface(FibredGraph graph, FibredGraph peripheralSubgraph = null)
+    public FibredSurface(FibredGraph graph, GeodesicSurface surface, FibredGraph peripheralSubgraph = null)
     {
         this.graph = graph;
+        this.surface = surface;
         this.peripheralSubgraph = peripheralSubgraph ?? new FibredGraph(true);
         DeferNames();
     }
 
-    public FibredSurface(IList<(Curve, string, string, string[])> edgeDescriptions, IEnumerable<string> peripheralEdges = null, IDictionary<string, ITransformable> junctionDrawables = null)
+    public FibredSurface(IList<(Curve, string, string, string[])> edgeDescriptions, GeodesicSurface surface, IEnumerable<string> peripheralEdges = null, IDictionary<string, IDrawnsformable> junctionDrawables = null)
     {
-        junctionDrawables ??= new Dictionary<string, ITransformable>();
+        this.surface = surface;
+        junctionDrawables ??= new Dictionary<string, IDrawnsformable>();
         peripheralEdges ??= new List<string>();
         graph = new FibredGraph(true); // up here, so that the junctions reference this
 
@@ -90,6 +94,15 @@ public class FibredSurface: IPatchedTransformable
         DeferNames();
     }
 
+    public string Name { get; set; }
+    public Color Color
+    {
+        get => graph.Vertices.First().Color;
+        set => Debug.LogError("The graph color should not be set.");
+    }
+
+    IPatchedDrawnsformable IDrawnsformable<IPatchedDrawnsformable>.Copy() => Copy();
+
     public FibredSurface Copy()
     {        
         var newGraph = new FibredGraph(true);
@@ -123,7 +136,7 @@ public class FibredSurface: IPatchedTransformable
             from edge in peripheralSubgraph.Edges select newEdges[edge]
         );
         
-        return new FibredSurface(newGraph, newPeripheralSubgraph);
+        return new FibredSurface(newGraph, surface, newPeripheralSubgraph);
     }
 
     public void SetMap(IDictionary<string, string[]> map)
@@ -154,7 +167,9 @@ public class FibredSurface: IPatchedTransformable
         var a = GetInvariantSubforests();
         if (a.Any()) return new BHDisplayOptions()
         {
-            options = a,
+            options = from subforest in a select subforest.WithToString(
+                string.Join(", ", subforest.Edges.Select(v => v.Name))    
+            ),
             description = "Collapse an invariant subforest.",
             buttons = new[] {"Collapse"}
         };
@@ -212,7 +227,7 @@ public class FibredSurface: IPatchedTransformable
         switch (button)
         {
             case "Collapse":
-                if (suggestion.FirstOrDefault() is FibredGraph subforest) 
+                if (suggestion.FirstOrDefault() is Helpers.ObjectWithString { obj: FibredGraph subforest })
                     CollapseInvariantSubforest(subforest);
                 // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
                 break;
@@ -430,15 +445,17 @@ public class FibredSurface: IPatchedTransformable
     {
         Dictionary<Junction, int> components = new();
         int numberOfComponents = subforest.ConnectedComponents(components);
+        var subforestEdges = Enumerable.ToHashSet(subforest.Edges); 
         var newVertices = (
             from i in Enumerable.Range(0, numberOfComponents)
-            select subforest.Vertices.First(
-                vertex => components[vertex] == i)
+            select new Junction(
+                graph,
+                from strip in subforestEdges where components[strip.Source] == i select strip.Curve,
+                name: NextVertexName()
+            )
         ).ToList();
-        // todo: save the collapsed subgraph into junction - display all but as one junction.
         graph.AddVertexRange(newVertices);
         var graphEdges = Strips.ToHashSet();
-        var subforestEdges = Enumerable.ToHashSet(subforest.Edges); 
         graphEdges.ExceptWith(subforestEdges);
         foreach (var strip in graphEdges)
         {
@@ -448,10 +465,15 @@ public class FibredSurface: IPatchedTransformable
                 strip.Target = newVertices[component];
             strip.EdgePath = strip.EdgePath.Where(edge => !subforestEdges.Contains(edge.UnderlyingEdge)).ToList();
         }
-        
-        var removeVertices = subforest.Vertices.ToHashSet();
-        removeVertices.ExceptWith(newVertices);
-        foreach (var vertex in removeVertices)
+
+        for (var index = 0; index < newVertices.Count; index++)
+        {
+            var junction = newVertices[index];
+            var absorbedJunction = components.First(kvp => kvp.Value == index).Key;
+            junction.image = newVertices[components[absorbedJunction.image]];
+        }
+
+        foreach (var vertex in subforest.Vertices)
             graph.RemoveVertex(vertex);
     }
 
@@ -505,10 +527,14 @@ public class FibredSurface: IPatchedTransformable
         Junction enlargedJunction = removeStrip.Source == junction ? removeStrip.Target : removeStrip.Source;
         // two options: a) isotope along removeStrip to move junctions that map there to the "enlargedJunction" (but don't actually enlarge it)
         // and enlarge keptStrip to include the removed strip: keptStrip' = removedStrip.Reverse u removeJunction u keptStrip.
+        // for better visuals (less curves in junctions), we start with this option
         // or: b) include removedStrip and junction into the enlargedJunction and isotope along f(removeStrip), so that it lands in f(enlJun).
         // This isotopy could be faked pretty well! Just display f(keptStrip) as f(removedStrip).Reverse u f(removeJunction) u f(keptStrip)
         // and f(enlJun) as what it was before enlarging.
         // In both cases, the same thing happens combinatorially
+        var name = keptStrip.Name;
+        keptStrip.Curve = removeStrip.Curve.Reversed().Concatenate(keptStrip.Curve);
+        keptStrip.Name = name;
         
         keptStrip.Source = enlargedJunction; // removes and readds the keptStrip
         graph.RemoveVertex(junction); // removes the removeEdge as well
@@ -576,7 +602,7 @@ public class FibredSurface: IPatchedTransformable
             strip.EdgePath = strip.EdgePath.Skip(1).ToList();
             // for self-loops, this takes one from both ends.
         }
-        // todo: isotopy: Move vertex and shorten the strips
+        // isotopy: Move vertex and shorten the strips (only the homeomorphism is changed, not the graph)
         // todo? update EdgePoints?
     }
     
@@ -606,7 +632,7 @@ public class FibredSurface: IPatchedTransformable
             updateEdgePoints[k] = reverse ? res.Reversed() : res;
         }
         
-        // todo: isotopy to make the strip shorter
+        // todo? isotopy to make the strip shorter
     }
     
     #endregion
@@ -634,15 +660,19 @@ public class FibredSurface: IPatchedTransformable
             edges.FirstOrDefault(e => e is UnorientedStrip) ??
             edges.First();
 
-        
-        var targetVerticesToFold = (from edge in edges select edge.Target).ToHashSet();
-        var newVertex = new Junction(graph, targetVerticesToFold, targetVerticesToFold.FirstOrDefault()?.Name, targetVerticesToFold.First().image); 
-        // todo: Connect the vertices by a curve that avoids the rest of the fibred surface
-
         string name = null;
         if (!char.IsLetter(preferredOldEdge.Name[^1]))
             name = NextEdgeName();
         var newEdge = preferredOldEdge.Copy(name: name);
+        
+        var targetVerticesToFold = (from edge in edges select edge.Target).ToArray();
+        var targetVerticesPosition = (from edge in edges select edge.Curve.EndPosition).ToArray();
+        Curve connectingCurve = surface.GetPathFromWaypoints(targetVerticesPosition, name);
+        var color = targetVerticesToFold.First().Color;
+        var newVertex = new Junction(graph, targetVerticesToFold.Append<IDrawnsformable>(connectingCurve), name, targetVerticesToFold.First().image, color); 
+        // todo: Connect the vertices by a curve that avoids the rest of the fibred surface
+        // needs cyclic order!
+
         
         graph.RemoveEdges(from edge in edges select edge.UnderlyingEdge);
         graph.AddEdge(newEdge.UnderlyingEdge);
@@ -970,6 +1000,7 @@ public class FibredSurface: IPatchedTransformable
         {
             var frontiers = from edge in gate.Edges select edge.Curve.Restrict(0, 0.1f);
             // todo: give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
+            // needs order of the gates!
             var newJunction = new Junction(graph, frontiers, NextVertexName());
             newJunctions.Add(newJunction);
             foreach (var edge in gate.Edges)
@@ -1186,7 +1217,7 @@ public class FibredSurface: IPatchedTransformable
 
     public string GraphString()
     {
-        var edgeString = string.Join("\n", Strips.Select(edge => edge.ToString()));
+        var edgeString = string.Join("\n", Strips.Select(edge => edge.ToColorfulString()));
         return edgeString;
     }
 }

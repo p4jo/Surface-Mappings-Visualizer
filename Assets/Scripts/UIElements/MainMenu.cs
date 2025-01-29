@@ -53,7 +53,7 @@ public class MainMenu: MonoBehaviour
         InitializeFibredSurface();
     }
 
-    private void OnStuffShown(ITransformable stuff, string surface)
+    private void OnStuffShown(IDrawnsformable stuff, string surface)
     {
         if (stuff is Curve curve && curveDropdown.options.All(option => option.text != curve.Name))
         {
@@ -61,7 +61,7 @@ public class MainMenu: MonoBehaviour
         }
     }
     
-    private void OnStuffDeleted(ITransformable stuff, string surface)
+    private void OnStuffDeleted(IDrawnsformable stuff, string surface)
     {
         if (stuff is not Curve curve) return;
         var index = curveDropdown.options.FindIndex(option => option.text == curve.Name);
@@ -85,7 +85,7 @@ public class MainMenu: MonoBehaviour
         AddMenuFromAutomorphism(AutomorphismType.DehnTwist, surfaceName, curve);
     }
 
-    private void AddMenuFromAutomorphism(AutomorphismType type, string surfaceName, params ITransformable[] parameters)
+    private void AddMenuFromAutomorphism(AutomorphismType type, string surfaceName, params IDrawnsformable[] parameters)
     {
         var surfaceMenu = surfaceMenus[^1];
         Dictionary<string, Homeomorphism> automorphisms = new();

@@ -67,7 +67,14 @@ public abstract class Strip: IEdge<Junction>
 
     public EdgePoint this[int i] => new(this, i);
 
-    public override string ToString() => $"{Name}: {Source} -> {Target} with g({Name}) = {string.Join(" ", EdgePath.Select(e => e.Name))}"; 
+    public override string ToString() => $"{Name}: {Source} -> {Target} with g({Name}) = {string.Join(" ", EdgePath.Select(e => e.Name))}";
+    
+    public string ToColorfulString()
+    {
+        return $"{ColorfulName(Curve)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(Curve)}) = {string.Join(" ", EdgePath.Select(e => ColorfulName(e.Curve)))}";
+        string ColorfulName(IDrawable obj) => obj.ColorfulName; 
+        // Yep, we cannot call Curve.ColorfulName because, why? It implements IDrawnsformable, thus IDrawable, but somehow doesn't inherit its virtual members?
+    }
 
     public static int SharedInitialSegment(IList<Strip> strips)
     {
@@ -96,7 +103,7 @@ public abstract class Strip: IEdge<Junction>
 
 public class UnorientedStrip : Strip
 {
-    public ITransformable Drawable => Curve;
+    public IDrawable Drawable => Curve;
     public override UnorientedStrip UnderlyingEdge => this;
 
     public override string Name
@@ -125,8 +132,12 @@ public class UnorientedStrip : Strip
 
 public class OrderedStrip: Strip
 {
-    public override Curve Curve => reverse ? UnderlyingEdge.Curve.Reversed() : UnderlyingEdge.Curve;
-    
+    public override Curve Curve
+    {
+        get => reverse ? UnderlyingEdge.Curve.Reversed() : UnderlyingEdge.Curve;
+        set => UnderlyingEdge.Curve = reverse ? value.Reversed() : value;
+    }
+
     public override UnorientedStrip UnderlyingEdge { get; }
     public override string Name
     {

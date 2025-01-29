@@ -43,7 +43,7 @@ public class FlatGeodesicSegment : InterpolatingCurve
 
     public override Point ValueAt(float t) => StartPosition.Position + StartVelocity.vector * t;
     public override TangentVector DerivativeAt(float t) => new(ValueAt(t), StartVelocity.vector);
-    public override Curve Copy() => new FlatGeodesicSegment(StartPosition, EndPosition, Surface, Name);
+    public override Curve Copy() => new FlatGeodesicSegment(StartPosition, EndPosition, Surface, Name) {Color = Color};
 }
 
 public class HyperbolicGeodesicSegment : Curve
@@ -184,7 +184,7 @@ public class HyperbolicGeodesicSegment : Curve
     }
 
     public override Curve Reversed() => reverseCurve ??= new HyperbolicGeodesicSegment(EndPosition, StartPosition, Surface, Name, diskModel);
-    public override Curve Copy() => new HyperbolicGeodesicSegment(StartPosition, EndPosition, Surface, Name, diskModel);
+    public override Curve Copy() => new HyperbolicGeodesicSegment(StartPosition, EndPosition, Surface, Name, diskModel) {Color = Color};
 }
 
 public class SphericalGeodesicSegment : InterpolatingCurve

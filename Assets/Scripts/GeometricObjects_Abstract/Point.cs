@@ -6,47 +6,8 @@ using UnityEngine;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
 
-public interface ITransformable
-{
-    public ITransformable ApplyHomeomorphism(Homeomorphism homeomorphism);
-    
-    public static ITransformable operator *(Homeomorphism homeo, ITransformable input) =>
-        input.ApplyHomeomorphism(homeo);
-}
 
-public interface ITransformable<T>: ITransformable where T : ITransformable
-{
-    public new T ApplyHomeomorphism(Homeomorphism homeomorphism);
-    ITransformable ITransformable.ApplyHomeomorphism(Homeomorphism homeomorphism) => ApplyHomeomorphism(homeomorphism);
-
-    public static T operator *(Homeomorphism homeo, ITransformable<T> input) =>
-        input.ApplyHomeomorphism(homeo);
-}
-
-public interface IPatchedTransformable: ITransformable<IPatchedTransformable>
-{
-    public IEnumerable<ITransformable> Patches { get; }
-    
-    IPatchedTransformable ITransformable<IPatchedTransformable>.ApplyHomeomorphism(Homeomorphism homeomorphism) => 
-        new TransformedPatch(this, homeomorphism);
-    
-    private class TransformedPatch : IPatchedTransformable
-    {
-        private readonly IPatchedTransformable original;
-        private readonly Homeomorphism homeomorphism;
-
-        public TransformedPatch(IPatchedTransformable original, Homeomorphism homeomorphism)
-        {
-          this.original = original;
-          this.homeomorphism = homeomorphism;
-        }
-
-        public IEnumerable<ITransformable> Patches => from patch in original.Patches select patch.ApplyHomeomorphism(homeomorphism);
-    }
-}
-
-
-public abstract class Point : IEquatable<Point>, ITransformable<Point>
+public abstract partial class Point : IEquatable<Point>, ITransformable<Point>
 {
     public virtual Vector3 Position => Positions.First();
     public abstract IEnumerable<Vector3> Positions { get; }
@@ -86,8 +47,9 @@ public abstract class Point : IEquatable<Point>, ITransformable<Point>
 
 }
 
-public class BasicPoint : Point
+public partial class BasicPoint : Point
 {
+
     public override Vector3 Position { get; }
     public override IEnumerable<Vector3> Positions => new[] { Position };
 
@@ -101,18 +63,20 @@ public class BasicPoint : Point
         var result = homeomorphism.F(Position);
         if (!result.HasValue)
             throw new Exception("Homeomorphism is not defined on this point");
-        return new BasicPoint(result.Value);
+        return new BasicPoint(result.Value)
+        {
+            Color = Color
+        };
     }
 
     public static implicit operator BasicPoint(Vector3 v) => new(v);
     public static implicit operator BasicPoint(Vector2 v) => new(v);
-
 }
 
 /// <summary>
 /// This is a point that is where two curves don't meet, but are concatenated... This shouldn't actually happen.
 /// </summary>
-public class ConcatenationSingularPoint: Point
+public partial class ConcatenationSingularPoint: Point
 {
     public float time = -1f;
     public Curve incomingCurve, outgoingCurve;
@@ -152,7 +116,7 @@ public class ConcatenationSingularPoint: Point
 }
 
 
-public class ModelSurfaceVertex : Point
+public partial class ModelSurfaceVertex : Point
 {
     /// <summary>
     /// a, b, b.other, c, c.other, ..., a.other. Every 2i and 2i+1 have the same StartPosition, Every 2i+1 and 2i+2 are "this and other" (i.e. the same curve after identification).
@@ -165,7 +129,16 @@ public class ModelSurfaceVertex : Point
     public readonly List<float> angles = new();
     
 
-    private Vector3[] positions = null;
+    private Vector3[] positions = Array.Empty<Vector3>();
+    
+    public ModelSurfaceVertex(){  }
+
+    public ModelSurfaceVertex(Vector3[] positions, List<float> angles, List<ModelSurfaceSide> boundaryCurves)
+    {
+        this.positions = positions;
+        this.angles = angles;
+        this.boundaryCurves = boundaryCurves;
+    }
 
     public override IEnumerable<Vector3> Positions => positions ??= (
         from i in Enumerable.Range(0, boundaryCurves.Count / 2) 
@@ -188,18 +161,20 @@ public class ModelSurfaceVertex : Point
         if (fromIndex > toIndex)
             return - RotationAngle(toIndex, fromIndex);
         return angles.Skip(fromIndex).Take(toIndex - fromIndex).Sum();
-        // todo: This is wrong! This rotates about the internal angles, but we need to rotate wrt to the angles between each edge and its other edge.
     }
     
     public override Vector3 PassThrough(int fromPositionIndex, int toPositionIndex, Vector3 direction)
     {
+        // this is actually not really well-defined, because "passing through" would assume "goedesicness" which could be defined as having total angle >= π at both sides. So, not all position indices work, and some cone points (with total angle < τ) cannot have any geodesics pass through them.
         Complex startDir = new Complex(direction.x, direction.y);
-        startDir *= Complex.FromPolarCoordinates(1, RotationAngle(fromPositionIndex, toPositionIndex));
+        var leftAngleBefore = boundaryCurves[2 * fromPositionIndex].angle;
+        var leftAngleAfter = boundaryCurves[2 * toPositionIndex].angle;
+        startDir *= Complex.FromPolarCoordinates(1, leftAngleAfter - leftAngleBefore);
         return new Vector3((float) startDir.Real, (float) startDir.Imaginary, direction.z); 
     }
 }
 
-public class ModelSurfaceBoundaryPoint : Point, IModelSurfacePoint
+public partial class ModelSurfaceBoundaryPoint : Point, IModelSurfacePoint
 {
     const float ε = 1e-3f;
     public readonly ModelSurfaceSide side;

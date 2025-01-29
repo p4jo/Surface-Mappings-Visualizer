@@ -2,16 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuikGraph;
+using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
-public class Junction: IPatchedTransformable, IEquatable<Junction>
+public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
 {
     // todo? add the ribbon graph structure, i.e. make sure that the cyclic ordering is clear? So far not needed.
     readonly FibredGraph graph;
     
-    public IEnumerable<ITransformable> Patches { get; set; }
-    // todo: save and display embedded disk and actually a collection of disks and strips.
-
 
     /// <summary>
     /// f maps this junction into the image junction, i.e. g(this) = image;
@@ -20,19 +18,21 @@ public class Junction: IPatchedTransformable, IEquatable<Junction>
 
     private static int _lastId = 0;
     private readonly int id = _lastId++;
-    public string Name { get; set; }
     
-    public Junction(FibredGraph graph, IEnumerable<ITransformable> drawables, string name, Junction image = null)
+    public Junction(FibredGraph graph, IEnumerable<IDrawnsformable> drawables, string name = null, Junction image = null, Color? color = null): base(drawables)
     {
         this.graph = graph;
-        Patches = drawables;
         this.image = image;
-        Name = "v" + id;
+        if (color.HasValue) Color = color.Value;
+        Name = name ?? "v" + id;
     }
-    public Junction(FibredGraph graph, ITransformable drawable, string name = null, Junction image = null) : this(graph, new[] {drawable}, name, image)
+    public Junction(FibredGraph graph, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : this(graph, new[] {drawable}, name, image, color)
     { }
     
-    public Junction Copy(FibredGraph graph, string name = null) => new(graph, Patches.ToArray(), name ?? Name, image);
+    public Junction Copy(FibredGraph graph = null, string name = null, Junction image = null, Color? color = null)
+    {
+        return new Junction(graph ?? this.graph, from patch in Patches select patch.Copy(), name ?? Name, image ?? this.image, color ?? Color);
+    }
 
     public IEnumerable<OrderedStrip> Star(FibredGraph graph = null)
     {
@@ -45,18 +45,28 @@ public class Junction: IPatchedTransformable, IEquatable<Junction>
             select new OrderedStrip(strip, true)
         );
     }
+    
+    public void AddDrawable(IDrawnsformable drawable)
+    {
+        patches.Add(drawable);
+        drawable.Color = Color;
+    }
+    
+    public void AddCurveAsPartOfJunction(Curve curve)
+    {
+        AddDrawable(curve);
+        patches.RemoveAll(drawable => Equals(curve.StartPosition, drawable) || Equals(curve.EndPosition, drawable));
+    }
 
     public override string ToString() => Name;
 
     public bool Equals(Junction other) => id == other?.id;
 
-    public override bool Equals(object obj)
+    public override bool Equals(object obj) => obj switch
     {
-        if (ReferenceEquals(null, obj)) return false;
-        if (ReferenceEquals(this, obj)) return true;
-        if (obj.GetType() != this.GetType()) return false;
-        return Equals((Junction)obj);
-    }
+        Junction other => id == other.id,
+        _ => false
+    };
 
     public override int GetHashCode() => id;
 }

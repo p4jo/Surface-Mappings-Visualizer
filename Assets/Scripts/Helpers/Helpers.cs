@@ -217,6 +217,8 @@ public static class Helpers
         if (s.Length <= maxLength) return s;
         return s[..(maxLength - 3)] + "...";
     }
+    
+    
 }
 
 

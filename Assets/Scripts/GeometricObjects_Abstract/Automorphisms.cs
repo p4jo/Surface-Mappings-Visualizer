@@ -14,7 +14,7 @@ public partial class ModelSurface
 {
 
     
-    public override Homeomorphism GetAutomorphism(AutomorphismType type, ITransformable[] parameters)
+    public override Homeomorphism GetAutomorphism(AutomorphismType type, IDrawnsformable[] parameters)
     {
         switch (type)
         {

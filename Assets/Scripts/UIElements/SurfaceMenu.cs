@@ -49,10 +49,12 @@ public class SurfaceMenu: MonoBehaviour
     [SerializeField] private MainMenu mainMenu;
     [SerializeField] private string currentCurveName;
     [SerializeField] private Color currentCurveColor;
-    private readonly HashSet<(ITransformable, string)> currentStuffShown = new();
+    private readonly HashSet<(IDrawnsformable, string)> currentStuffShown = new();
+    [SerializeField] private Color previewPointColor;
+    [SerializeField] private Color previewCurveColor;
 
-    public event Action<ITransformable, string> StuffShown;
-    public event Action<ITransformable, string> StuffDeleted;
+    public event Action<IDrawnsformable, string> StuffShown;
+    public event Action<IDrawnsformable, string> StuffDeleted;
     
 
 
@@ -158,7 +160,7 @@ public class SurfaceMenu: MonoBehaviour
         Mode = mode;
     }
     
-    private  (ITransformable, string) PreviewDrawable(Point location, string drawingSurfaceName)
+    private  (IDrawnsformable, string) PreviewDrawable(Point location, string drawingSurfaceName)
     {
         switch (Mode)
         {
@@ -167,11 +169,13 @@ public class SurfaceMenu: MonoBehaviour
                 if (lastPoint is null || location is null || location == lastPoint)
                     return (location, drawingSurfaceName);
                 var homeo = surface.GetHomeomorphism(drawingSurfaceName, geodesicSurface.Name);
-                return (geodesicSurface.GetGeodesic(lastPoint, location.ApplyHomeomorphism(homeo), "previewGeodesicSegment"), geodesicSurface.Name);
+                var previewSegment = geodesicSurface.GetGeodesic(lastPoint, location.ApplyHomeomorphism(homeo), "previewGeodesicSegment");
+                previewSegment.Color = previewCurveColor;
+                return (previewSegment, geodesicSurface.Name);
                 // todo: ends for curves, ends at points (-> vertices)
-            case MenuMode.AddPoint:
-                return (location, drawingSurfaceName);
-            case MenuMode.SelectPoint:
+            case MenuMode.SelectPoint when location is not null:
+            case MenuMode.AddPoint when location is not null:
+                location.Color = previewPointColor;
                 return (location, drawingSurfaceName);
             case MenuMode.PreviewGrid:
                 // todo: implement grid
@@ -181,7 +185,7 @@ public class SurfaceMenu: MonoBehaviour
         }
     }
 
-    private (ITransformable, string) Drawable(Point location, string drawingSurfaceName)
+    private (IDrawnsformable, string) Drawable(Point location, string drawingSurfaceName)
     {
         if (location is null) return (null, drawingSurfaceName);
         switch (Mode) 
@@ -248,7 +252,7 @@ public class SurfaceMenu: MonoBehaviour
     /// <param name="propagateForwards">View the transformed versions on the next SurfaceMenus</param>
     /// <param name="propagateToDrawingSurfaces">View the transformed versions on the other drawing surfaces</param>
     /// <param name="skipDrawingSurfaces">Do not propagate to these drawing surfaces</param>
-    public void Display([CanBeNull] ITransformable input,
+    public void Display([CanBeNull] IDrawnsformable input,
         string drawingSurfaceName = null,
         bool preview = false,
         bool remove = false,
@@ -309,7 +313,7 @@ public class SurfaceMenu: MonoBehaviour
 
     }
 
-    public (ITransformable, string) GetCurve(string name) => currentStuffShown.FirstOrDefault(
+    public (IDrawnsformable, string) GetCurve(string name) => currentStuffShown.FirstOrDefault(
         c => c.Item1 is Curve
     );
 }
