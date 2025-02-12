@@ -196,6 +196,44 @@ public static class Helpers
         return list.FirstOrDefault(t => !hashSet.Add(selector(t)));
     }
 
+    public static IEnumerable<T> CyclicShift<T>(this IEnumerable<T> list, T firstElement)
+    {
+        var done = false;
+        var shiftedList = new List<T>();
+        foreach (var element in list)
+        {
+            if (!done && !Equals(firstElement, element))
+            {
+                shiftedList.Add(element);
+                continue;
+            }
+            done = true;
+            yield return element;
+        }
+        foreach (var element in shiftedList)
+            yield return element;
+    }
+
+    public static IEnumerable<T> CyclicShift<T>(this IEnumerable<T> list, int shift)
+    {
+        if (shift < 0) throw new NotImplementedException();
+        var shiftedList = new List<T>();
+        
+        foreach (var element in list)
+        {
+            if (shift > 0)
+            {
+                shift--;
+                shiftedList.Add(element);
+                continue;
+            }
+            yield return element;
+        }
+        
+        foreach (var element in shiftedList)
+            yield return element;
+    }
+
     public static ObjectWithString WithToString(this object obj, string toString) => new(obj, toString);
 
     public class ObjectWithString

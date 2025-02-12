@@ -7,10 +7,8 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
 {
-    // todo? add the ribbon graph structure, i.e. make sure that the cyclic ordering is clear? So far not needed.
-    readonly FibredGraph graph;
+    public readonly FibredGraph graph;
     
-
     /// <summary>
     /// f maps this junction into the image junction, i.e. g(this) = image;
     /// </summary>
@@ -34,18 +32,6 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
         return new Junction(graph ?? this.graph, from patch in Patches select patch.Copy(), name ?? Name, image ?? this.image, color ?? Color);
     }
 
-    public IEnumerable<OrderedStrip> Star(FibredGraph graph = null)
-    {
-        graph ??= this.graph;
-        return graph.AdjacentEdges(this).Select(
-            strip => new OrderedStrip(strip, strip.Source != this)
-        ).Concat(
-            from strip in graph.AdjacentEdges(this)
-            where strip.IsSelfEdge()
-            select new OrderedStrip(strip, true)
-        );
-    }
-    
     public void AddDrawable(IDrawnsformable drawable)
     {
         patches.Add(drawable);

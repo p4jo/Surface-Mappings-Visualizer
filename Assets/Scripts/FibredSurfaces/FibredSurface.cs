@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.LinearAlgebra.Double;
+using QuikGraph;
 using QuikGraph.Algorithms;
 using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
@@ -63,7 +63,19 @@ public class FibredSurface: IPatchedDrawnsformable
             let curve = tuple.Item1
             let source = tuple.Item2
             let target = tuple.Item3
-            select new UnorientedStrip(curve, junctions[source], junctions[target], new List<Strip>(), graph)
+            let startVector = curve.StartVelocity.Coordinates(surface)
+            let endVector = - curve.EndVelocity.Coordinates(surface)
+            let startAngle = startVector.ToComplex().Phase
+            let endAngle = endVector.ToComplex().Phase
+            select new UnorientedStrip(
+                curve, 
+                junctions[source], 
+                junctions[target], 
+                new List<Strip>(), 
+                graph, 
+                (float)startAngle,
+                (float)endAngle
+            )
         ).ToList();
         var edges = new Dictionary<string, Strip>((
                 from strip in strips select new KeyValuePair<string, Strip>(strip.Name.ToLower(), strip)
@@ -115,11 +127,7 @@ public class FibredSurface: IPatchedDrawnsformable
         var newEdges = new Dictionary<UnorientedStrip, UnorientedStrip>(graph.EdgeCount);
         foreach (var edge in Strips)
         {
-            newEdges[edge] = new UnorientedStrip(
-                edge.Curve.Copy(), 
-                newVertices[edge.Source], 
-                newVertices[edge.Target],
-                null, newGraph);
+            newEdges[edge] = edge.CopyUnoriented(newGraph);
         }
         
         foreach (var (edge, newEdge) in newEdges)
@@ -144,7 +152,7 @@ public class FibredSurface: IPatchedDrawnsformable
         if (!map.Keys.ToHashSet().IsSupersetOf(Strips.Select(s => s.Name)))
             throw new ArgumentException("The map must contain a string array for each edge of the surface.");
         var edges = Strips.ToDictionary(s => s.Name);
-        foreach (var (name, strip) in edges)
+        foreach ((string name, var strip) in edges)
             strip.EdgePath = map[name].Select(edgeName => edges[edgeName]).ToList();
     }
     
@@ -338,8 +346,70 @@ public class FibredSurface: IPatchedDrawnsformable
 
     #endregion
     
-    #region Invariant subforests
+    #region Graph operations
+    
+    public string GraphString()
+    {
+        var edgeString = string.Join("\n", Strips.Select(edge => edge.ToColorfulString()));
+        return edgeString;
+    }
 
+    public static IEnumerable<Strip> Star(Junction junction)
+    {
+        return junction.graph.AdjacentEdges(junction).SelectMany(strip =>
+            strip.Source == junction ? new[] { strip } :
+            !strip.IsSelfEdge() ? new[] { strip.Reversed() } : 
+            new[] { strip, strip.Reversed() });
+    }
+
+    public static IEnumerable<Strip> StarOrdered(Junction junction, Strip firstEdge = null)
+    {
+        var orderedStar = Star(junction).OrderBy(strip => strip.OrderIndexStart);
+        return firstEdge != null ? orderedStar.CyclicShift(firstEdge) : orderedStar;
+    }
+
+    public IEnumerable<Strip> SubgraphStar(FibredGraph subgraph) =>
+        from edge in OrientedEdges
+        where subgraph.ContainsVertex(edge.Source)
+        where !subgraph.ContainsEdge(edge.UnderlyingEdge)
+        select edge;
+
+    public IEnumerable<Strip> SubgraphStarOrdered(FibredGraph subgraph)
+    {
+        if (subgraph?.VertexCount == 0) yield break;
+        var vertex = subgraph!.Vertices.First();
+        var star = StarOrdered(vertex).GetEnumerator();
+        Strip firstEdge = null;
+        var i = 0; // just to stop infinite loop
+        
+        while (star.MoveNext()) // this should never break
+        {
+            var edge = star.Current;
+            if (Equals(firstEdge, edge)) yield break;
+            firstEdge ??= edge;
+            if (subgraph.ContainsEdge(edge!.UnderlyingEdge))
+            {
+                vertex = edge.Target;
+                star.Dispose();
+                star = StarOrdered(vertex, edge.Reversed()).CyclicShift(1).GetEnumerator();
+                continue;
+            }
+
+            yield return edge;
+            if (i++ > graph.EdgeCount)
+                throw new("The star of the subgraph didn't loop correctly. Stopped infinite loop");
+        }
+        star.Dispose();
+    }
+
+    static IEnumerable<Strip> SortConnectedSetInStar(List<Strip> star, IEnumerable<Strip> connectedSet)
+    {
+        var set = connectedSet.ToHashSet();
+        int starIndex = star.FindLastIndex(e => !set.Contains(e)) + 1;
+        // this should be the index in the cyclic order where the connected set starts
+        return star.CyclicShift(starIndex).Take(set.Count);
+    }
+    
     /// <summary>
     /// The smallest invariant subgraph containing this edge.
     /// </summary>
@@ -367,6 +437,9 @@ public class FibredSurface: IPatchedDrawnsformable
 
         return orbit;
     }
+    #endregion
+    
+    #region Invariant subforests
 
     /// <summary>
     /// only subforests whose collapse doesn't destroy the peripheral subgraph, i.e. whose components contain at most one vertex of the peripheral subgraph.
@@ -443,38 +516,40 @@ public class FibredSurface: IPatchedDrawnsformable
 
     public void CollapseInvariantSubforest(FibredGraph subforest)
     {
-        Dictionary<Junction, int> components = new();
-        int numberOfComponents = subforest.ConnectedComponents(components);
         var subforestEdges = Enumerable.ToHashSet(subforest.Edges); 
-        var newVertices = (
-            from i in Enumerable.Range(0, numberOfComponents)
-            select new Junction(
-                graph,
-                from strip in subforestEdges where components[strip.Source] == i select strip.Curve,
-                name: NextVertexName()
-            )
-        ).ToList();
-        graph.AddVertexRange(newVertices);
-        var graphEdges = Strips.ToHashSet();
-        graphEdges.ExceptWith(subforestEdges);
-        foreach (var strip in graphEdges)
+        
+        var componentList = subforest.ComponentGraphs(out var componentDict);
+
+        var newVertices = new List<Junction>();
+        foreach (var component in componentList)
         {
-            if (components.TryGetValue(strip.Source, out var component)) // a vertex in the subforest
-                strip.Source = newVertices[component];
-            if (components.TryGetValue(strip.Target, out component))
-                strip.Target = newVertices[component];
-            strip.EdgePath = strip.EdgePath.Where(edge => !subforestEdges.Contains(edge.UnderlyingEdge)).ToList();
+            var newVertex = new Junction(
+                graph,
+                component.Edges.Select(e => e.Curve).Concat<IDrawnsformable>(component.Vertices),
+                // yes this is component.Patches but component is a FibredGraph, not FibredSurface... 
+                name: NextVertexName()
+            );
+            newVertices.Add(newVertex);
+            var orderIndex = 0;
+            foreach (var strip in SubgraphStarOrdered(component).ToList())
+            {
+                strip.Source = newVertex;
+                strip.OrderIndexStart = orderIndex++;
+                strip.EdgePath = strip.EdgePath.Where(edge => !subforestEdges.Contains(edge.UnderlyingEdge)).ToList();
+            }
+
+            foreach (var junction in component.Vertices)
+            {
+                graph.RemoveVertex(junction);
+            }
         }
 
         for (var index = 0; index < newVertices.Count; index++)
         {
-            var junction = newVertices[index];
-            var absorbedJunction = components.First(kvp => kvp.Value == index).Key;
-            junction.image = newVertices[components[absorbedJunction.image]];
+            var newVertex = newVertices[index];
+            var absorbedJunction = componentList[index].Vertices.First();
+            newVertex.image = newVertices[componentDict[absorbedJunction.image]];
         }
-
-        foreach (var vertex in subforest.Vertices)
-            graph.RemoveVertex(vertex);
     }
 
     #endregion
@@ -482,10 +557,10 @@ public class FibredSurface: IPatchedDrawnsformable
     #region Valence one and two junctions
     
     public IEnumerable<Junction> GetValenceOneJunctions() =>
-        from vertex in graph.Vertices where vertex.Star().Count() == 1 select vertex;
+        from vertex in graph.Vertices where Star(vertex).Count() == 1 select vertex;
     public void RemoveValenceOneJunction(Junction junction)
     {
-        var star = junction.Star().ToArray();
+        var star = Star(junction).ToArray();
         if (star.Length != 1) Debug.LogError($"Supposed valence-one junction has valence {star.Length}");
         var removedStrip = star.First();
         Junction otherJunction = removedStrip.Target;
@@ -500,7 +575,7 @@ public class FibredSurface: IPatchedDrawnsformable
     }
 
     public IEnumerable<Junction> GetValenceTwoJunctions() =>
-        from vertex in graph.Vertices where vertex.Star().Count() == 2 select vertex;
+        from vertex in graph.Vertices where Star(vertex).Count() == 2 select vertex;
     
     /// <summary>
     /// Removes a valence two junction by keeping one of the two strips and make it replace the concatenation of the two strips.
@@ -510,7 +585,7 @@ public class FibredSurface: IPatchedDrawnsformable
     /// <param name="removeStrip"></param>
     public void RemoveValenceTwoJunction(Junction junction, Strip removeStrip = null)
     {
-        var star = junction.Star().ToArray();
+        var star = Star(junction).ToArray();
         if (star.Length != 2) Debug.LogError($"Supposed valence-two junction has valence {star.Length}");
         
         if (removeStrip == null)
@@ -523,25 +598,32 @@ public class FibredSurface: IPatchedDrawnsformable
                 removeStrip = widths[star[0].UnderlyingEdge] > widths[star[1].UnderlyingEdge] ? star[0] : star[1];
             }
         }
-        OrderedStrip keptStrip = Equals(star[0], removeStrip) ? star[1] : star[0];
+        Strip keptStrip = Equals(star[0].UnderlyingEdge, removeStrip.UnderlyingEdge) ? star[1] : star[0];
         Junction enlargedJunction = removeStrip.Source == junction ? removeStrip.Target : removeStrip.Source;
         // two options: a) isotope along removeStrip to move junctions that map there to the "enlargedJunction" (but don't actually enlarge it)
         // and enlarge keptStrip to include the removed strip: keptStrip' = removedStrip.Reverse u removeJunction u keptStrip.
-        // for better visuals (less curves in junctions), we start with this option
+        // for better visuals (fewer curves in junctions), we start with this option
         // or: b) include removedStrip and junction into the enlargedJunction and isotope along f(removeStrip), so that it lands in f(enlJun).
         // This isotopy could be faked pretty well! Just display f(keptStrip) as f(removedStrip).Reverse u f(removeJunction) u f(keptStrip)
         // and f(enlJun) as what it was before enlarging.
         // In both cases, the same thing happens combinatorially
-        var name = keptStrip.Name;
-        keptStrip.Curve = removeStrip.Curve.Reversed().Concatenate(keptStrip.Curve);
-        keptStrip.Name = name;
+        var name = keptStrip.Name.ToLower(); // todo: what if it was a reverse edge?
+        var newStrip = keptStrip.CopyUnoriented(name: name,
+            source: enlargedJunction,
+            orderIndexStart: removeStrip.OrderIndexEnd,
+            curve: keptStrip.Curve = removeStrip.Curve.Reversed().Concatenate(keptStrip.Curve),
+            edgePath: OrderedStrip.ReversedEdgePath(removeStrip.EdgePath).Concat(keptStrip.EdgePath).ToList()
+        );
         
-        keptStrip.Source = enlargedJunction; // removes and readds the keptStrip
-        graph.RemoveVertex(junction); // removes the removeEdge as well
+        graph.RemoveVertex(junction); // removes the old edges as well
+        graph.AddVerticesAndEdge(newStrip);
         
-        keptStrip.EdgePath = OrderedStrip.ReversedEdgePath(removeStrip.EdgePath).Concat(keptStrip.EdgePath).ToList();
         foreach (var strip in Strips) 
-            strip.EdgePath = strip.EdgePath.Where(edge => edge.UnderlyingEdge != removeStrip.UnderlyingEdge).ToList();
+            strip.EdgePath = (from e in strip.EdgePath
+                where !Equals(e.UnderlyingEdge, removeStrip.UnderlyingEdge)
+                select e.Equals(keptStrip) ? newStrip :
+                    e.Equals(keptStrip.Reversed()) ? newStrip.Reversed() : e
+            ).ToList();
         foreach (var vertex in graph.Vertices)
             if (vertex.image == junction)
                 vertex.image = enlargedJunction;
@@ -566,12 +648,12 @@ public class FibredSurface: IPatchedDrawnsformable
     {
         if (edge != null)
             return from vertex in graph.Vertices 
-                let star = vertex.Star() 
+                let star = Star(vertex) 
                 // only null if vertex has valence 0, but then the graph is only a vertex and the surface is a disk.
                 where star.Any() && star.All(strip => Equals(strip.Dg, edge))
                 select vertex;
         return from vertex in graph.Vertices
-            let star = vertex.Star()
+            let star = Star(vertex)
             let firstOutgoingEdge = star.FirstOrDefault()
             // only null if vertex has valence 0, but then the graph is only a vertex and the surface is a disk.
             where firstOutgoingEdge != null && firstOutgoingEdge.Dg != null && star.All(strip => Equals(strip.Dg, firstOutgoingEdge.Dg))
@@ -596,8 +678,8 @@ public class FibredSurface: IPatchedDrawnsformable
 
     public void PullTightExtremalVertex(Junction vertex)
     {
-        vertex.image = vertex.Star().First()[0].Image;
-        foreach (var strip in vertex.Star())
+        vertex.image = Star(vertex).First()[0].Image;
+        foreach (var strip in Star(vertex))
         {
             strip.EdgePath = strip.EdgePath.Skip(1).ToList();
             // for self-loops, this takes one from both ends.
@@ -652,36 +734,52 @@ public class FibredSurface: IPatchedDrawnsformable
         if (edges.Any(edge => !edge.EdgePath.SequenceEqual(edgePath)))
             throw new("Edges to fold do not have the same edge path.");
         
+        var star = StarOrdered(edges[0].Source).ToList();
+        
+        var edgesOrdered = SortConnectedSetInStar(star, edges).ToList();
+        if(!edges.ToHashSet().SetEquals(edgesOrdered))
+            throw new($"Edges to fold are not connected in the cyclic order: {string.Join(", ", edges)}");
+        edges = edgesOrdered;
+        
+        var edgeSelection = (
+            from i in Enumerable.Range(0, edges.Count)
+            select i % 2 == 0 ? edges[edges.Count / 2 + i / 2] : edges[edges.Count / 2 - i / 2 - 1]
+        ).ToList();
         var preferredOldEdge = 
-            edges.FirstOrDefault(e => e is UnorientedStrip && !e.Name.EndsWith('1') && !e.Name.EndsWith('2')) ??
-            edges.FirstOrDefault(e => !e.Name.EndsWith('1') && !e.Name.EndsWith('2')) ??
-            edges.FirstOrDefault(e => e is UnorientedStrip && !e.Name.EndsWith('2')) ??
-            edges.FirstOrDefault(e => !e.Name.EndsWith('2')) ??
-            edges.FirstOrDefault(e => e is UnorientedStrip) ??
-            edges.First();
+            edgeSelection.FirstOrDefault(e => e is UnorientedStrip && !e.Name.EndsWith('1') && !e.Name.EndsWith('2')) ??
+            edgeSelection.FirstOrDefault(e => !e.Name.EndsWith('1') && !e.Name.EndsWith('2')) ??
+            edgeSelection.FirstOrDefault(e => e is UnorientedStrip && !e.Name.EndsWith('2')) ??
+            edgeSelection.FirstOrDefault(e => !e.Name.EndsWith('2')) ??
+            edgeSelection.FirstOrDefault(e => e is UnorientedStrip) ??
+            edgeSelection.First();
 
+        
         string name = null;
         if (!char.IsLetter(preferredOldEdge.Name[^1]))
             name = NextEdgeName();
-        var newEdge = preferredOldEdge.Copy(name: name);
         
-        var targetVerticesToFold = (from edge in edges select edge.Target).ToArray();
+        var targetVerticesToFold = (from edge in edges select edge.Target).ToArray(); // has the correct order
         var targetVerticesPosition = (from edge in edges select edge.Curve.EndPosition).ToArray();
-        Curve connectingCurve = surface.GetPathFromWaypoints(targetVerticesPosition, name);
+        var connectingCurve = surface.GetPathFromWaypoints(targetVerticesPosition, name);
+        // todo? Try to avoid the rest of the fibred surface
         var color = targetVerticesToFold.First().Color;
         var newVertex = new Junction(graph, targetVerticesToFold.Append<IDrawnsformable>(connectingCurve), name, targetVerticesToFold.First().image, color); 
-        // todo: Connect the vertices by a curve that avoids the rest of the fibred surface
-        // needs cyclic order!
+        var newEdge = preferredOldEdge.Copy(name: name, target: newVertex, orderIndexEnd: 0);
 
-        
         graph.RemoveEdges(from edge in edges select edge.UnderlyingEdge);
         graph.AddEdge(newEdge.UnderlyingEdge);
-        
+        float indexOffset = 1;
         foreach (var vertex in targetVerticesToFold)
         {
-            foreach (var edge in vertex.Star().ToArray()) // to avoid concurrent modification 
-                edge.Source = newVertex;
+            var star_ = Star(vertex).ToArray();
+            foreach (var edge in star_) 
+            {
+                edge.Source = newVertex; 
+                edge.OrderIndexStart += indexOffset;
+            }
+        
             graph.RemoveVertex(vertex);
+            indexOffset = star_.Max(e => e.OrderIndexStart) + 1; // for this to work we assume that all order indices are > -1
         }
         foreach (var junction in graph.Vertices)
         {
@@ -691,9 +789,9 @@ public class FibredSurface: IPatchedDrawnsformable
 
         foreach (var edge in edges)
         {
-            for (int k = 0; k < updateEdgePoints.Count; k++)
+            for (var k = 0; k < updateEdgePoints.Count; k++)
             {
-                var j = updateEdgePoints[k].AlignedIndex(edge, out var reverse);
+                int j = updateEdgePoints[k].AlignedIndex(edge, out bool reverse);
                 if (j < 0) continue;
                 var res = new EdgePoint(newEdge, j);
                 updateEdgePoints[k] = reverse ? res.Reversed() : res;
@@ -719,9 +817,18 @@ public class FibredSurface: IPatchedDrawnsformable
         
         var newVertex = new Junction(graph, splitEdge.Curve[splitTime], NextVertexName(), splitPoint.Image);
 
-        var firstSegment = splitEdge.Copy(curve: splitEdge.Curve.Restrict(0, splitTime), target: newVertex, edgePath: edgePath.Take(splitPoint.index).ToList());
+        var firstSegment = splitEdge.Copy(
+            curve: splitEdge.Curve.Restrict(0, splitTime),
+            edgePath: edgePath.Take(splitPoint.index).ToList(),
+            target: newVertex,
+            orderIndexEnd: 0);
         
-        var secondSegment = splitEdge.Copy(curve: splitEdge.Curve.Restrict(splitTime, splitEdge.Curve.Length), source: newVertex, edgePath: edgePath.Skip(splitPoint.index).ToList());
+        var secondSegment = splitEdge.Copy(
+            curve: splitEdge.Curve.Restrict(splitTime, splitEdge.Curve.Length),
+            edgePath: edgePath.Skip(splitPoint.index).ToList(),
+            source: newVertex,
+            orderIndexStart: 1
+        );
 
         string firstSegmentName, secondSegmentName;
         string originalName = splitEdge.Name.ToLower();
@@ -970,63 +1077,102 @@ public class FibredSurface: IPatchedDrawnsformable
     public bool AbsorbIntoPeriphery(bool testDry = false)
     {
         var Q = GetMaximalPeripheralSubgraph();
-        if (testDry && Q.Edges.Any(edge => !peripheralSubgraph.ContainsEdge(edge))) return true;
-        
-        var starQ = (
-            from vertex in Q.Vertices
-            let starV = vertex.Star()
-            from strip in starV
-            where !Q.Edges.Contains(strip.UnderlyingEdge)
-            select strip
-        ).ToList();
+        if (testDry && (
+                Q.Edges.Any(edge => !peripheralSubgraph.ContainsEdge(edge))
+                || Q.Vertices.Any(v => Star(v).Count() <= 2) 
+        )) return true;
+
+        var starQ = SubgraphStar(Q).ToList();
         foreach (var strip in starQ)
         {
-            while (Q.Edges.Contains(strip.Dg?.UnderlyingEdge))
-            {
-                if (testDry) return true;
-                strip.EdgePath = strip.EdgePath.Skip(1).ToList();
-            }
-            if (strip.EdgePath.Count == 0) Debug.LogError("The strip has been absorbed into the periphery.");
+            if (testDry && Q.ContainsEdge(strip.Dg!.UnderlyingEdge)) return true;
+            strip.EdgePath = strip.EdgePath.SkipWhile(e => Q.Edges.Contains(e)).ToList();
+            if (strip.Dg == null) Debug.LogError($"The strip {strip} has been absorbed into the periphery.");
         }
-        if (testDry) return peripheralSubgraph.Vertices.Any(v => v.Star().Count() <= 2); 
-        // the periphery is maximal, nothing to do.
-        // todo? check also when !testDry and return here with only removing valence-two vertices.
-
-        var components = new Dictionary<Junction, int>();
-        Q.ConnectedComponents(components);
-        var gates = Gate.FindGates(Q, vertex => components[vertex]); // todo? Display the peripheral gates?
+        if (testDry) return false;
+        
+        var components = Q.ComponentGraphs(out var componentDict);
+        var gates = Gate.FindGates(starQ, vertex => componentDict[vertex]); 
+        // todo? Display the peripheral gates?
         var newJunctions = new List<Junction>();
+        var stars = (from component in components select SubgraphStarOrdered(component).ToList()).ToList();
         foreach (var gate in gates)
         {
-            var frontiers = from edge in gate.Edges select edge.Curve.Restrict(0, 0.1f);
-            // todo: give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
-            // needs order of the gates!
-            var newJunction = new Junction(graph, frontiers, NextVertexName());
+            var gateInOrder = SortConnectedSetInStar(stars[gate.junctionIdentifier], gate.Edges).ToList();
+            var positions = from edge in gateInOrder select edge.Curve.StartPosition;
+            // give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
+            // todo: currently this does not follow the boundary of <Q>.
+            string name = NextVertexName();
+            var newJunction = new Junction(graph, surface.GetPathFromWaypoints(positions, name), name);
             newJunctions.Add(newJunction);
-            foreach (var edge in gate.Edges)
-                edge.Source = newJunction;
+            var orderIndex = 0;
+            foreach (var edge in gateInOrder)
+            {
+                edge.Source = newJunction; // adds the new junctions to the graph
+                edge.OrderIndexStart = orderIndex++;
+            }
         }
 
-        graph.AddVertexRange(newJunctions);
-
-        for (var i = 0; i < gates.Count; i++)
+        // graph.AddVertexRange(newJunctions);
+        List<UnorientedStrip> newEdges = new();
+        foreach (var star in stars)
         {
-            Gate<int> gate = gates[i];
-            var Dg = gate.Edges.First().Dg;
-            var Dg_gate = Enumerable.Range(0, gates.Count).First(j => gates[j].Edges.Contains(Dg));
-            newJunctions[i].image = newJunctions[Dg_gate];
-            // TODO: new edges between the new junctions; map them accordingly (uniquely defined by the images of the new junctions: g still acts as a graph automorphism on the new P). Needs the order of the gates! (we know that they are connected in the cyclic order)
+            List<Junction> newJunctionsInOrder = new();
+            foreach (var edge in star)
+            {
+                var newJunction = edge.Source; // this is the junction corresponding to the gate of the edge
+                var lastJunction = newJunctionsInOrder.LastOrDefault();
+                if (newJunction == lastJunction) continue;
+
+
+                var Dg = edge.Dg;
+                var Dg_gate = Enumerable.Range(0, gates.Count).First(j => gates[j].Edges.Contains(Dg));
+                newJunction.image = newJunctions[Dg_gate];
+
+                newJunctionsInOrder.Add(newJunction);
+            }
+
+            if (newJunctionsInOrder[^1] !=
+                newJunctionsInOrder[0]) // this happens if the iteration above started in the middle of a gate.
+                newJunctionsInOrder.Add(newJunctionsInOrder[0]);
+
+            var name = NextEdgeName();
+            for (var index = 0; index < newJunctionsInOrder.Count - 1; index++)
+            {
+                var junction = newJunctionsInOrder[index];
+                var nextJunction = newJunctionsInOrder[index + 1];
+                var junctionEndPosition = (junction.Patches.First() as Curve).EndPosition;
+                var nextJunctionStartPosition = (nextJunction.Patches.First() as Curve).StartPosition;
+
+                var newEdge = new UnorientedStrip(
+                    curve: surface.GetGeodesic(
+                        start: junctionEndPosition,
+                        end: nextJunctionStartPosition,
+                        name: name + index),
+                    source: junction,
+                    target: nextJunction,
+                    edgePath: new Strip[] { }, // we can only add these once we created them all
+                    graph: graph,
+                    orderIndexStart: Star(junction).Max(e => e.OrderIndexStart) + 0.5f,
+                    orderIndexEnd: Star(nextJunction).Min(e => e.OrderIndexStart) - 0.5f // still > -1!
+                );
+                newEdges.Add(newEdge);
+                graph.AddVerticesAndEdge(newEdge);
+            }
         }
 
-        foreach (var edge in starQ)
+        foreach (var strip in newEdges)
         {
-            var gateId = Enumerable.Range(0, gates.Count).First(j => gates[j].Edges.Contains(edge));
-            edge.Source = newJunctions[gateId];
+            var imageOfSource = strip.Source.image;
+            var imageOfEdge = newEdges.First(e => e.Source == imageOfSource);
+            if (imageOfEdge.Target != strip.Target.image)
+                Debug.LogError("The new graph map does not seem to act as a graph automorphism on the new peripheral graph.");
+            strip.EdgePath = new []{ imageOfEdge };
         }
-
-        graph.RemoveEdges(Q.Edges);
+            
+        // graph.RemoveEdges(Q.Edges);
         foreach (var oldJunction in Q.Vertices)
-            graph.RemoveVertex(oldJunction); 
+            graph.RemoveVertex(oldJunction);  // also removes Q's edges (the star edges should not be adjacent to (the old) Q anymore)
         return true;
     }
     
@@ -1042,8 +1188,8 @@ public class FibredSurface: IPatchedDrawnsformable
         {
             if (!prePeriphery.Contains(edge.Dg)) 
                 continue;
-            var otherEdges = edge.Source.Star().Where(
-                e => Equals(e.Dg, edge.Dg) ).Cast<Strip>().ToList();
+            var otherEdges = Star(edge.Source).Where(
+                e => Equals(e.Dg, edge.Dg) ).ToList();
             if (otherEdges.Count > 1)
                 yield return otherEdges;
         }
@@ -1103,11 +1249,8 @@ public class FibredSurface: IPatchedDrawnsformable
 
     #endregion
 
-    #region Edge names
+    #region Names
 
-    
-
-    
     readonly List<string> edgeNames = new()
     {
         "a", "b", "c", "d", /*"e",*/  "x", "y", "z", "w",   "u",  "h", "i", "j", "k", "l", "m", "n", "o", 
@@ -1215,9 +1358,4 @@ public class FibredSurface: IPatchedDrawnsformable
 
     #endregion
 
-    public string GraphString()
-    {
-        var edgeString = string.Join("\n", Strips.Select(edge => edge.ToColorfulString()));
-        return edgeString;
-    }
 }

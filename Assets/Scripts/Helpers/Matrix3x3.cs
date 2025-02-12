@@ -103,6 +103,9 @@ public class TangentVector: ITransformable<TangentVector>
         vector = this.vector;
     }
 
+    public Vector2 Coordinates(TangentSpace tangentSpace) => tangentSpace.basis.Inverse() * vector;
+    public Vector2 Coordinates(Surface surface) => Coordinates(surface.BasisAt(point));
+
     public override string ToString() => $"(vector {vector} at {point.Position})";
 
     public static TangentVector operator +(TangentVector self, TangentVector other)
@@ -118,4 +121,5 @@ public class TangentVector: ITransformable<TangentVector>
     public static TangentVector operator -(TangentVector self) => -1 * self;
     
     public static TangentVector operator -(TangentVector self, TangentVector other) => self + -other;
+
 }

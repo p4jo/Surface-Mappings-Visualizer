@@ -5,6 +5,12 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 public static class FibredSurfaceFactory
 {
+    /// <summary>
+    /// Creates a spine for the surface by adding a vertex at (0, 0, 0) and connecting it to the midpoints of the sides of the surface. This currently doesn't work for surfaces with punctures, or for surfaces with non-convex polygons.
+    /// </summary>
+    /// <param name="surface"></param>
+    /// <param name="map">This is the map describing the homeomorphism. Use spaces for separation and uppercase for inverse. Example: map["a"] = "a B A b D C A"</param>
+    /// <param name="names">The names for the strips. If not provided this will be the last character of the side name.</param>
     public static FibredSurface RoseSpine(ModelSurface surface, IDictionary<string, string[]> map, IDictionary<string, string> names = null)
     {
         string defaultName(string sideName) => sideName[^1..];

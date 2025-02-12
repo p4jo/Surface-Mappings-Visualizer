@@ -40,15 +40,15 @@ public class EdgeCycle
     /// <summary>
     /// The edgeCycle.attratcedEdges (for edgeCycle in edgeCycles) forms a partition of the set of oriented edges.  
     /// </summary>
-    public static List<EdgeCycle> FindEdgeCycles(UndirectedGraph<Junction, UnorientedStrip> graph)
+    public static List<EdgeCycle> FindEdgeCycles(IReadOnlyCollection<Strip> edges)
     {        
         List<EdgeCycle> edgeCycles = new();
 
-        foreach (var edge in graph.Edges.Concat<Strip>(graph.Edges.Select(e => e.Reversed())))
+        foreach (var edge in edges.Concat<Strip>(edges.Select(e => e.Reversed())))
         {
             Strip e_i = edge;
             List<Strip> orbit = new();
-            for (int i = 1; i <= 2 * graph.EdgeCount; i++)
+            for (int i = 1; i <= 2 * edges.Count; i++)
                 // it should never break because of the upper limit because after at most #E elements the orbit must repeat.
             {
                 orbit.Add(e_i);
@@ -118,12 +118,12 @@ public class Gate<T>
 
 public static class Gate
 {
-    public static List<Gate<Junction>> FindGates(UndirectedGraph<Junction, UnorientedStrip> graph) => FindGates(graph, junction => junction);
+    public static List<Gate<Junction>> FindGates(UndirectedGraph<Junction, UnorientedStrip> graph) => FindGates(graph.Edges.ToList(), junction => junction);
 
     
-    public static List<Gate<T>> FindGates<T>(UndirectedGraph<Junction, UnorientedStrip> graph, Func<Junction, T> identifier) where T : IEquatable<T>
+    public static List<Gate<T>> FindGates<T>(IReadOnlyCollection<Strip> edges, Func<Junction, T> identifier) where T : IEquatable<T>
     {
-        List<EdgeCycle> edgeCycles = EdgeCycle.FindEdgeCycles(graph);
+        List<EdgeCycle> edgeCycles = EdgeCycle.FindEdgeCycles(edges);
         List<Gate<T>> gates = new();
         foreach (var edgeCycle in edgeCycles)
         {

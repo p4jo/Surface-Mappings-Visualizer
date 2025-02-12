@@ -88,7 +88,7 @@ public class EdgePoint
     {
         if (index != 0) return edge.EdgePath[index - 1].Reversed();
 
-        var star = edge.Source.Star().ToArray();
+        var star = FibredSurface.Star(edge.Source).ToArray();
         // we assume that in this case there is only one other edge in the star of the source.
         if (star.Length != 2) return null;
         
@@ -100,7 +100,7 @@ public class EdgePoint
     {
         if (index != edge.EdgePath.Count) return edge.EdgePath[index];
         var edgeReversed = edge.Reversed();
-        var star = edge.Target.Star().ToArray();
+        var star = FibredSurface.Star(edge.Target).ToArray();
         // we assume that in this case there is only one other edge in the star of the target.
         if (star.Length != 2) return null;
         
@@ -147,14 +147,14 @@ public class Inefficiency: EdgePoint
 
              if (AlwaysFoldAllEdgesWithShortSharedInitialSegment) // this is the way the algorithm is described in [BH]
              {
-                 edgesToFold = (from e in aOld!.Source.Star() where Equals(e.Dg, a) select e).ToList<Strip>();
+                 edgesToFold = (from e in FibredSurface.Star(aOld!.Source) where Equals(e.Dg, a) select e).ToList<Strip>();
                  initialSegmentToFold = Strip.SharedInitialSegment(edgesToFold);
              }
              else // this is how it is handled in the first example in [BH]. This is "cooler" since the initial segment is longer.
              {
                  initialSegmentToFold = Strip.SharedInitialSegment(new List<Strip> {aOld, bOld});
                  var initialSegment = aOld.EdgePath.Take(initialSegmentToFold).ToList();
-                 edgesToFold = (from e in aOld.Source.Star() where e.EdgePath.Take(initialSegmentToFold).SequenceEqual(initialSegment) select e).ToList<Strip>();
+                 edgesToFold = (from e in FibredSurface.Star(aOld.Source) where e.EdgePath.Take(initialSegmentToFold).SequenceEqual(initialSegment) select e).ToList<Strip>();
              }
              return;
          }
