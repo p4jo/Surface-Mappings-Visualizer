@@ -357,9 +357,10 @@ public class FibredSurface: IPatchedDrawnsformable
     public static IEnumerable<Strip> Star(Junction junction)
     {
         return junction.graph.AdjacentEdges(junction).SelectMany(strip =>
-            strip.Source == junction ? new[] { strip } :
-            !strip.IsSelfEdge() ? new[] { strip.Reversed() } : 
-            new[] { strip, strip.Reversed() });
+            strip.IsSelfEdge() ? new[] { strip, strip.Reversed() } : 
+                strip.Source != junction ? 
+                    new[] { strip.Reversed() } :
+                    new[] { strip });
     }
 
     public static IEnumerable<Strip> StarOrdered(Junction junction, Strip firstEdge = null)
@@ -385,7 +386,7 @@ public class FibredSurface: IPatchedDrawnsformable
         while (star.MoveNext()) // this should never break
         {
             var edge = star.Current;
-            if (Equals(firstEdge, edge)) yield break;
+            if (Equals(firstEdge, edge)) break;
             firstEdge ??= edge;
             if (subgraph.ContainsEdge(edge!.UnderlyingEdge))
             {
@@ -990,7 +991,7 @@ public class FibredSurface: IPatchedDrawnsformable
             Debug.LogError($"The edge path is not an actual edge path at {edgePoint}!");
         if (!FindGate(a).Edges.Contains(b)) return null; // not inefficient
         
-        return new Inefficiency(edgePoint);
+            return new Inefficiency(edgePoint);
         
         Gate<Junction> FindGate(Strip edge) => gates.First(gate => gate.Edges.Contains(edge));     
         // The gates should form a partition of the set of oriented edges, so this should be well-defined.
