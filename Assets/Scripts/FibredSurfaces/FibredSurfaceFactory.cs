@@ -11,8 +11,15 @@ public static class FibredSurfaceFactory
     /// <param name="surface"></param>
     /// <param name="map">This is the map describing the homeomorphism. Use spaces for separation and uppercase for inverse. Example: map["a"] = "a B A b D C A"</param>
     /// <param name="names">The names for the strips. If not provided this will be the last character of the side name.</param>
-    public static FibredSurface RoseSpine(ModelSurface surface, IDictionary<string, string[]> map, IDictionary<string, string> names = null)
-    {
+    /// <param name="reverse">Whether to reverse the strip. If not provided, this will be false for all strips.
+    /// This decides if the drawn spine curve goes towards the "primary" side of the surface (saved in surface.sides), or the "other" side (side.other).
+    /// </param>
+    public static FibredSurface RoseSpine(
+        ModelSurface surface,
+        IDictionary<string, string[]> map,
+        IDictionary<string, string> names = null,
+        IDictionary<string, bool> reverse = null
+    ) {
         string defaultName(string sideName) => sideName[^1..];
         string nameMap(string sideName)
         {
@@ -30,9 +37,14 @@ public static class FibredSurfaceFactory
         foreach (var side in surface.sides)
         {
             var point = side[side.Length / 2];
+            var (point1, point2) = point.Positions;
             var name = nameMap(side.Name);
-            var firstPart = surface.GetBasicGeodesic(junction, point, name); // saving the full point should mean that in ConcatenatedCurve, it will understand that this is not an actual jump point, just a visual one. // nvm, it is Clamp()ed anyway
-            var secondPart = surface.GetBasicGeodesic(point.Positions.ElementAt(1), junction, name);
+            if (reverse != null && reverse.ContainsKey(name) && reverse[name])
+                (point1, point2) = (point2, point1);
+            var firstPart = surface.GetBasicGeodesic(junction, point1, name); 
+            // saving the full point should mean that in ConcatenatedCurve, it will understand that this is not an actual jump point, just a visual one.
+            // nvm, it is Clamp()ed anyway
+            var secondPart = surface.GetBasicGeodesic(point2, junction, name);
             var curve = firstPart.Concatenate(secondPart);
             curve.Name = name;
             var stripData = (curve, "v", "v", map[curve.Name]);
@@ -46,8 +58,18 @@ public static class FibredSurfaceFactory
     /// The rose spine of the surface with the given map. Use spaces for separation and uppercase for inverse
     /// Example: map["a"] = "a B A b D C A" 
     /// </summary>
-    public static FibredSurface RoseSpine(ModelSurface surface, IDictionary<string, string> map) => 
-        RoseSpine(surface, map.ToDictionary(kv => kv.Key, kv => kv.Value.Split(' ')));
+    public static FibredSurface RoseSpine(
+        ModelSurface surface, 
+        IDictionary<string, string> map,
+        IDictionary<string, string> names = null,
+        IDictionary<string, bool> reverse = null
+    ) =>
+        RoseSpine(surface,
+            map.ToDictionary(kv => kv.Key, 
+                kv => kv.Value.Split(' ')
+            ),
+            names,
+            reverse);
 
     /// <summary>
     /// The rose spine of the surface with the identity map. 
@@ -66,7 +88,13 @@ public static class FibredSurfaceFactory
             ["c"] = "c c d B",
             ["d"] = "b c d B"
         };
-        FibredSurface s = RoseSpine(surface, map);
+        FibredSurface s = RoseSpine(surface, map, reverse: new Dictionary<string, bool>
+        {
+            ["a"] = false,
+            ["b"] = false,
+            ["c"] = true,
+            ["d"] = true
+        });
         s.BestvinaHandelAlgorithm();
     }   
 }

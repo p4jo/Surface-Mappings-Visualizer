@@ -399,13 +399,14 @@ public class RestrictedCurve : Curve
     private readonly float start;
     private readonly float end;
 
-    public RestrictedCurve(Curve curve, float start, float end)
+    public RestrictedCurve(Curve curve, float start, float end, string name = null)
     {
         if (start < 0 || end > curve.Length || start > end)
             throw new Exception("Invalid restriction");
         this.curve = curve;
         this.start = start;
         this.end = end;
+        _name = name;
     }
 
     [CanBeNull] private string _name;
@@ -429,7 +430,8 @@ public class RestrictedCurve : Curve
     public override Point ValueAt(float t) => curve.ValueAt(t + start);
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);
 
-    public override Curve Reversed() => reverseCurve ??= new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start);
+    public override Curve Reversed() => reverseCurve ??=
+        new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start) { Name = Name };
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);

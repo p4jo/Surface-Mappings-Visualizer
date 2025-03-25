@@ -124,6 +124,14 @@ public class MainMenu: MonoBehaviour
             ["c"] = "c c d B",
             ["d"] = "b c d B"
         };
-        fibredSurfaceMenu.Initialize(FibredSurfaceFactory.RoseSpine(surfaceMenu.geodesicSurface as ModelSurface, map), surfaceMenu);
+        var surface = surfaceMenu.geodesicSurface as ModelSurface;
+        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, map, reverse: new Dictionary<string, bool>
+        {
+            ["a"] = false,
+            ["b"] = false,
+            ["c"] = true,
+            ["d"] = true
+        });
+        fibredSurfaceMenu.Initialize(fibredSurface, surfaceMenu);
     }
 }

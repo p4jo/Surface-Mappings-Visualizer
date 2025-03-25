@@ -195,6 +195,12 @@ public static class Helpers
         var hashSet = new HashSet<T2>();
         return list.FirstOrDefault(t => !hashSet.Add(selector(t)));
     }
+    
+    public static IEnumerable<T> WithoutDuplicates<T>(this IEnumerable<T> list)
+    {
+        var hashSet = new HashSet<T>();
+        return list.Where(hashSet.Add);
+    }
 
     public static IEnumerable<T> CyclicShift<T>(this IEnumerable<T> list, T firstElement)
     {
