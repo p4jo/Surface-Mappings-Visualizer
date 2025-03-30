@@ -115,23 +115,55 @@ public class MainMenu: MonoBehaviour
         
         var surfaceMenu = surfaceMenus[0]; 
         fibredSurfaceMenu.gameObject.SetActive(true);
+        var surface = surfaceMenu.geodesicSurface as ModelSurface;
         
         // if (surface.Name)
+        // var map = new Dictionary<string, string> // todo: Menu for entering the map before this menu.
+        // {
+        //     ["a"] = "a B A b D C A",
+        //     ["b"] = "a c d B a b c d B",
+        //     ["c"] = "c c d B",
+        //     ["d"] = "b c d B"
+        // };
+        // FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, map, reverse: new Dictionary<string, bool>
+        // {
+        //     ["a"] = false,
+        //     ["b"] = false,
+        //     ["c"] = true,
+        //     ["d"] = true
+        // });
         var map = new Dictionary<string, string> // todo: Menu for entering the map before this menu.
         {
-            ["a"] = "a B A b D C A",
-            ["b"] = "a c d B a b c d B",
-            ["c"] = "c c d B",
-            ["d"] = "b c d B"
+            ["a"] = "a",
+            ["b"] = "b",
+            ["c"] = "c",
+            ["d"] = "d"
         };
-        var surface = surfaceMenu.geodesicSurface as ModelSurface;
-        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, map, reverse: new Dictionary<string, bool>
+        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, map, 
+        names: new Dictionary<string, string>
         {
-            ["a"] = false,
-            ["b"] = false,
-            ["c"] = true,
-            ["d"] = true
-        });
+            ["side a"] = "a",
+            ["side b"] = "b",
+            ["side d"] = "c",
+            ["side c"] = "d"
+        },
+        reverse: new Dictionary<string, bool>
+        {
+            ["a"] = true,
+            ["b"] = true,
+            ["c"] = false,
+            ["d"] = false
+        }
+        );
+        // var v = fibredSurface.graph.Vertices.First();
+        // var e = fibredSurface.Strips.First();
+        // fibredSurface.MoveJunction(e, e.Curve.Length - 0.5f);
+        
         fibredSurfaceMenu.Initialize(fibredSurface, surfaceMenu);
+
+        fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
+        fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
+        fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
+        fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
     }
 }

@@ -33,6 +33,14 @@ public class FlatGeodesicSegment : InterpolatingCurve
             name
         ) {  }
     
+    public FlatGeodesicSegment(TangentVector startVelocity, float length, Surface surface, string name) : base(
+            startVelocity,
+            new(startVelocity.point.Position + startVelocity.vector * length, startVelocity.vector),
+            length,
+            surface,
+            name
+        ) {  }
+    
     private static (TangentVector, TangentVector, float) ComputeData(Point start, Point end)
     {
         var direction = end.Position - start.Position;
@@ -58,9 +66,12 @@ public class HyperbolicGeodesicSegment : Curve
     public override Surface Surface { get; }
 
     public override Point StartPosition { get; }
-    public override Point EndPosition { get; }
+    
+    private Point endPosition;
+    public override Point EndPosition => endPointGiven ? endPosition : base.EndPosition;
 
     private readonly bool diskModel;
+    private readonly bool endPointGiven;
 
     /// <summary>
     /// A geodesic segment in the hyperbolic plane. We use either the Poincaré disk model or the upper half plane model.
@@ -74,10 +85,66 @@ public class HyperbolicGeodesicSegment : Curve
         Name = name;
         Surface = surface;
         StartPosition = start;
-        EndPosition = end;
+        endPosition = end;
         this.diskModel = diskModel;
         Initialize(start, end);
     }
+
+    public HyperbolicGeodesicSegment(TangentVector startVelocity, float length, HyperbolicPlane surface, string name, bool diskModel)
+    {
+        if (length < 0)
+            throw new System.ArgumentException("Length must be non-negative.");
+        Name = name;
+        Surface = surface;
+        StartPosition = startVelocity.point;
+        this.diskModel = diskModel;
+        this.length = length;
+        Initialize(startVelocity);
+    }
+
+    private void Initialize(TangentVector startVelocity)
+    {
+        double a = 0, b = 0, c = 0, d = 0;
+        Complex p = startVelocity.point.Position.ToComplex();
+        Complex v = startVelocity.vector.ToComplex();
+        if (diskModel)
+        {
+            var factor = p - 1;
+            // multiply by the [derivative of the] inverse of the Cayley transform (1  -i \\ 1  i); this maps the unit disk isometrically to the upper half plane.
+            v = 2 * Complex.ImaginaryOne * v / factor / factor;
+            p = - Complex.ImaginaryOne * (p + 1) / factor;
+        }
+        // p, q are in the upper half plane model 
+        if (p.Imaginary < 0)
+            Debug.LogError("Calculation error: Point is outside the hyperbolic plane.");
+        if (p.Imaginary < 1e-6)
+            p = new Complex(p.Real, 1e-6);
+
+        var φ = (Math.PI / 2 - v.Phase) / 2;
+        a = Math.Cos(φ);
+        c = - Math.Sin(φ);
+        b = - a * p.Real - c * p.Imaginary;
+        d = a * p.Imaginary - c * p.Real;
+        
+        if (diskModel)
+        {
+            // invert and multiply by the Cayley transform (1  -i \\ 1  i) which isometrically maps the upper half plane to the unit disk.
+            α = new Complex(d, c); 
+            β = new Complex(-b, -a);
+            γ = new Complex(d, -c); 
+            δ = new Complex(-b, a);
+        }
+        else
+        {
+            // invert
+            α = d;
+            β = -b;
+            γ = -c;
+            δ = a;
+        }
+        
+    }
+
 
     private void Initialize(Point start, Point end)
     {

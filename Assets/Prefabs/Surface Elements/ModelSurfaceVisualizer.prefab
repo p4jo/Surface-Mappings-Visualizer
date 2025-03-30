@@ -100,7 +100,7 @@ MonoBehaviour:
   wheelSensitivity: 3
   pinchSensitivity: 0.05
   rotationSpeed: 1
-  mouseMovementSpeed: 0.1
+  mouseMovementSpeed: 0.01
   <Cam>k__BackingField: {fileID: 6488324276169718107}
   parentKamera: {fileID: 0}
   childKamera: {fileID: 0}

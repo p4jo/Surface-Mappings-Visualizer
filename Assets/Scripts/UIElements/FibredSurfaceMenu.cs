@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using QuikGraph;
 using TMPro;
 using UnityEngine;
@@ -22,6 +24,9 @@ public class FibredSurfaceMenu : MonoBehaviour
     private readonly AdjacencyGraph<FibredSurface, TaggedEdge<FibredSurface, string>> fibredSurfaces = new();
     public FibredSurface FibredSurface { get; private set; }
     private FibredSurface fibredSurfaceCopy;
+    
+    private TaggedEdge<FibredSurface, string> ParentEdge() => 
+        fibredSurfaces.Edges.FirstOrDefault(e => e.Target == FibredSurface);
 
     public void Initialize(FibredSurface fibredSurface, SurfaceMenu surfaceMenu)
     {
@@ -40,7 +45,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         UpdateUI();
     }
 
-    public void ClearUI()
+    private void ClearUI()
     {
         foreach (Transform child in forwardButtonList.transform.Cast<Transform>().ToList()) 
             DestroyImmediate(child.gameObject);
@@ -50,8 +55,8 @@ public class FibredSurfaceMenu : MonoBehaviour
             DestroyImmediate(child.gameObject);
         surfaceMenu.Display(FibredSurface, remove: true);
     }
-    
-    public void UpdateUI()
+
+    private void UpdateUI()
     {
         backButton.SetActive(ParentEdge() != null);
         foreach (var edge in fibredSurfaces.OutEdges(FibredSurface))
@@ -65,7 +70,8 @@ public class FibredSurfaceMenu : MonoBehaviour
         
         var fibredSurfaceCopy = FibredSurface.Copy();
         graphStatusText.text = fibredSurfaceCopy.GraphString();
-        
+
+        descriptionText.text = "Loading next steps...";
         var suggestions = fibredSurfaceCopy.NextSuggestion();
         if (suggestions == null)
             descriptionText.text = "The algorithm finishes: This is an efficient fibred surface.";
@@ -102,6 +108,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         LayoutRebuilder.ForceRebuildLayoutImmediate(GetComponent<RectTransform>());
     }
 
+    // called from UI 
     private void DoSuggestion(object buttonText, IEnumerable<object> enumerable, FibredSurface newFibredSurface)
     {
         enumerable = enumerable.ToList();
@@ -115,12 +122,71 @@ public class FibredSurfaceMenu : MonoBehaviour
         UpdateSelectedSurface(newFibredSurface);
     }
 
+    // called from UI
     public void BackButtonPressed()
     {
         var parent = ParentEdge()?.Source;
         if (parent != null) UpdateSelectedSurface(parent);
     }
 
-    private TaggedEdge<FibredSurface, string> ParentEdge() => 
-        fibredSurfaces.Edges.FirstOrDefault(e => e.Target == FibredSurface);
+    public void UpdateGraphMap(IDictionary<string, string[]> map, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
+    {
+        var edgeNames = (from strip in FibredSurface.Strips select strip.Name).ToHashSet();
+        edgeNames.ExceptWith(map.Keys);
+        foreach (var missingKey in edgeNames)
+        {
+            map[missingKey] = new[] { missingKey }; // identity on the other edges
+        }
+        var newFibredSurface = FibredSurface.Copy();
+        newFibredSurface.SetMap(map, mode);
+        if (reset)
+        {
+            fibredSurfaces.Clear();
+            fibredSurfaces.AddVertex(newFibredSurface);
+        }
+        else
+        {
+            fibredSurfaces.AddVerticesAndEdge(new(FibredSurface, newFibredSurface, "Update map"));
+        }
+        UpdateSelectedSurface(newFibredSurface);
+    }
+
+    public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
+    {
+        string[] lines = text.Split(',', '\n');
+        var graphMap = new Dictionary<string, string[]>();
+        foreach (string line in lines)
+        {
+            string trim = line.Trim();
+            if (trim == "") 
+                continue;
+            var match = Regex.Match(trim, @"g\s*\((.+)\)\s*=(.*)");
+            if (!match.Success)
+                match = Regex.Match(trim, @"(.+)->(.*)");
+            if (!match.Success)
+                match = Regex.Match(trim, @"(.+)↦(.*)");
+            if (!match.Success)
+                throw new ArgumentException("The input should be in the form \"g(a) = a B A, g(b) = ...\" or \" a -> a B A, b -> ...\"");
+
+            string[] parts = match.Groups[2].Value.Split(' ').Select(s => s.Trim()).Where(t => t != "").ToArray();
+            graphMap[match.Groups[1].Value.Trim()] = parts;
+        }
+        UpdateGraphMap(graphMap, reset, mode);
+    }
+
+    #region Referenced from UI
+    private string graphMap = "";
+    public void SetGraphMap(string text) => graphMap = text;
+    
+    public void ReplaceWithGraphMap() => UpdateGraphMap(graphMap, reset: false, mode: GraphMapUpdateMode.Replace);
+    public void PrecomposeWithGraphMap() => UpdateGraphMap(graphMap, reset: false, mode: GraphMapUpdateMode.Precompose);
+    public void PostcomposeWithGraphMap() => UpdateGraphMap(graphMap, reset: false, mode: GraphMapUpdateMode.Postcompose);
+    #endregion
+}
+
+public enum GraphMapUpdateMode
+{
+    Precompose,
+    Replace,
+    Postcompose
 }

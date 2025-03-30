@@ -97,6 +97,7 @@ public class EdgeCycle
             return (null, -1);
         }
     }
+
 } 
 public class Gate<T>
 {
@@ -114,6 +115,8 @@ public class Gate<T>
         Edges = new List<Strip> {edge};
         this.cycleDistance = cycleDistance;
     }
+
+    public override string ToString() => $"Gate {{{string.Join(", ", Edges.Select(e => e.Name))}}} ⊆ Star({junctionIdentifier})";
 }
 
 public static class Gate

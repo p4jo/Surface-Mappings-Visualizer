@@ -55,6 +55,10 @@ public class TangentSpace : ITransformable<TangentSpace>
 {
     public readonly Point point;
     public readonly Matrix3x3 basis;
+    
+    public TangentVector A => new(point, basis.a);
+    public TangentVector B => new(point, basis.b);
+    public TangentVector C => new(point, basis.c);
 
     public TangentSpace(Point point, Matrix3x3 basis)
     {
@@ -88,7 +92,9 @@ public class TangentVector: ITransformable<TangentVector>
         this.point = point;
         this.vector = point.PassThrough(primaryPositionIndex, 0, vector);
     }
-    
+
+    public TangentVector Normalized => new (point, vector.normalized);
+
     public Vector3 VectorAtPositionIndex(int index) => point.PassThrough(0, index, vector);
 
     public TangentVector ApplyHomeomorphism(Homeomorphism homeomorphism) => 

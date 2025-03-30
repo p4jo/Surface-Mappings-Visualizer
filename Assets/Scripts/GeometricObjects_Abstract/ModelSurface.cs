@@ -239,13 +239,18 @@ public partial class ModelSurface: GeodesicSurface
     }
     
     public Curve GetBasicGeodesic(Point startPoint, Point endPoint, string name) => GeometrySurface.GetGeodesic(startPoint, endPoint, name);
+    public Curve GetBasicGeodesic(TangentVector tangentVector, float length, string name) => GeometrySurface.GetGeodesic(tangentVector, length, name);
     
     public override Curve GetGeodesic(Point startPoint, Point endPoint, string name)
     {
         if (startPoint is not IModelSurfacePoint)
             startPoint = ClampPoint(startPoint.Position);
+        if (startPoint is null)
+            throw new Exception("The start point is not on the surface.");
         if (endPoint is not IModelSurfacePoint)
             endPoint = ClampPoint(endPoint.Position);
+        if (endPoint is null)
+            throw new Exception("The end point is not on the surface.");
 
         var (_, centerPoint) = DistanceMinimizer(startPoint, endPoint, GeometrySurface);
         if (centerPoint == null)
@@ -258,6 +263,76 @@ public partial class ModelSurface: GeodesicSurface
         var firstSegment = GetBasicGeodesic(startPoint, firstCenterPosition, name + "pt 1");
         var secondSegment = GetBasicGeodesic(secondCenterPosition, endPoint, name + "pt 2");
         return new ConcatenatedCurve(new[] { firstSegment, secondSegment }, name); // .Smoothed(); // TODO: this doesn't work as expected
+    }
+
+    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name)
+    {
+        if (length < 0) 
+            return GetGeodesic(-startVelocity, -length, name);
+        List<Curve> segments = new();
+        var currentStartVector = startVelocity;
+        int i = 0;
+        Vector3 lastPos = startVelocity.point.Position;
+        while (length > 0)
+        {
+            var currentSegment = GetBasicGeodesic(currentStartVector, length, name + $"pt {i}");
+            float res = 0.1f;
+            float t = res; // we shouldn't need to check at 0 (it should be the last start point)
+            while (res >= length)
+                res /= 2;
+            Point p = null;
+            bool stillAtTheStartingSide = true;
+            while (t < length)
+            {
+                p = ClampPoint(currentSegment[t]);
+                switch (p)
+                {
+                    case null:
+                    {
+                        res /= 4;
+                        if (res < 1e-8f)
+                            throw new Exception(
+                                "Didn't hit the boundary exactly when running along a geodesic! Aborting.");
+                        t -= res * 3;
+                        stillAtTheStartingSide = false;
+                        continue;
+                    }
+                    case ModelSurfaceInteriorPoint:
+                        stillAtTheStartingSide = false;
+                        t += res;
+                        continue;
+                    case ModelSurfaceVertex:
+                    case ModelSurfaceBoundaryPoint:
+                        if (!stillAtTheStartingSide) break;
+                        t += res;
+                        continue;
+                    default:
+                        throw new Exception($"Weird type of clamped point: {p}");
+                }
+            }
+            
+            i++;
+            length -= t;
+            if (t > 0)
+                segments.Add(currentSegment.Restrict(0, t));
+            if (length <= 0)
+                break;
+            
+            var endTangentVec = currentSegment.DerivativeAt(t);
+            Vector3 pPos = p.Position;
+            Vector3 previousLastPos = lastPos;
+            lastPos = pPos;
+            if (previousLastPos.ApproximatelyEquals(pPos))
+                Debug.LogWarning($"Weird: The boundary point {p} was visited twice in succession by the geodesic starting at {startVelocity}, the second time after time {t:g2}, and both times from the same side!?");
+            if (p is ModelSurfaceBoundaryPoint pt)
+                p = pt.SwitchSide();
+            if (p is ModelSurfaceVertex vertex)
+                p = vertex.Positions.ElementAt(vertex.Positions.Count());
+            if (pPos.ApproximatelyEquals(p))
+                throw new Exception("Bug: The position wasn't updated to the other side.");
+            currentStartVector = new(p, p.PassThrough(0, 1, endTangentVec.vector));
+        }
+        return new ConcatenatedCurve(segments, name);
     }
 
     private (float, Point) DistanceMinimizer(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)

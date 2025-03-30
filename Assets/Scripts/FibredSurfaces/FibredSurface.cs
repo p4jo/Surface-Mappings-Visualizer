@@ -81,32 +81,22 @@ public class FibredSurface : IPatchedDrawnsformable
                 (float)endAngle
             )
         ).ToList();
-        var edges = new Dictionary<string, Strip>((
-                from strip in strips select new KeyValuePair<string, Strip>(strip.Name.ToLower(), strip)
-            ).Concat(
-                from strip in strips select new KeyValuePair<string, Strip>(strip.Name.ToUpper(), strip.Reversed())
-            )
-        );
-        foreach (var (strip, edgePathText) in strips.Zip(edgeDescriptions, (strip, tuple) => (strip, tuple.Item4)))
-        {
-            strip.EdgePath = edgePathText.Select(edgeName => edges[edgeName]).ToList();
-        }
-
-        foreach (var (name, strip) in edges)
+        graph.AddVerticesAndEdgeRange(strips);
+        SetMap(edgeDescriptions.ToDictionary(tuple => tuple.Item1.Name, tuple => tuple.Item4), GraphMapUpdateMode.Replace);
+        // fix vertex targets
+        foreach (var strip in OrientedEdges)
         {
             if (strip.Source.image != null && strip.Source.image != strip.Dg?.Source)
                 Debug.LogError(
-                    $"Two edges at the same vertex have images that don't start at the same vertex! g({name}) = {string.Join(' ', strip.EdgePath.Select(e => e.Name))} starts at o(g({name})) = {strip.Dg?.Source}, but we already set g(o({name})) = {strip.Source.image}.");
+                    $"Two edges at the same vertex have images that don't start at the same vertex! g({strip.Name}) = {string.Join(' ', strip.EdgePath.Select(e => e.Name))} starts at o(g({strip.Name})) = {strip.Dg?.Source}, but we already set g(o({strip.Name})) = {strip.Source.image}.");
             strip.Source.image ??= strip.Dg?.Source;
         }
 
-        graph.AddVerticesAndEdgeRange(strips);
 
         peripheralSubgraph = new FibredGraph(true);
-        peripheralSubgraph.AddVerticesAndEdgeRange((
-                from edgeName in peripheralEdges
-                select edges[edgeName].UnderlyingEdge
-            ).Distinct()
+        var peripheralEdgesSet = peripheralEdges.Select(n => n.ToLower()).ToHashSet();
+        peripheralSubgraph.AddVerticesAndEdgeRange(
+            Strips.Where(e => peripheralEdgesSet.Contains(e.Name) )
         );
         DeferNames();
     }
@@ -154,13 +144,44 @@ public class FibredSurface : IPatchedDrawnsformable
         return new FibredSurface(newGraph, surface, newPeripheralSubgraph);
     }
 
-    public void SetMap(IDictionary<string, string[]> map)
+    public void SetMap(IDictionary<string, string[]> map, GraphMapUpdateMode mode)
     {
-        if (!map.Keys.ToHashSet().IsSupersetOf(Strips.Select(s => s.Name)))
-            throw new ArgumentException("The map must contain a string array for each edge of the surface.");
-        var edges = Strips.ToDictionary(s => s.Name);
-        foreach ((string name, var strip) in edges)
-            strip.EdgePath = map[name].Select(edgeName => edges[edgeName]).ToList();
+        if (mode == GraphMapUpdateMode.Postcompose)
+        {
+            var oldMap = Strips.ToDictionary(
+                e => e.Name, 
+                e => e.EdgePath.Select(d => d.Name).ToArray()
+            );
+            SetMap(map, GraphMapUpdateMode.Replace);
+            SetMap(oldMap, GraphMapUpdateMode.Precompose);
+            return;
+        }
+            
+        if (!map.Keys.Select(k => k.ToLower()).ToHashSet().IsSupersetOf(Strips.Select(s => s.Name)))
+            throw new ArgumentException("The map must be given for each edge of the surface.");
+        
+        var edges = new Dictionary<string, Strip>((
+                from strip in Strips select new KeyValuePair<string, Strip>(strip.Name.ToLower(), strip)
+            ).Concat(
+                from strip in Strips select new KeyValuePair<string, Strip>(strip.Name.ToUpper(), strip.Reversed())
+            )
+        );
+        foreach (var (name, edgePathText) in map)
+        {
+            if (!edges.TryGetValue(name, out var edge))
+                throw new ArgumentException($"The edge {name} is not in the surface.");
+            switch (mode)
+            {
+                case GraphMapUpdateMode.Precompose:
+                    edge.EdgePath = edgePathText.SelectMany(edgeName => edges[edgeName].EdgePath).ToList();
+                    break;
+                case GraphMapUpdateMode.Replace:
+                    edge.EdgePath = edgePathText.Select(edgeName => edges[edgeName]).ToList();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
+            }
+        };
     }
 
     #endregion
@@ -761,6 +782,53 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #endregion
 
+    #region Moving Vertices
+
+    public void MoveJunction(Strip e, float length)
+    {
+        var v = e.Source;
+        // todo: move the patches of the junction
+        // from patch in v.Patches select patch
+        // v.Patches.First(patch => patch is Point)
+        var newJunction = new Junction(graph, e.Curve[length], v.Name);
+        var precompositionCurve = e.Curve.Restrict(0, length).Reversed();
+        e.Curve = e.Curve.Restrict(length);
+        var star = StarOrdered(v, e).SkipWhile(edge => edge.Equals(e)).ToList();
+        float shift = 0.02f * Mathf.Sqrt(star.Count);
+        for (var i = 0; i < star.Count; i++)
+        {
+            var edge = star[i];
+            var shiftStrength = (i - (star.Count - 1f) / 2f) * shift;
+            var name = edge.Name;
+            var shiftedCurve = new ShiftedCurve(precompositionCurve, 
+                t =>
+                {
+                    var x = t / length;
+                    return shiftStrength * 1.69f * x / (0.15f + x) * (1 - x) / (1.15f - x);
+                });
+
+            edge.Curve = new ConcatenatedCurve(new[]
+            {
+                shiftedCurve,
+                // surface.GetGeodesic(shiftedCurve.EndPosition, edge.Curve.StartPosition, ""),
+                edge.Curve
+            });//.Smoothed();
+            edge.Name = name;
+        }
+
+        foreach (var strip in Strips.ToArray())
+        {
+            if (strip.Source == v)
+                strip.Source = newJunction;
+            if (strip.Target == v)
+                strip.Target = newJunction;
+        }
+
+        graph.RemoveVertex(v);
+    }
+    
+    #endregion
+    
     #region Folding initial segments
 
     public void FoldEdges(IList<Strip> edges, IList<EdgePoint> updateEdgePoints = null)
@@ -781,6 +849,8 @@ public class FibredSurface : IPatchedDrawnsformable
 
         var edgesOrdered = SortConnectedSetInStar(star, edges).ToList();
         if (!edges.ToHashSet().SetEquals(edgesOrdered))
+            
+            
             throw new($"Edges to fold are not connected in the cyclic order: {string.Join(", ", edges)}");
         edges = edgesOrdered;
 
@@ -789,10 +859,8 @@ public class FibredSurface : IPatchedDrawnsformable
             select i % 2 == 0 ? edges[edges.Count / 2 + i / 2] : edges[edges.Count / 2 - i / 2 - 1]
         ).ToList();
         var preferredOldEdge =
-            edgeSelection.FirstOrDefault(e => e is UnorientedStrip && !e.Name.EndsWith('1') && !e.Name.EndsWith('2')) ??
-            edgeSelection.FirstOrDefault(e => !e.Name.EndsWith('1') && !e.Name.EndsWith('2')) ??
-            edgeSelection.FirstOrDefault(e => e is UnorientedStrip && !e.Name.EndsWith('2')) ??
-            edgeSelection.FirstOrDefault(e => !e.Name.EndsWith('2')) ??
+            edgeSelection.FirstOrDefault(e => e is UnorientedStrip && !char.IsDigit(e.Name[^1])) ?? 
+            edgeSelection.FirstOrDefault(e => !char.IsDigit(e.Name[^1])) ??
             edgeSelection.FirstOrDefault(e => e is UnorientedStrip) ??
             edgeSelection.First();
         
@@ -805,7 +873,16 @@ public class FibredSurface : IPatchedDrawnsformable
 
         var targetVerticesToFold =
             (from edge in edges select edge.Target).WithoutDuplicates().ToArray(); // has the correct order
-        var waypoints = from edge in edges select edge.Curve.EndPosition;
+        // todo: if the (folding) edges pass through a side, we should isotope in the following way:
+        // Move all of the vertices in targetVerticesToFold that arent the source vertex edges[0].Source (all or all but one) along 
+        // (any of) the corresponding edge in reverse.
+        // Then all but the potential self-edge that we fold don't pass through boundary, so the connecting curve will more likely make sense.
+        // If there is a self-edge there, either also move the vertex along the self-edge in reverse
+        // (affecting the start of all of our folding edges and all other edges at that vertex)
+        // Or move all of our already moved vertices along the self-edge (which prolongs all edges at these vertices)
+        
+        var waypoints = 
+            from edge in edges select edge.Curve.EndPosition;
         var connectingCurve = surface.GetPathFromWaypoints(waypoints, newVertexName);
         // todo? Try to avoid the rest of the fibred surface
         var color = targetVerticesToFold.First().Color;
@@ -1036,10 +1113,39 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #region (Essential) Inefficiencies
 
+    private IEnumerable<(Strip, Strip)> InefficientConcatenations<T>(List<Gate<T>> gates)
+    {
+        foreach (var gate in gates)
+        {
+            var edges = gate.Edges;
+            foreach (var edge1 in edges)
+            foreach (var edge2 in edges)
+                yield return (edge1.Reversed(), edge2);
+        }
+    }
+
     public IEnumerable<Inefficiency> GetInefficiencies()
     {
         var gates = Gate.FindGates(graph);
-        foreach (var edge in Strips)
+
+        foreach (var (edge1, edge2) in InefficientConcatenations(gates))
+        {
+            foreach (var strip in Strips)
+            {
+                for (int i = 1; i < strip.EdgePath.Count; i++)
+                {
+                    if (!edge1.Equals(strip.EdgePath[i - 1]) ||
+                        !edge2.Equals(strip.EdgePath[i])) continue;
+                    yield return new Inefficiency(new EdgePoint(strip, i));
+                    goto found;
+                }
+            }
+            // todo: valence two vertices with only two gates
+
+            found: ;
+        }
+        
+        foreach (var edge in Strips) // inefficient!!
         {
             for (int i = 0; i <= edge.EdgePath.Count; i++)
             {

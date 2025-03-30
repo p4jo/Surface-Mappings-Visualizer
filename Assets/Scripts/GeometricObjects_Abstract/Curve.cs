@@ -93,7 +93,7 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
         );
     }
 
-    public virtual Curve Restrict(float start, float end) => new RestrictedCurve(this, start, end);
+    public virtual Curve Restrict(float start, float? end = null) => new RestrictedCurve(this, start, end ?? Length);
 
     public abstract Curve Copy();
 }
@@ -313,12 +313,13 @@ public partial class ConcatenatedCurve : Curve
         return res;
     }
 
-    public override Curve Restrict(float start, float end)
+    public override Curve Restrict(float start, float? end = null)
     {
+        end ??= Length;
         if (start < 0 || end > Length || start > end)
             throw new Exception("Invalid restriction");
         var movedStartTime = start;
-        var movedEndTime = end;
+        var movedEndTime = end.Value;
         int startSegmentIndex = -1, endSegmentIndex = segments.Length;
         for (int i = 0; i < segments.Length; i++)
         {
@@ -436,7 +437,7 @@ public class RestrictedCurve : Curve
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
 
-    public override Curve Restrict(float start, float end) => new RestrictedCurve(curve, this.start + start, this.start + end);
+    public override Curve Restrict(float start, float? end = null) => new RestrictedCurve(curve, this.start + start, this.start + end ?? Length);
 
     public override Curve Copy() =>
         new RestrictedCurve(curve.Copy(), start, end)
@@ -465,6 +466,28 @@ public class BasicParametrizedCurve : Curve
 
     public override TangentVector DerivativeAt(float t) => new TangentVector(value(t), derivative(t));
     public override Curve Copy() => new BasicParametrizedCurve(Name, Length, Surface, value, derivative) { Color = Color };
+}
+
+public class ParametrizedCurve : Curve
+{
+    
+    private readonly Func<float, TangentVector> tangent;
+    public ParametrizedCurve(string name, float length, Surface surface, Func<float, TangentVector> tangent)
+    {
+        Length = length;
+        Surface = surface;
+        this.tangent = tangent;
+        Name = name;
+    }
+
+    public override string Name { get; set; }
+    public override float Length { get; }
+
+    public override Surface Surface { get; }
+    public override Point ValueAt(float t) => DerivativeAt(t).point;
+
+    public override TangentVector DerivativeAt(float t) => tangent(t);
+    public override Curve Copy() => new ParametrizedCurve(Name, Length, Surface, tangent) { Color = Color };
 }
 
 public class SplineSegment : InterpolatingCurve

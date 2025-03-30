@@ -147,19 +147,26 @@ public class Inefficiency: EdgePoint
 
              if (AlwaysFoldAllEdgesWithShortSharedInitialSegment) // this is the way the algorithm is described in [BH]
              {
-                 edgesToFold = (from e in FibredSurface.Star(aOld!.Source) where Equals(e.Dg, a) select e).ToList<Strip>();
+                 edgesToFold = (from e in FibredSurface.Star(aOld!.Source) where Equals(e.Dg, a) select e).OrderBy(s => s.Name).ToList<Strip>();
                  initialSegmentToFold = Strip.SharedInitialSegment(edgesToFold);
              }
              else // this is how it is handled in the first example in [BH]. This is "cooler" since the initial segment is longer.
              {
                  initialSegmentToFold = Strip.SharedInitialSegment(new List<Strip> {aOld, bOld});
                  var initialSegment = aOld.EdgePath.Take(initialSegmentToFold).ToList();
-                 edgesToFold = (from e in FibredSurface.Star(aOld.Source) where e.EdgePath.Take(initialSegmentToFold).SequenceEqual(initialSegment) select e).ToList<Strip>();
+                 edgesToFold = (from e in FibredSurface.Star(aOld.Source) where e.EdgePath.Take(initialSegmentToFold).SequenceEqual(initialSegment) select e).OrderBy(s => s.Name).ToList<Strip>();
              }
              return;
          }
          throw new Exception("Bug: Two edges in the same gate didn't eventually get mapped to the same edge under Dg.");
 
+     }
+     
+     public bool SameEdgesToFold(Inefficiency other) => edgesToFold.SequenceEqual(other.edgesToFold);
+
+     public override string ToString()
+     {
+            return $"Inefficiency of order {order} folding initial segments of {edgesToFold.ToCommaSeparatedString()}, at {base.ToString()}";
      }
 
      private const bool AlwaysFoldAllEdgesWithShortSharedInitialSegment = false;

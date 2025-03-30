@@ -42,7 +42,7 @@ public abstract class Plane : GeodesicSurface
     public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);
 
     protected Plane(string name, int genus, bool is2D) : base(name, genus, is2D) { }
-    
+
 }
 
 public class HyperbolicPlane : Plane
@@ -55,6 +55,16 @@ public class HyperbolicPlane : Plane
     
     public override Curve GetGeodesic(Point start, Point end, string name)
         => new HyperbolicGeodesicSegment(start, end, this, name, diskModel);
+
+    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name)
+    {
+        if (length < 0)
+        {
+            length = -length;
+            startVelocity = -startVelocity;
+        }
+        return new HyperbolicGeodesicSegment(startVelocity, length, this, name, diskModel);
+    }
 
     public override float DistanceSquared(Point startPoint, Point endPoint)
     {
@@ -77,6 +87,9 @@ public class EuclideanPlane : Plane
 
     public override Curve GetGeodesic(Point start, Point end, string name)
         => new FlatGeodesicSegment(start, end, this, name);
+
+    public override Curve GetGeodesic(TangentVector tangentVector, float length, string name)
+        => new FlatGeodesicSegment(tangentVector, length, this, name);
 
     public override float DistanceSquared(Point startPoint, Point endPoint) => startPoint.DistanceSquared(endPoint); // this minimizes over the positions
 }
@@ -103,7 +116,6 @@ public class Rectangle : EuclideanPlane
 
 public class Cylinder : Rectangle
 {
-    
     public static readonly Cylinder defaultCylinder = new Cylinder(1, 1, "Default Cylinder", Vector3.zero);
 
     /// <summary>
@@ -188,6 +200,18 @@ public class Cylinder : Rectangle
             Matrix3x3 dForward(Vector3 input) => new(new Vector2(1, 1), new Vector2(0, 1));
             Matrix3x3 dBackward(Vector3 input) => new(new Vector2(1, -1), new Vector2(0, 1));
         }
+    }
+
+    public override Curve GetGeodesic(Point start, Point end, string name)
+    {
+        return base.GetGeodesic(start, end, name);
+        // TODO
+    }
+
+    public override Curve GetGeodesic(TangentVector tangentVector, float length, string name)
+    {
+        return base.GetGeodesic(tangentVector, length, name);
+        // TODO
     }
 }
 

@@ -255,4 +255,6 @@ public partial class ModelSurfaceBoundaryPoint : Point, IModelSurfacePoint
         b ??= side.other.GetClosestPoint(this).Item2 as ModelSurfaceBoundaryPoint;
         return (a, b);
     }
+    
+    public ModelSurfaceBoundaryPoint SwitchSide() => new(side.other, t);
 }

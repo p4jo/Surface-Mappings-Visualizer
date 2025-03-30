@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -261,8 +262,8 @@ public static class Helpers
         if (s.Length <= maxLength) return s;
         return s[..(maxLength - 3)] + "...";
     }
-    
-    
+
+    public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, string comma = ", ") => string.Join(comma, list);
 }
 
 
