@@ -165,5 +165,10 @@ public class MainMenu: MonoBehaviour
         fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
         fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
         fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
+        // var fibredSurfaceCopy = fibredSurface.Copy();
+        fibredSurfaceMenu.FibredSurface.BestvinaHandelAlgorithm();
+        
+        Debug.Log(fibredSurface.GraphString());
+        // fibredSurfaceMenu.UpdateSelectedSurface(fibredSurfaceCopy);
     }
 }

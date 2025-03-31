@@ -166,7 +166,7 @@ public class Inefficiency: EdgePoint
 
      public override string ToString()
      {
-            return $"Inefficiency of order {order} folding initial segments of {edgesToFold.ToCommaSeparatedString()}, at {base.ToString()}";
+            return $"Inefficiency of order {order} folding initial segments of {edgesToFold.Select(e => e.Name).ToCommaSeparatedString()}, at {base.ToString()}";
      }
 
      private const bool AlwaysFoldAllEdgesWithShortSharedInitialSegment = false;
