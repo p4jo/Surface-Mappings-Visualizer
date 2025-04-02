@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using UnityEngine;
+using UnityEngine.Serialization;
 using Random = UnityEngine.Random;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
@@ -16,13 +17,13 @@ public struct SurfaceParameter
     // One being basically the input for the constructor of Modelsurface
     // One describing embedded surfaces, e.g. where the genera are. This affects only the embeddings (homeomorphisms)
     public int genus, punctures;
-    public bool modelSurface;
+    [FormerlySerializedAs("addEmbedding")] [FormerlySerializedAs("modelSurface")] public bool connectedSumEmbedding;
     // todo
 
     public static SurfaceParameter FromString(string str)
     {
         int genus = 1, punctures = 0;
-        bool modelSurface = true;
+        bool connectedSumEmbedding = false;
         foreach (var s in str.Split(','))
         {
             if (s.StartsWith("g=") && int.TryParse(s[2..], out var g))
@@ -30,9 +31,9 @@ public struct SurfaceParameter
             if (s.StartsWith("p=") && int.TryParse(s[2..], out var p))
                 punctures = p;
             if (s.EndsWith("#"))
-                modelSurface = false;
+                connectedSumEmbedding = true;
         }
-        return new() { genus = genus, punctures = punctures, modelSurface = modelSurface };
+        return new() { genus = genus, punctures = punctures, connectedSumEmbedding = connectedSumEmbedding };
     }
 }
 
@@ -356,19 +357,14 @@ public static class SurfaceGenerator
     public static AbstractSurface CreateSurface(IEnumerable<SurfaceParameter> parameters)
     {
         var p = parameters.First();
-        if (p.modelSurface)
-        {
-            var res = new AbstractSurface();
-            res.AddDrawingSurface(
-                ModelSurface4GGon(p.genus, p.punctures,
-                    $"Model surface with genus {p.genus} and {p.punctures} punctures")
+        if (p.connectedSumEmbedding)
+            return AbstractSurface.FromHomeomorphism(
+                GenusGSurfaceConnectedSumFlat(p.genus, p.punctures).embedding
             );
-            return res;
-        }
-        return AbstractSurface.FromHomeomorphism( 
-            GenusGSurfaceConnectedSumFlat(p.genus, p.punctures).embedding
+        return new AbstractSurface(
+            ModelSurface4GGon(p.genus, p.punctures,
+                $"Model surface with genus {p.genus} and {p.punctures} punctures")
         );
-
         foreach (var parameter in parameters)
         {
             //todo

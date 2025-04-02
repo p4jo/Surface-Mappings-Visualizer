@@ -262,6 +262,14 @@ public static class Helpers
         if (s.Length <= maxLength) return s;
         return s[..(maxLength - 3)] + "...";
     }
+    
+    public static string AddDotsMiddle(this string s, int maxLength, int? tail = null)
+    {
+        if (s.Length <= maxLength) return s;
+        var firstSegment = tail.HasValue ? maxLength - tail.Value - 3 : maxLength / 2;
+        var secondSegment = tail ?? maxLength - firstSegment - 3;
+        return s[..firstSegment] + "..." + s[^secondSegment..];
+    }
 
     public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, string comma = ", ") => string.Join(comma, list);
 }

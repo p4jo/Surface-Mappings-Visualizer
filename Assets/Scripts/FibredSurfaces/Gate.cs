@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuikGraph;
+using UnityEngine;
 
 public class EdgeCycle
 {
@@ -18,7 +19,7 @@ public class EdgeCycle
         for (int i = order - 1; i > 0; i--)
         {
             edge = edge?.Dg;
-            attractedEdges.Add((edge, order - i));
+            attractedEdges.Add((edge, i));
         }
     }
 
@@ -48,11 +49,9 @@ public class EdgeCycle
         {
             Strip e_i = edge;
             List<Strip> orbit = new();
-            for (int i = 1; i <= 2 * edges.Count; i++)
+            for (int i = 0; i <= 2 * edges.Count; i++)
                 // it should never break because of the upper limit because after at most #E elements the orbit must repeat.
             {
-                orbit.Add(e_i);
-                e_i = e_i.Dg;
                 if (e_i == null)
                 {
                     throw new ArgumentException(
@@ -66,17 +65,25 @@ public class EdgeCycle
                     for (int m = 0; m < i; m++)
                         if (edgeCycle.CycleIndexOf(orbit[m]) == -1)
                             edgeCycle.attractedEdges.Add((orbit[m], l + i - m));
+                        else
+                            Debug.LogWarning("This should not happen. An edge is already in an edge cycle, but isn't?");
                     break;
                 }
 
-                int j = orbit.IndexOf(e_i); // todo: debug to see if this uses my equality comparison
-                if (j < 0) continue;
+                int j = orbit.IndexOf(e_i); 
+                if (j < 0) {
+                    orbit.Add(e_i);
+                    e_i = e_i.Dg;
+                    continue;
+                }
                 edgeCycle = new EdgeCycle(e_i, i - j); 
                 edgeCycles.Add(edgeCycle); // this assigns the Dg∞ to the cycle
 
                 for (int m = 0; m < j; m++)
                     if (edgeCycle.CycleIndexOf(orbit[m]) == -1)
                         edgeCycle.attractedEdges.Add((orbit[m], j - m));
+                    else
+                        Debug.LogWarning("This should not happen. An edge is already in an edge cycle, but isn't?");
 
                 break;
             }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -6,9 +7,24 @@ using QuikGraph;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using MenuEdge = QuikGraph.TaggedEdge<FibredSurfaceMenu.MenuVertex, string>;
+
+
 
 public class FibredSurfaceMenu : MonoBehaviour
 {
+    public class MenuVertex
+    {
+        public FibredSurface fibredSurface;
+        public FibredSurface.AlgorithmSuggestion suggestion;
+
+        public MenuVertex(FibredSurface fibredSurface, FibredSurface.AlgorithmSuggestion suggestion)
+        {
+            this.fibredSurface = fibredSurface;
+            this.suggestion = suggestion;
+        }
+    }
+    
     [SerializeField] private SurfaceMenu surfaceMenu;
     
     [SerializeField] private Transform forwardButtonList;
@@ -21,27 +37,28 @@ public class FibredSurfaceMenu : MonoBehaviour
     [SerializeField] private TMP_Text descriptionText;
     [SerializeField] private TMP_Text graphStatusText;
     
-    private readonly AdjacencyGraph<FibredSurface, TaggedEdge<FibredSurface, string>> fibredSurfaces = new();
-    public FibredSurface FibredSurface { get; private set; }
-    private FibredSurface fibredSurfaceCopy;
+    private readonly AdjacencyGraph<MenuVertex, MenuEdge> fibredSurfaces = new();
+    public FibredSurface FibredSurface => currentVertex?.fibredSurface;
     
-    private TaggedEdge<FibredSurface, string> ParentEdge() => 
-        fibredSurfaces.Edges.FirstOrDefault(e => e.Target == FibredSurface);
+    private MenuVertex currentVertex;
+    private MenuEdge ParentEdge() => 
+        fibredSurfaces.Edges.FirstOrDefault(e => e.Target == currentVertex);
 
     public void Initialize(FibredSurface fibredSurface, SurfaceMenu surfaceMenu)
     {
         this.surfaceMenu = surfaceMenu;
+
+        MenuVertex vertex = new MenuVertex(fibredSurface, null);
+        fibredSurfaces.AddVertex(vertex);
         
-        fibredSurfaces.AddVertex(fibredSurface);
-        
-        FibredSurface = fibredSurface;
+        currentVertex = vertex;
         UpdateUI();
     }
-    
-    public void UpdateSelectedSurface(FibredSurface fibredSurface)
+
+    private void UpdateSelectedSurface(MenuVertex newVertex)
     {
         ClearUI();
-        FibredSurface = fibredSurface;
+        this.currentVertex = newVertex;
         UpdateUI();
     }
 
@@ -59,7 +76,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     private void UpdateUI()
     {
         backButton.SetActive(ParentEdge() != null);
-        foreach (var edge in fibredSurfaces.OutEdges(FibredSurface))
+        foreach (var edge in fibredSurfaces.OutEdges(currentVertex))
         {
             var button = Instantiate(forwardButtonPrefab, forwardButtonList.transform);
             button.GetComponentInChildren<TextMeshProUGUI>().text = edge.Tag;
@@ -68,36 +85,40 @@ public class FibredSurfaceMenu : MonoBehaviour
             button.GetComponent<Button>().onClick.AddListener(() => UpdateSelectedSurface(edgeTarget));
         }
         
-        var fibredSurfaceCopy = FibredSurface.Copy();
-        graphStatusText.text = fibredSurfaceCopy.GraphString();
+        graphStatusText.text = FibredSurface.GraphString();
 
-        descriptionText.text = "Loading next steps...";
-        var suggestions = fibredSurfaceCopy.NextSuggestion();
-        if (suggestions == null)
-            descriptionText.text = "The algorithm finishes: This is an efficient fibred surface.";
-        else
+        var suggestion = currentVertex.suggestion;
+        if (suggestion == null)
         {
-            descriptionText.text = suggestions.description;
-            var optionToggles = new Dictionary<Toggle, object>();
-            foreach (var option in suggestions.options)
+            descriptionText.text = "Loading next steps...";
+            suggestion = currentVertex.suggestion = FibredSurface.NextSuggestion();
+            // todo: asynchronous loading of suggestions
+        }
+        
+        descriptionText.text = suggestion.description;
+        if (suggestion != FibredSurface.AlgorithmSuggestion.Finished)
+        {
+            var optionToggles = new Dictionary<Toggle, (object, string)>();
+            
+            foreach (var option in suggestion.options)
             {
                 var toggleGameObject = Instantiate(optionTogglePrefab, optionList.transform);
-                toggleGameObject.GetComponentInChildren<TextMeshProUGUI>().text = option.ToString();
+                toggleGameObject.GetComponentInChildren<TextMeshProUGUI>().text = option.Item2;
                 var toggle = toggleGameObject.GetComponent<Toggle>();
                 optionToggles[toggle] = option;
             }
 
-            foreach (var buttonText in suggestions.buttons)
+            foreach (var buttonText in suggestion.buttons)
             {
                 var button = Instantiate(suggestionButtonPrefab, suggestionButtonList.transform);
-                button.GetComponentInChildren<TextMeshProUGUI>().text = buttonText.ToString();
+                button.GetComponentInChildren<TextMeshProUGUI>().text = buttonText.AddDotsMiddle(250, 30);
                 button.GetComponent<Button>().onClick.AddListener(() =>
                 {
                     var selection = (from toggleOptionPair in optionToggles
                         where toggleOptionPair.Key.isOn
                         select toggleOptionPair.Value).ToList();
-                    if (selection.Count == 0) selection = new List<object> { optionToggles.First().Value };
-                    DoSuggestion(buttonText, selection, fibredSurfaceCopy);
+                    if (selection.Count == 0) selection = new () { optionToggles.First().Value };
+                    DoSuggestion(buttonText, selection);
                 });
             }
         }
@@ -109,24 +130,69 @@ public class FibredSurfaceMenu : MonoBehaviour
     }
 
     // called from UI 
-    private void DoSuggestion(object buttonText, IEnumerable<object> enumerable, FibredSurface newFibredSurface)
+    private void DoSuggestion(object buttonText, IReadOnlyCollection<(object, string)> selection)
     {
-        enumerable = enumerable.ToList();
-        var tag = buttonText + "\n" + string.Join(", ", enumerable.Select(e => e.ToString().AddDots(50)).Take(4)) + (enumerable.Count() > 4 ? "..." : "");
+        var newFibredSurface = FibredSurface.Copy();
+        var tag = buttonText + "\n" + selection.Select(e => e.Item2.AddDots(50)).Take(4).ToCommaSeparatedString() + (selection.Count > 4 ? "..." : "");
         
-        fibredSurfaces.AddVertex(newFibredSurface);
+        newFibredSurface.ApplySuggestion(selection, buttonText);
         
-        fibredSurfaces.AddEdge(new TaggedEdge<FibredSurface, string>( FibredSurface, newFibredSurface, tag));
+        MenuVertex newVertex = new(newFibredSurface, null);
+        fibredSurfaces.AddVerticesAndEdge(new MenuEdge( 
+            currentVertex, newVertex, tag
+        ));
         
-        newFibredSurface.ApplySuggestion(enumerable, buttonText);
-        UpdateSelectedSurface(newFibredSurface);
+        UpdateSelectedSurface(newVertex);
+    }
+
+    public bool DoNextSuggestion()
+    {
+        var suggestion = currentVertex.suggestion ?? (currentVertex.suggestion = FibredSurface.NextSuggestion());
+        if (suggestion == FibredSurface.AlgorithmSuggestion.Finished) return false;
+        // todo: asynchronous loading of suggestions?
+        DoSuggestion(suggestion.buttons.First(), new []{ suggestion.options.First() });
+        return true;
+    }
+    private Coroutine algorithmCoroutine;
+
+    // called from UI
+    public void StartAlgorithm()
+    {
+        algorithmCoroutine ??= StartCoroutine(Run());
+        return;
+
+        IEnumerator Run()
+        {
+            var limit = 20 * FibredSurface.graph.EdgeCount;
+            for (int i = 0; i < limit; i++)
+            {
+                if(!DoNextSuggestion()) 
+                    break;
+                yield return null; // Wait for the next frame
+            }
+        }
+    }
+
+    // called from UI
+    public void StopAlgorithm()
+    {
+        if (algorithmCoroutine == null) return;
+        StopCoroutine(algorithmCoroutine);
+        algorithmCoroutine = null;
+    }
+    
+    public void ToggleAlgorithm()
+    {
+        if (algorithmCoroutine == null) StartAlgorithm();
+        else StopAlgorithm();
     }
 
     // called from UI
     public void BackButtonPressed()
     {
         var parent = ParentEdge()?.Source;
-        if (parent != null) UpdateSelectedSurface(parent);
+        if (parent != null)
+            UpdateSelectedSurface(parent);
     }
 
     public void UpdateGraphMap(IDictionary<string, string[]> map, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
@@ -139,16 +205,18 @@ public class FibredSurfaceMenu : MonoBehaviour
         }
         var newFibredSurface = FibredSurface.Copy();
         newFibredSurface.SetMap(map, mode);
+        MenuVertex newVertex = new(newFibredSurface, null);
+        
         if (reset)
         {
             fibredSurfaces.Clear();
-            fibredSurfaces.AddVertex(newFibredSurface);
+            fibredSurfaces.AddVertex(newVertex);
         }
         else
         {
-            fibredSurfaces.AddVerticesAndEdge(new(FibredSurface, newFibredSurface, "Update map"));
+            fibredSurfaces.AddVerticesAndEdge(new(currentVertex, newVertex, "Update map"));
         }
-        UpdateSelectedSurface(newFibredSurface);
+        UpdateSelectedSurface(newVertex);
     }
 
     public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)

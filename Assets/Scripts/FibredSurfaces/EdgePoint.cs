@@ -78,10 +78,40 @@ public class EdgePoint
     }
 
 
-    public override string ToString()
+    public override string ToString() => $"Point in Strip {edge.Name} at {ToShortString()}";
+    
+    public string ToShortString(int innerLength = 5, int outerLength = 4)
     {
-        var names = from e in edge.EdgePath select e.Name;
-        return $"Point in Strip {edge.Name} at g({edge.Name}) = {string.Join(" ", names.Take(index))}|{string.Join(" ", names.Skip(index))}";
+        var names = (from e in edge.EdgePath select e.Name).ToArray();
+        var initialSegmentLength = index;
+        var firstMiddleSegmentLength = 0;
+        var secondMiddleSegmentLength = 0;
+        var lastSegmentStart = index;
+        var firstEllipse = "";
+        var secondEllipse = "";
+        if (index > innerLength + outerLength + 1)
+        {
+            initialSegmentLength = outerLength;
+            firstMiddleSegmentLength = innerLength;
+            firstEllipse = "...";
+        }
+        if (edge.EdgePath.Count - index > innerLength + outerLength + 1)
+        {
+            secondMiddleSegmentLength = innerLength;
+            lastSegmentStart = edge.EdgePath.Count - outerLength;
+            secondEllipse = "...";
+        }
+        var initialSegment = names[..initialSegmentLength];
+        var firstMiddleSegment = names[(index-firstMiddleSegmentLength)..index];
+        var lastMiddleSegment = names[index..(index+secondMiddleSegmentLength)];
+        var lastSegment = names[lastSegmentStart..];
+            
+        return $"g({edge.Name}) = {string.Join(" ", initialSegment)}{firstEllipse}{string.Join(" ", firstMiddleSegment)}|{string.Join(" ", lastMiddleSegment)}{secondEllipse}{string.Join(" ", lastSegment)}";
+    }
+    
+    public string ToSerializationString()
+    {
+        return $"{edge.Name}@{index}";
     }
 
     public Strip DgBefore()
@@ -168,6 +198,7 @@ public class Inefficiency: EdgePoint
      {
             return $"Inefficiency of order {order} folding initial segments of {edgesToFold.Select(e => e.Name).ToCommaSeparatedString()}, at {base.ToString()}";
      }
+     
 
      private const bool AlwaysFoldAllEdgesWithShortSharedInitialSegment = false;
 }

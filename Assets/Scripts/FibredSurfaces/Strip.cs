@@ -52,11 +52,19 @@ public abstract class Strip: IEdge<Junction>
 
     public EdgePoint this[int i] => new(this, i);
 
-    public override string ToString() => $"{Name}: {Source} -> {Target} with g({Name}) = {string.Join(" ", EdgePath.Select(e => e.Name))}";
+    public override string ToString() => $"{Name}: {Source} -> {Target} with g({Name}) = {string.Join(" ", EdgePath.Select(e => e.Name)).AddDotsMiddle(250, 10)}";
     
     public string ToColorfulString()
     {
-        return $"{ColorfulName(Curve)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(Curve)}) = {string.Join(" ", EdgePath.Select(e => ColorfulName(e.Curve)))}";
+        var initialEdges = EdgePath.Take(100).Select(e => ColorfulName(e.Curve));
+        var res = $"{ColorfulName(Curve)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(Curve)}) = {string.Join(" ", initialEdges)}";
+        
+        if (EdgePath.Count <= 100) 
+            return res;
+        
+        var terminalEdges = EdgePath.TakeLast(10).Select(e => ColorfulName(e.Curve));
+        return res + " ... " + string.Join(" ", terminalEdges);
+        
         string ColorfulName(IDrawable obj) => obj.ColorfulName; 
         // Yep, we cannot call Curve.ColorfulName because, why? It implements IDrawnsformable, thus IDrawable, but somehow doesn't inherit its virtual members?
     }

@@ -25,12 +25,12 @@ public class MainMenu: MonoBehaviour
 
     private void Start()
     {
-        var testSurface = SurfaceGenerator.ModelSurface4GGon(2, 0, "Genus-2 surface", 
-                new string[] { "side d", "side c", "side a", "side b" } // labelling from [BH] example 6.1.
-            );
-        var surface = new AbstractSurface(testSurface);
-        // var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
-        // var surface = SurfaceGenerator.CreateSurface(parameters);
+        // var testSurface = SurfaceGenerator.ModelSurface4GGon(2, 0, "Genus-2 surface", 
+        //         new string[] { "side d", "side c", "side a", "side b" } // labelling from [BH] example 6.1.
+        //     );
+        // var surface = new AbstractSurface(testSurface);
+        var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
+        var surface = SurfaceGenerator.CreateSurface(parameters);
         Initialize(surface);
     }
     
@@ -118,7 +118,7 @@ public class MainMenu: MonoBehaviour
         var surface = surfaceMenu.geodesicSurface as ModelSurface;
         
         // if (surface.Name)
-        // var map = new Dictionary<string, string> // todo: Menu for entering the map before this menu.
+        // var map = new Dictionary<string, string>
         // {
         //     ["a"] = "a B A b D C A",
         //     ["b"] = "a c d B a b c d B",
@@ -132,7 +132,7 @@ public class MainMenu: MonoBehaviour
         //     ["c"] = true,
         //     ["d"] = true
         // });
-        var map = new Dictionary<string, string> // todo: Menu for entering the map before this menu.
+        var map = new Dictionary<string, string> 
         {
             ["a"] = "a",
             ["b"] = "b",
@@ -165,10 +165,7 @@ public class MainMenu: MonoBehaviour
         fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
         fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
         fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
-        // var fibredSurfaceCopy = fibredSurface.Copy();
-        fibredSurfaceMenu.FibredSurface.BestvinaHandelAlgorithm();
         
-        Debug.Log(fibredSurface.GraphString());
-        // fibredSurfaceMenu.UpdateSelectedSurface(fibredSurfaceCopy);
+        // fibredSurfaceMenu.StartAlgorithm();
     }
 }

@@ -285,7 +285,8 @@ public class SurfaceMenu: MonoBehaviour
             else
             {
                 visualizers[otherDrawingSurfaceName].Display(drawable, preview);
-                currentStuffShown.Add((drawable, otherDrawingSurfaceName));
+                if (!preview)
+                    currentStuffShown.Add((drawable, otherDrawingSurfaceName));
                 StuffShown?.Invoke(drawable, otherDrawingSurfaceName);
             }
                 

@@ -188,24 +188,26 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #region Algorithm with suggestion system
 
-    public class BHDisplayOptions
+    public class AlgorithmSuggestion
     {
-        public IEnumerable<object> options;
+        public IEnumerable<(object, string)> options;
         public string description;
-        public IEnumerable<object> buttons;
+        public IEnumerable<string> buttons;
         public bool allowMultipleSelection = false;
+        
+        public static AlgorithmSuggestion Finished = new AlgorithmSuggestion() { description = "Finished." };
     }
 
-    public BHDisplayOptions NextSuggestion()
+    public AlgorithmSuggestion NextSuggestion()
     {
         // todo? add a set of ITransformables to highlight with each option?
         // Iterate through the steps and give the possible steps to the user
         var a = GetInvariantSubforests();
         if (a.Any())
-            return new BHDisplayOptions()
+            return new AlgorithmSuggestion()
             {
                 options = from subforest in a
-                    select subforest.WithToString(
+                    select (subforest as object,
                         string.Join(", ", subforest.Edges.Select(v => v.Name))
                     ),
                 description = "Collapse an invariant subforest.",
@@ -213,148 +215,160 @@ public class FibredSurface : IPatchedDrawnsformable
             };
         var b = GetLoosePositions();
         if (b.Any())
-            return new BHDisplayOptions()
+        {
+            return new AlgorithmSuggestion()
             {
-                options = b.Cast<object>(),
+                options = from loosePosition in b
+                    select (loosePosition.Item1.Name as object,
+                        $"In edge {loosePosition.Item1.Name} there are the backtracks " +
+                        loosePosition.Item2.Select(edgePoint => edgePoint.ToShortString(3,2)).ToCommaSeparatedString().AddDotsMiddle(200, 30) +
+                        " and " + (loosePosition.Item3.Length > 0 ? "the" : "no") + " extremal vertices" +
+                        loosePosition.Item3.ToCommaSeparatedString().AddDotsMiddle(200, 30)
+                    ),
                 description = "Pull tight at one or more edges.",
                 buttons = new[] { "Tighten All", "Tighten Selected" },
                 allowMultipleSelection = true
             };
-        var
-            c = GetValenceOneJunctions(); // shouldn't happen at this point (tight & no invariant subforests => no valence-one junctions)
+        }
+        
+        var c = GetValenceOneJunctions(); 
+        // shouldn't happen at this point (tight & no invariant subforests => no valence-one junctions)
         if (c.Any())
-            return new BHDisplayOptions()
+            return new AlgorithmSuggestion()
             {
-                options = c,
+                options = from v in c select (v.Name as object, v.ToString()),
                 description = "Remove a valence-one junction. WHAT THE HECK?",
                 buttons = new[] { "Valence-1 Removal" },
                 allowMultipleSelection = true
             };
         if (AbsorbIntoPeriphery(true))
-            return new BHDisplayOptions()
+            return new AlgorithmSuggestion()
             {
-                options = new[] { GetMaximalPeripheralSubgraph() }, // todo? Display Q?
+                options = new (object, string)[] { (null,
+                        GetMaximalPeripheralSubgraph().Edges.Select(e => 
+                        peripheralSubgraph.ContainsEdge(e) 
+                            ? e.Name 
+                            : $"<b>{e.Name}</b>"
+                    ).ToCommaSeparatedString()
+                ) }, // todo? Display Q?
                 description = "Absorb into periphery.",
                 buttons = new[] { "Absorb" }
             };
         // todo: At this step, if the transition matrix for H is reducible, return with a reduction.
         var d = GetValenceTwoJunctions();
         if (d.Any())
-            return new BHDisplayOptions()
+            return new AlgorithmSuggestion()
             {
-                options = d,
+                options = from v in d select (v.Name as object, v.ToString()),
                 description = "Remove a valence-two junction.",
                 buttons = new[] { "Remove Selected", "Remove All" },
                 allowMultipleSelection = true
             };
         var e = GetPeripheralInefficiencies();
         if (e.Any())
-            return new BHDisplayOptions()
+            return new AlgorithmSuggestion()
             {
-                options = e,
+                // l is a list of edges with the same Dg and this Dg(l) is in the periphery.
+                options = from l in e select (l.Select(edge => edge.Name) as object,
+                    l.Select(edge => edge.Name).ToCommaSeparatedString() + $" are all mapped to {l.First()!.Dg!.Name} ∈ P."
+                ),
                 description = "Fold initial segments of edges that map to edges in the pre-periphery.",
                 buttons = new[] { "Fold Selected" }
             };
         var f = GetInefficiencies();
         if (f.Any())
-            return new BHDisplayOptions()
+            return new AlgorithmSuggestion()
             {
-                options = f.OrderBy(inefficiency => inefficiency.order),
+                options = from inefficiency in f.OrderBy(inefficiency => inefficiency.order) select (inefficiency.ToSerializationString() as object, inefficiency.ToString()),
                 description = "Remove an inefficiency.",
                 buttons = new[] { "Remove Inefficiency" },
             };
 
-        return null; // finished!
+        return AlgorithmSuggestion.Finished;
     }
 
-    public void ApplySuggestion(IEnumerable<object> suggestion, object button)
+    public void ApplySuggestion(IEnumerable<(object, string)> suggestion, object button)
     {
         switch (button)
         {
             case "Collapse":
-                if (suggestion.FirstOrDefault() is Helpers.ObjectWithString { obj: FibredGraph subforest })
+                if (suggestion.FirstOrDefault().Item1 is FibredGraph subforest)
                     CollapseInvariantSubforest(subforest);
                 // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
                 break;
             case "Tighten Selected":
-                foreach (object o in suggestion)
+                foreach (var (o ,_) in suggestion)
                 {
-                    if (o is not ValueTuple<Strip, EdgePoint[], Junction[]> s) continue;
-
-                    var backTracks = s.Item2.ToArray();
-                    // ReSharper disable once ForCanBeConvertedToForeach // we modify the list!
-                    for (var i = 0; i < backTracks.Length; i++)
-                        PullTightBackTrack(backTracks[i], backTracks);
-
-                    foreach (var junction in s.Item3.ToArray())
-                        PullTightExtremalVertex(junction);
-                    // todo: pulling tight along an edge and along the reverse edge do not commute! If you do both, some extremal vertices might not be extremal anymore, and some backtracks might not be backtracks anymore. (e.g. if St(v) = {e,f} and g(e) = dDa, g(f) = d, then v is extremal and e has a backtrack, both in d. But ?? maybe no problem?? TODO 
+                    if (o is not string name)
+                    {
+                        Debug.LogError($"Weird type of suggestion for Tighten Selected: {o}");
+                        continue;
+                    }
+                    PullTightAll(name);
                 }
-
                 break;
             case "Tighten All":
-                for (int i = 0; i < Strips.Sum(e => e.EdgePath.Count) + graph.Vertices.Count(); i++)
-                {
-                    var extremalVertex = GetExtremalVertices().FirstOrDefault();
-                    if (extremalVertex != null)
-                    {
-                        PullTightExtremalVertex(extremalVertex);
-                        continue;
-                    }
-
-                    var backTrack = GetBackTracks().FirstOrDefault();
-                    if (backTrack != null)
-                    {
-                        PullTightBackTrack(backTrack);
-                        continue;
-                    }
-
-                    break;
-                }
-
+                PullTightAll();
                 break;
             case "Valence-1 Removal":
-                foreach (var junction in suggestion.Cast<Junction>())
-                    RemoveValenceOneJunction(junction);
+                foreach (var (o, _) in suggestion)
+                    if (o is string name)
+                        RemoveValenceOneJunction(graph.Vertices.First(v => v.Name == name));    
+                    else
+                        Debug.LogError($"Weird type of suggestion for Valence-1 Removal: {o}");
                 break;
             case "Absorb":
                 AbsorbIntoPeriphery();
                 break;
-            case "Remove Selected":
-                foreach (object o in suggestion.ToArray())
+            case "Remove Selected": // valence 2 junctions
+                foreach (var (o, _) in suggestion.ToArray())
                 {
-                    if (o is not Junction valence2Junction) continue;
-                    // todo: same problem as in Remove All
-                    RemoveValenceTwoJunction(valence2Junction, null);
+                    if (o is string name)
+                        RemoveValenceTwoJunction(graph.Vertices.First(v => v.Name == name), null);
+                    else
+                        Debug.LogError($"Weird type of suggestion for Remove Selected Valence-2 Vertex: {o}");
+                    
+                    // at some point there might be invariant subforests!
+                    if (GetInvariantSubforests().Any())
+                        break;
                 }
 
                 break;
-            case "Remove All":
+            case "Remove All": // valence 2 junctions
                 var maxSteps = graph.VertexCount;
                 for (int i = 0; i < maxSteps; i++)
                 {
                     var junction = GetValenceTwoJunctions().FirstOrDefault();
-                    // todo: at some point there might be invariant subforests (we didn't check for earlier steps!!)
+                    // at some point there might be invariant subforests!
+                    if (GetInvariantSubforests().Any())
+                        break;
+                    
                     if (junction == null) break;
                     RemoveValenceTwoJunction(junction);
                 }
 
                 break;
-            case "Fold Selected":
-                if (suggestion.FirstOrDefault() is IEnumerable<Strip> edges)
-                    RemovePeripheralInefficiency(edges.ToList());
+            case "Fold Selected": // peripheral inefficiencies
+                if (suggestion.FirstOrDefault().Item1 is IEnumerable<string> edges)
+                    RemovePeripheralInefficiency(edges.Select(name => OrientedEdges.FirstOrDefault(e => e.Name == name)).ToList());
+                else Debug.LogError($"Weird type of suggestion for Fold Selected: {suggestion.FirstOrDefault().Item1}");
                 break;
             case "Remove Inefficiency":
-                int index = 0;
-                if (index != 0) Debug.Log($"Debuggingly selected the {index}th inefficiency instead of the 0th"); // 
-                if (suggestion.ElementAtOrDefault(index) is Inefficiency inefficiency)
-                    RemoveInefficiency(inefficiency);
+                if (suggestion.FirstOrDefault().Item1 is string inefficiencyText)
+                {
+                    var a = inefficiencyText.Split('@');
+                    var edge = OrientedEdges.First(e => e.Name == a[0]);
+                    var index = int.Parse(a[1]);
+                    RemoveInefficiency(new Inefficiency(edge[index]));
+                }
+                else Debug.LogError($"Weird type of suggestion for Remove Inefficiency: {suggestion.FirstOrDefault().Item1}");
+                // todo: split into steps?
                 break;
             default:
                 Debug.LogError("Unknown button.");
                 break;
         }
-
+        // sanity tests
         var edgeWithBrokenEdgePath = Strips.FirstOrDefault(s =>
             s.EdgePath.Count != 0 && !Enumerable.Range(0, s.EdgePath.Count - 1)
                 .All(i => s.EdgePath[i].Target == s.EdgePath[i + 1].Source));
@@ -780,6 +794,30 @@ public class FibredSurface : IPatchedDrawnsformable
         // todo? isotopy to make the strip shorter
     }
 
+    public void PullTightAll(string edgeName = null)
+    {
+        Strip edge = OrientedEdges.FirstOrDefault(e => e.Name == edgeName);
+        var limit = Strips.Sum(e => e.EdgePath.Count) + graph.Vertices.Count();
+        for (int i = 0; i < limit; i++)
+        {
+            var extremalVertex = GetExtremalVertices(edge).FirstOrDefault();
+            if (extremalVertex != null)
+            {
+                PullTightExtremalVertex(extremalVertex);
+                continue;
+            }
+
+            var backTrack = GetBackTracks(edge).FirstOrDefault();
+            if (backTrack != null)
+            {
+                PullTightBackTrack(backTrack);
+                continue;
+            }
+
+            break;
+        }
+    }
+
     #endregion
 
     #region Moving Vertices
@@ -849,9 +887,8 @@ public class FibredSurface : IPatchedDrawnsformable
 
         var edgesOrdered = SortConnectedSetInStar(star, edges).ToList();
         if (!edges.ToHashSet().SetEquals(edgesOrdered))
-            
-            
             throw new($"Edges to fold are not connected in the cyclic order: {string.Join(", ", edges)}");
+        
         edges = edgesOrdered;
 
         var edgeSelection = (
@@ -1113,14 +1150,14 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #region (Essential) Inefficiencies
 
-    private IEnumerable<(Strip, Strip)> InefficientConcatenations<T>(List<Gate<T>> gates)
+    private static IEnumerable<(Strip, Strip)> InefficientConcatenations<T>(List<Gate<T>> gates)
     {
         foreach (var gate in gates)
         {
             var edges = gate.Edges;
-            foreach (var edge1 in edges)
-            foreach (var edge2 in edges)
-                yield return (edge1.Reversed(), edge2);
+            for (var i = 0; i < edges.Count; i++)
+            for (var j = i; j < edges.Count; j++)
+                yield return (edges[i].Reversed(), edges[j]);
         }
     }
 
@@ -1130,12 +1167,15 @@ public class FibredSurface : IPatchedDrawnsformable
 
         foreach (var (edge1, edge2) in InefficientConcatenations(gates))
         {
+            var (edge1Rev, edge2Rev) = (edge1.Reversed(), edge2.Reversed());
             foreach (var strip in Strips)
             {
                 for (int i = 1; i < strip.EdgePath.Count; i++)
                 {
-                    if (!edge1.Equals(strip.EdgePath[i - 1]) ||
-                        !edge2.Equals(strip.EdgePath[i])) continue;
+                    if (
+                        (!strip.EdgePath[i - 1].Equals(edge1) || !strip.EdgePath[i].Equals(edge2)) && 
+                        (!strip.EdgePath[i - 1].Equals(edge2Rev) || !strip.EdgePath[i].Equals(edge1Rev))
+                    ) continue;
                     yield return new Inefficiency(new EdgePoint(strip, i));
                     goto found;
                 }
@@ -1145,19 +1185,19 @@ public class FibredSurface : IPatchedDrawnsformable
             found: ;
         }
         
-        foreach (var edge in Strips) // inefficient!!
-        {
-            for (int i = 0; i <= edge.EdgePath.Count; i++)
-            {
-                var inefficiency = CheckEfficiency(edge[i], gates);
-                if (inefficiency != null)
-                {
-                    if (i == 0 || i == edge.EdgePath.Count)
-                        Debug.Log("Interpreted a valence-two gate-wise extremal vertex as an inefficiency.");
-                    yield return inefficiency;
-                }
-            }
-        }
+        // foreach (var edge in Strips) // inefficient!!
+        // {
+        //     for (int i = 0; i <= edge.EdgePath.Count; i++)
+        //     {
+        //         var inefficiency = CheckEfficiency(edge[i], gates);
+        //         if (inefficiency != null)
+        //         {
+        //             if (i == 0 || i == edge.EdgePath.Count)
+        //                 Debug.Log("Interpreted a valence-two gate-wise extremal vertex as an inefficiency.");
+        //             yield return inefficiency;
+        //         }
+        //     }
+        // }
     }
 
     [CanBeNull]
@@ -1235,7 +1275,7 @@ public class FibredSurface : IPatchedDrawnsformable
         var newInefficiency = CheckEfficiency(pNew, Gate.FindGates(graph));
 
         if (newInefficiency == null || newInefficiency.order != p.order - 1)
-            Debug.LogError(
+           throw new(
                 $"Bug: The inefficiency was not turned into an efficiency of order one less: {p} was turned into {newInefficiency ?? pNew}");
         if (newInefficiency != null && newInefficiency.order < p.order)
             RemoveInefficiency(newInefficiency);

@@ -10,7 +10,7 @@ public interface IPatchedDrawnsformable : IDrawnsformable<IPatchedDrawnsformable
     
 
     IPatchedDrawnsformable IDrawnsformable<IPatchedDrawnsformable>.ApplyHomeomorphism(Homeomorphism homeomorphism) =>
-        new TransformedPatch(this, homeomorphism);
+        homeomorphism.isIdentity ? this : new TransformedPatch(this, homeomorphism);
 }
 
 public class TransformedPatch : IPatchedDrawnsformable
@@ -38,7 +38,8 @@ public class TransformedPatch : IPatchedDrawnsformable
 
     public IPatchedDrawnsformable Copy() => new TransformedPatch(original.Copy(), homeomorphism);
     
-     IPatchedDrawnsformable IDrawnsformable<IPatchedDrawnsformable>.ApplyHomeomorphism(Homeomorphism homeomorphism) => new TransformedPatch(original, homeomorphism * this.homeomorphism);
+     IPatchedDrawnsformable IDrawnsformable<IPatchedDrawnsformable>.ApplyHomeomorphism(Homeomorphism homeomorphism) => 
+         homeomorphism.isIdentity ? this : new TransformedPatch(original, homeomorphism * this.homeomorphism);
 }
 
 public class PatchedDrawnsformable : IPatchedDrawnsformable

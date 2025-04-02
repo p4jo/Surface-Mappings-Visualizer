@@ -402,6 +402,12 @@ public class RestrictedCurve : Curve
 
     public RestrictedCurve(Curve curve, float start, float end, string name = null)
     {
+        if (start < 0 && start.ApproximateEquals(0))
+            start = 0;
+        if (end > curve.Length && end.ApproximateEquals(curve.Length))
+            end = curve.Length;
+        if (start > end && start.ApproximateEquals(end))
+            end = start;
         if (start < 0 || end > curve.Length || start > end)
             throw new Exception("Invalid restriction");
         this.curve = curve;
@@ -437,7 +443,7 @@ public class RestrictedCurve : Curve
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
 
-    public override Curve Restrict(float start, float? end = null) => new RestrictedCurve(curve, this.start + start, this.start + end ?? Length);
+    public override Curve Restrict(float start, float? end = null) => new RestrictedCurve(curve, this.start + start, this.start + (end ?? Length));
 
     public override Curve Copy() =>
         new RestrictedCurve(curve.Copy(), start, end)
