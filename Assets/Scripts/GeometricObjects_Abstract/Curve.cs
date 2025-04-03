@@ -353,7 +353,9 @@ public partial class ConcatenatedCurve : Curve
             curves = curves.Append(
                 segments[endSegmentIndex].Restrict(0, movedEndTime)
             );
-        return new ConcatenatedCurve(curves, Name + $"[{start:g2}, {end:g2}]");
+        return new ConcatenatedCurve(curves, Name + $"[{start:g2}, {end:g2}]") { Color = Color }; 
+        // else, the color of the restricted curve is the color of the first segment that remains after the restriction,
+        // which might not be the first segment of the original ConcatenatedCurve. Also the ConcatenatedCurve might have a changed color.
     }
 }
 
@@ -438,7 +440,7 @@ public class RestrictedCurve : Curve
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);
 
     public override Curve Reversed() => reverseCurve ??=
-        new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start) { Name = Name };
+        new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start) { Name = Name + "'", Color = Color };
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);

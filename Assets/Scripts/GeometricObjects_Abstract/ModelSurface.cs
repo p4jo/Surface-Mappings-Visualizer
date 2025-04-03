@@ -17,17 +17,22 @@ public partial class ModelSurface: GeodesicSurface
     #region local types
     public record PolygonSide
     {
+        private static IEnumerator<Color> colors = Curve.colors.EndlessLoop().GetEnumerator();
+        
         public readonly string label;
         public readonly Vector2 start, end;
         public readonly bool rightIsInside;
-
-        public PolygonSide(string label, Vector2 start, Vector2 end, bool rightIsInside)
+        public readonly Color color;
+        public PolygonSide(string label, Vector2 start, Vector2 end, bool rightIsInside, Color color)
         {
             this.label = label;
             this.start = start;
             this.end = end;
             this.rightIsInside = rightIsInside;
+            this.color = color;
         }
+        
+        public static Color NextColor() => colors.MoveNext() ? colors.Current : Color.white;
     }
 
     #endregion
@@ -68,6 +73,7 @@ public partial class ModelSurface: GeodesicSurface
         foreach (var side in identifiedSides)
         {
             var newSide = new ModelSurfaceSide(side, geometryType, this);
+            newSide.Color = side.color;
             var oldSide = this.sides.FirstOrDefault(existingSide => existingSide.Name == newSide.Name);
             if (oldSide != null)
                 oldSide?.AddOther(newSide);

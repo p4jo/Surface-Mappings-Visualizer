@@ -241,6 +241,15 @@ public static class Helpers
             yield return element;
     }
 
+    public static IEnumerable<T> EndlessLoop<T>(this IEnumerable<T> list)
+    {
+        while (true)
+            foreach (var element in list)
+                yield return element;
+    }
+    
+    public static IEnumerable<T> Loop<T>(this IEnumerable<T> list, int length) => list.EndlessLoop().Take(length);
+    
     public static ObjectWithString WithToString(this object obj, string toString) => new(obj, toString);
 
     public class ObjectWithString

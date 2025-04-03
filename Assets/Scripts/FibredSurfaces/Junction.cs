@@ -55,4 +55,10 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
     };
 
     public override int GetHashCode() => id;
+
+    public string ToColorfulString()
+    {
+        
+        return $"{((IDrawable) this).ColorfulName} with cyclic ordered star {FibredSurface.StarOrdered(this).Select(j => ((IDrawable) j).ColorfulName).ToCommaSeparatedString()}";
+    }
 }

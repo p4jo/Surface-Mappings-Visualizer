@@ -22,10 +22,16 @@ public partial class Curve: IDrawnsformable<Curve>
 
     protected virtual Color DefaultColor => colors[id % colors.Count];
 
-    private static readonly List<Color> colors = new()
+    public static readonly List<Color> colors = new()
     {
-        Color.red, Color.green, Color.blue, Color.yellow, Color.cyan, Color.magenta, new Color(1, 0.5f, 0),
-        new Color(0.5f, 0, 1)
+        new Color32(20, 71, 255, 255),
+        new Color32(233, 30, 99, 255),
+        new Color32(255, 193, 7, 255),
+        new Color32(174, 51, 255, 255),
+        new Color32(89, 128, 212, 255),
+        new Color32(255, 123, 0, 255),
+        new Color32(108, 108, 108, 255),
+        new Color32(47, 196, 107, 255),
     };
     
     // public float Width { get; set; } = 0.1f;

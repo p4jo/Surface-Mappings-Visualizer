@@ -46,8 +46,11 @@ public class MainMenu: MonoBehaviour
         foreach (var (surfaceName, drawingSurface) in surface.drawingSurfaces)
         {
             if (drawingSurface is not ModelSurface modelSurface) continue;
-            foreach (ModelSurfaceSide side in modelSurface.sides) 
+            foreach (ModelSurfaceSide side in modelSurface.sides)
+            {
                 surfaceMenu.Display(side, surfaceName, preview: false);
+                // surfaceMenu.Display(side.other, surfaceName, preview: false);
+            }
         }
         
         InitializeFibredSurface();

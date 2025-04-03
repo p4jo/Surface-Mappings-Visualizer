@@ -29,6 +29,10 @@ public class FibredSurface : IPatchedDrawnsformable
         graph.Vertices.Concat<IDrawnsformable>(from edge in Strips select edge.Curve);
 
     public IEnumerable<UnorientedStrip> Strips => graph.Edges;
+    
+    public IEnumerable<UnorientedStrip> StripsOrdered => graph.Vertices.SelectMany(
+        v => StarOrdered(v).Select(e => e.UnderlyingEdge)
+    ).Distinct();
     private IEnumerable<Strip> OrientedEdges => Strips.Concat<Strip>(Strips.Select(edge => edge.Reversed()));
 
     #region Constructors
@@ -381,6 +385,9 @@ public class FibredSurface : IPatchedDrawnsformable
         var duplicateName = graph.Edges.FirstDuplicate(e => e.Name);
         if (duplicateName != null)
             Debug.LogError($"The name of {duplicateName} is used twice.");
+        var weirdCurveNames = Strips.FirstOrDefault(s => s.Reversed().Curve.Name != s.Name + "'");
+        if (weirdCurveNames != null)
+            Debug.LogError($"The curve {weirdCurveNames} has a weird name.");
     }
 
     public bool ApplyNextSuggestion()
@@ -407,8 +414,9 @@ public class FibredSurface : IPatchedDrawnsformable
 
     public string GraphString()
     {
-        var edgeString = string.Join("\n", Strips.Select(edge => edge.ToColorfulString()));
-        return edgeString;
+        var vertexString = string.Join("\n", graph.Vertices.Select(vertex => vertex.ToColorfulString()));
+        var edgeString = string.Join("\n", StripsOrdered.Select(edge => edge.ToColorfulString()));
+        return $"<line-indent=-20>{vertexString}\n{edgeString}";
     }
 
     public static IEnumerable<Strip> Star(Junction junction)
@@ -686,7 +694,7 @@ public class FibredSurface : IPatchedDrawnsformable
         var newStrip = keptStrip.CopyUnoriented(name: name,
             source: enlargedJunction,
             orderIndexStart: removeStrip.OrderIndexEnd,
-            curve: keptStrip.Curve = removeStrip.Curve.Reversed().Concatenate(keptStrip.Curve),
+            curve: removeStrip.Curve.Reversed().Concatenate(keptStrip.Curve),
             edgePath: OrderedStrip.ReversedEdgePath(removeStrip.EdgePath).Concat(keptStrip.EdgePath).ToList()
         );
 
@@ -869,14 +877,14 @@ public class FibredSurface : IPatchedDrawnsformable
     
     #region Folding initial segments
 
-    public void FoldEdges(IList<Strip> edges, IList<EdgePoint> updateEdgePoints = null)
+    public Strip FoldEdges(IList<Strip> edges, IList<EdgePoint> updateEdgePoints = null)
     {
         updateEdgePoints ??= new List<EdgePoint>();
 
         if (edges.Count < 2)
         {
             Debug.Log($"Wanted to fold {edges.Count} edges. Nothing to do.");
-            return;
+            return edges.FirstOrDefault();
         }
 
         var edgePath = edges[0].EdgePath;
@@ -922,9 +930,9 @@ public class FibredSurface : IPatchedDrawnsformable
             from edge in edges select edge.Curve.EndPosition;
         var connectingCurve = surface.GetPathFromWaypoints(waypoints, newVertexName);
         // todo? Try to avoid the rest of the fibred surface
-        var color = targetVerticesToFold.First().Color;
+        var vertexColor = targetVerticesToFold.First().Color;
         var newVertex = new Junction(graph, targetVerticesToFold.Append<IDrawnsformable>(connectingCurve),
-            newVertexName, targetVerticesToFold.First().image, color);
+            newVertexName, targetVerticesToFold.First().image, vertexColor);
         graph.AddVertex(newVertex);
         /* float indexOffset = 1;
         foreach (var vertex in targetVerticesToFold)
@@ -983,6 +991,8 @@ public class FibredSurface : IPatchedDrawnsformable
                     edges.Contains(edge.Reversed()) ? newEdge.Reversed() : edge
             ).ToList();
         }
+
+        return newEdge;
     }
 
     public (Strip, Strip) SplitEdge(EdgePoint splitPoint, IList<EdgePoint> updateEdgePoints = null)
@@ -1140,10 +1150,13 @@ public class FibredSurface : IPatchedDrawnsformable
         // give the remaining segments the original names. 
         // We do this here so that if we split an edge and its reverse the middle part gets the same name as the original edge.
         foreach (var (name, secondSegment) in terminalStripSegments)
+        {
             secondSegment.UnderlyingEdge.Name = name;
+        }
 
 
-        FoldEdges(initialStripSegments, updateEdgePoints);
+        var newEdge = FoldEdges(initialStripSegments, updateEdgePoints);
+        newEdge.Color = NextEdgeColor();
     }
 
     #endregion
@@ -1512,6 +1525,15 @@ public class FibredSurface : IPatchedDrawnsformable
         return vertexNames.Except(graph.Vertices.Select(vertex => vertex.Name)).Concat(
             from i in Enumerable.Range(1, 1000) select $"v{i}"
         ).FirstOrDefault();
+    }
+
+    Color NextEdgeColor()
+    {
+        var colorUsage = Curve.colors.ToDictionary(c => c, c => 0);
+        foreach (var strip in Strips) 
+            colorUsage[strip.Color]++;
+        var (leastUsedColor, _) = colorUsage.Keys.ArgMin(c => colorUsage[c]);
+        return leastUsedColor;
     }
 
     #endregion

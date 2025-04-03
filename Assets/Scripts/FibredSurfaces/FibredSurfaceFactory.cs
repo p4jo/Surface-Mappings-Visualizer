@@ -47,6 +47,7 @@ public static class FibredSurfaceFactory
             var secondPart = surface.GetBasicGeodesic(point2, junction, name);
             var curve = firstPart.Concatenate(secondPart);
             curve.Name = name;
+            curve.Color = side.Color;
             var stripData = (curve, "v", "v", map[curve.Name]);
             edges.Add(stripData);
         }

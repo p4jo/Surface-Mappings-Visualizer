@@ -286,8 +286,10 @@ public class SurfaceMenu: MonoBehaviour
             {
                 visualizers[otherDrawingSurfaceName].Display(drawable, preview);
                 if (!preview)
+                {
                     currentStuffShown.Add((drawable, otherDrawingSurfaceName));
-                StuffShown?.Invoke(drawable, otherDrawingSurfaceName);
+                    StuffShown?.Invoke(drawable, otherDrawingSurfaceName);
+                }
             }
                 
             if (propagateBackwards && backwardsHomeos.TryGetValue(otherDrawingSurfaceName, out var homeo)) 

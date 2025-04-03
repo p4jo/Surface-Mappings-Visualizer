@@ -7,7 +7,7 @@ using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 
-public abstract class Strip: IEdge<Junction>
+public abstract class Strip: IEdge<Junction>, IDrawable
 {
     public readonly FibredGraph graph;
     
@@ -33,6 +33,9 @@ public abstract class Strip: IEdge<Junction>
     
     public abstract UnorientedStrip UnderlyingEdge { get; }
     public abstract string Name { get; set; }
+    public abstract Color Color { get; set; }
+    IDrawable IDrawable.Copy() => Copy();
+
 
     public virtual Junction OtherVertex(Junction vertex) => vertex == Source ? Target : Source;
     
@@ -56,13 +59,13 @@ public abstract class Strip: IEdge<Junction>
     
     public string ToColorfulString()
     {
-        var initialEdges = EdgePath.Take(100).Select(e => ColorfulName(e.Curve));
-        var res = $"{ColorfulName(Curve)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(Curve)}) = {string.Join(" ", initialEdges)}";
+        var initialEdges = EdgePath.Take(100).Select(ColorfulName);
+        var res = $"{ColorfulName(this)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(this)}) = {string.Join(" ", initialEdges)}";
         
         if (EdgePath.Count <= 100) 
             return res;
         
-        var terminalEdges = EdgePath.TakeLast(10).Select(e => ColorfulName(e.Curve));
+        var terminalEdges = EdgePath.TakeLast(10).Select(ColorfulName);
         return res + " ... " + string.Join(" ", terminalEdges);
         
         string ColorfulName(IDrawable obj) => obj.ColorfulName; 
@@ -99,8 +102,7 @@ public class UnorientedStrip : Strip
     public override Curve Curve { get; set; }
     public override IReadOnlyList<Strip> EdgePath { get; set; }
     public override UnorientedStrip UnderlyingEdge => this;
-    public IDrawable Drawable => Curve;
-    
+
     public override float OrderIndexEnd { get; set; }
     public override float OrderIndexStart { get; set; }
 
@@ -140,10 +142,19 @@ public class UnorientedStrip : Strip
     public override string Name
     {
         get => Curve.Name;
-        set
-        {
+        set {
             if (value.Any(char.IsUpper)) Debug.LogError("An unoriented strip should have a lowercase name!");
             Curve.Name = value.ToLower();
+            if (reversed != null) reversed.Curve.Name = value + "'";
+        }
+    }
+
+    public override Color Color
+    {
+        get => Curve.Color;
+        set {
+            Curve.Color = value;
+            if (reversed != null) reversed.Curve.Color = value;
         }
     }
 
@@ -172,6 +183,12 @@ public class OrderedStrip: Strip
             if (reverse && value.Any(char.IsLower)) Debug.LogError("A reverse strip should have an uppercase Name!");
             UnderlyingEdge.Name = value.ToLower();
         }
+    }
+
+    public override Color Color
+    {
+        get => UnderlyingEdge.Color;
+        set => UnderlyingEdge.Color = value;
     }
     // "<s>" + UnderlyingEdge.Name + "</s>"   (strikethrough in RichText; workaround for overbar; use for fancy display?)
     // For the moment, we just use the name of the underlying edge in UPPERCASE.

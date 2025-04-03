@@ -17,8 +17,7 @@ public struct SurfaceParameter
     // One being basically the input for the constructor of Modelsurface
     // One describing embedded surfaces, e.g. where the genera are. This affects only the embeddings (homeomorphisms)
     public int genus, punctures;
-    [FormerlySerializedAs("addEmbedding")] [FormerlySerializedAs("modelSurface")] public bool connectedSumEmbedding;
-    // todo
+    public bool connectedSumEmbedding;
 
     public static SurfaceParameter FromString(string str)
     {
@@ -46,29 +45,31 @@ public class ModelSurfaceParameter
 public static class SurfaceGenerator
 {
     
-    public static ModelSurface FlatTorusModelSurface(int punctures, string name, string labelA = null, string labelB = null)
+    public static ModelSurface FlatTorusModelSurface(int punctures, string name, string labelA = null, string labelB = null, Color? colorA = null, Color? colorB = null)
     {
         labelA ??= "a";
         labelB ??= "b";
+        colorA ??= ModelSurface.PolygonSide.NextColor();
+        colorB ??= ModelSurface.PolygonSide.NextColor();
         
         var right = new Vector2(τ, 0);
         var up = new Vector2(0, τ);
         var sides = new List<ModelSurface.PolygonSide>
         {
-            new(labelA, Vector2.zero, right, false),
-            new(labelA, up, up + right, true),
-            new(labelB, Vector2.zero, up, true),
-            new(labelB, right, right + up, false),
+            new(labelA, Vector2.zero, right, false, colorA.Value),
+            new(labelA, up, up + right, true, colorA.Value),
+            new(labelB, Vector2.zero, up, true, colorB.Value),
+            new(labelB, right, right + up, false, colorB.Value),
         };
         var modelSurface = new ModelSurface(name, 1, punctures, GeometryType.Flat, sides);
         return modelSurface;
     }
-    public static ModelSurface ModelSurface4GGon(int genus, int punctures, string name, IEnumerable<string> labels = null)
+    public static ModelSurface ModelSurface4GGon(int genus, int punctures, string name, IEnumerable<string> labels = null, IEnumerable<Color> colors = null)
     {
         if (genus < 1)
             throw new ArgumentException("genus must be at least 1");
-        if (labels == null)
-            labels = Enumerable.Range(0, 2 * genus).Select(i => ((char)('a' + i)).ToString());
+        labels ??= Enumerable.Range(0, 2 * genus).Select(i => "side " + (char)('a' + i));
+        colors ??= Curve.colors.Loop(2 * genus);
         if (genus == 1)
         {
             var (labelA, labelB) = labels;
@@ -83,6 +84,7 @@ public static class SurfaceGenerator
         ).ToArray();
         List<ModelSurface.PolygonSide> sides = new();
         var labelArray = labels.ToArray();
+        var colorArray = colors.ToArray();
         for (var l = 0; l < genus; l++)
         {
             int i = 4 * l;
@@ -91,10 +93,10 @@ public static class SurfaceGenerator
             var c = vertices[i + 2];
             var d = vertices[i + 3];
             var e = vertices[(i + 4) % n];
-            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l], a, b, false));
-            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l + 1], b, c, false));
-            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l], d, c, true));
-            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l + 1], e, d, true));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l], a, b, false, colorArray[2 * l]));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l + 1], b, c, false, colorArray[2 * l + 1]));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l], d, c, true, colorArray[2 * l]));
+            sides.Add(new ModelSurface.PolygonSide(labelArray[2 * l + 1], e, d, true, colorArray[2 * l + 1]));
         }
         return new ModelSurface(name, genus, punctures, GeometryType.HyperbolicDisk, sides);
     }
@@ -179,6 +181,8 @@ public static class SurfaceGenerator
         int addedPunctures = 0,
         Vector3 center = new())
     {
+        var names = from i in Enumerable.Range(0, 25) select "side " + (char)('a' + i);
+        
         var homeomorphism = targetSurface.embedding;
 
         if (homeomorphism.source is not ModelSurface surface)
@@ -194,15 +198,33 @@ public static class SurfaceGenerator
 
         var halfWidth = new Vector2(imageHalfWidth / (1 + pufferZone) * f, 0);
         var halfHeight = new Vector2(0, imageHalfHeight / (1 + pufferZone) * f);
-        var labelA = "a" + Random.Range(0, 1000);
-        var labelB = "b" + Random.Range(0, 1000); // todo: take next chars in alphabet 
+        var usedLabels = new HashSet<string>(from side in surface.sides select side.Name);
+        string labelA = null, labelB = null;
+        foreach (var name in names)
+        {
+            if (usedLabels.Contains(name)) continue;
+            if (labelA == null)
+            {
+                labelA = name;
+                continue;
+            }
+
+            labelB = name;
+            break;
+        }
+        if (labelA == null || labelB == null)
+            throw new ArgumentException("Did you really want to have 25 sides on the surface?");
+        
+        var colorA = ModelSurface.PolygonSide.NextColor();
+        var colorB = ModelSurface.PolygonSide.NextColor();
+        
         var cutoutInTarget = new Rect(imageCenter - halfWidth - halfHeight, 2 * (halfWidth + halfHeight));
         var boundaries = new ModelSurface.PolygonSide[]
         {
-            new(labelA,  imageCenter + halfWidth - halfHeight, imageCenter + halfWidth + halfHeight, true),
-            new(labelA, imageCenter - halfWidth - halfHeight, imageCenter - halfWidth + halfHeight, false),
-            new(labelB, imageCenter - halfWidth + halfHeight, imageCenter + halfWidth + halfHeight, false),
-            new(labelB, imageCenter - halfWidth - halfHeight, imageCenter + halfWidth - halfHeight, true) 
+            new(labelA,  imageCenter + halfWidth - halfHeight, imageCenter + halfWidth + halfHeight, true, colorA),
+            new(labelA, imageCenter - halfWidth - halfHeight, imageCenter - halfWidth + halfHeight, false, colorA),
+            new(labelB, imageCenter - halfWidth + halfHeight, imageCenter + halfWidth + halfHeight, false, colorB),
+            new(labelB, imageCenter - halfWidth - halfHeight, imageCenter + halfWidth - halfHeight, true, colorB), 
         };
         var newBaseSurface = surface.WithAddedBoundaries(1, addedPunctures, boundaries);
         
