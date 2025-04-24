@@ -216,7 +216,7 @@ public partial class ModelSurface: GeodesicSurface
         
         this.punctures.AddRange((
                 from _ in Enumerable.Range(0, 100 * (punctures - this.punctures.Count)) 
-                let randomPuncture = ClampPoint((Vector3) Random.insideUnitCircle * radius + center) 
+                let randomPuncture = ClampPoint((Vector3) Random.insideUnitCircle * radius + center, 0.01f) 
                 // todo: this MUST NOT be disjoint from the surface. Also it should be approximately the size of the surface
                 where randomPuncture != null
                 select randomPuncture
@@ -250,11 +250,11 @@ public partial class ModelSurface: GeodesicSurface
     public override Curve GetGeodesic(Point startPoint, Point endPoint, string name)
     {
         if (startPoint is not IModelSurfacePoint)
-            startPoint = ClampPoint(startPoint.Position);
+            startPoint = ClampPoint(startPoint.Position, 0.001f);
         if (startPoint is null)
             throw new Exception("The start point is not on the surface.");
         if (endPoint is not IModelSurfacePoint)
-            endPoint = ClampPoint(endPoint.Position);
+            endPoint = ClampPoint(endPoint.Position, 0.001f);
         if (endPoint is null)
             throw new Exception("The end point is not on the surface.");
 
@@ -290,7 +290,7 @@ public partial class ModelSurface: GeodesicSurface
             bool stillAtTheStartingSide = true;
             while (t < length)
             {
-                p = ClampPoint(currentSegment[t]);
+                p = ClampPoint(currentSegment[t], 0.001f);
                 switch (p)
                 {
                     case null:
@@ -374,9 +374,8 @@ public partial class ModelSurface: GeodesicSurface
 
     public override float DistanceSquared(Point startPoint, Point endPoint) => throw new NotImplementedException();
 
-    public override Point ClampPoint(Vector3? pos) // todo: this is extremely inefficient
+    public override Point ClampPoint(Vector3? pos, float closenessThreshold) // todo: this is extremely inefficient
     {
-        const float closenessThreshold = 0.01f; // todo: this should vary with the camera scale!
         const float secondaryClosestSideSquareDistanceFactor = 1.5f;
         if (pos == null) return null;
         var p = pos.Value; 
@@ -385,7 +384,7 @@ public partial class ModelSurface: GeodesicSurface
         
         var distances = (
             from side in AllSideCurves 
-            let x = side.curve.GetClosestPoint(p) 
+            let x = side.curve.GetClosestPoint(p, closenessThreshold * 0.1f) 
             let pt = new ModelSurfaceBoundaryPoint(side, x.Item1)
             select (pt, x.Item2.DistanceSquared(point))
         ).ToArray();

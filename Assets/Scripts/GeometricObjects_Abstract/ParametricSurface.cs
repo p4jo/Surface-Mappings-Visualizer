@@ -26,7 +26,7 @@ public class ParametricSurface: Surface
     public ParametricSurface((string, Homeomorphism, IEnumerable<Rect>, Vector3, Vector3) args): 
         this(args.Item1, args.Item2, args.Item3, args.Item4, args.Item5) {}
 
-    public override Point ClampPoint(Vector3? point)
+    public override Point ClampPoint(Vector3? point, float closenessThreshold)
     { 
         // this should only be called on hits of ray with collider, so these shouldn't be too far.
         // Still we probably need to optimize over both variables

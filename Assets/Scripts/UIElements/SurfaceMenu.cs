@@ -117,13 +117,14 @@ public class SurfaceMenu: MonoBehaviour
             var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UICamera>();
             
             kamera.Initialize(panel, canvas, drawingSurface.MinimalPosition, drawingSurface.MaximalPosition);
+            var closenessThresholdBaseValue = 0.01f / kamera.Cam.orthographicSize / kamera.Cam.orthographicSize;
             cameraManager.AddKamera(kamera);
             
             mainMenu.UIMoved += () => kamera.UIMoved();
             
             visualizers.Add(drawingSurfaceName, surfaceVisualizer);
             surfaceVisualizer.MouseEvent += (location, button) =>
-                MouseEvent(drawingSurface.ClampPoint(location), drawingSurface.Name, button);
+                MouseEvent(drawingSurface.ClampPoint(location, closenessThresholdBaseValue * kamera.Cam.orthographicSize * kamera.Cam.orthographicSize), drawingSurface.Name, button);
         }
         if (this.geodesicSurface is null)
             throw new Exception("None of the surfaces provides geodesics");

@@ -22,8 +22,9 @@ public abstract class Surface
     /// Bring the point into the boundary / significant point if it is close. Return null if too far from the surface.
     /// </summary>
     /// <param name="point"></param>
+    /// <param name="closenessThreshold"></param>
     /// <returns></returns>
-    public abstract Point ClampPoint(Vector3? point);
+    public abstract Point ClampPoint(Vector3? point, float closenessThreshold);
 
     
     /// <summary>
@@ -65,33 +66,85 @@ public abstract class GeodesicSurface: Surface
     {
         var res = 0.1f;
         while (res > curve.Length / 4) res /= 2;
-        return ArclengthAtTime(curve, res)[^1];
+        var (lengths, lastLength, lastTimeInterval) = ArclengthFromTimeList(curve, res);
+        return lastLength + lengths[^1];
     }
-    
-    protected static List<float> ArclengthAtTime(Curve curve, float res = 0.05f)
+
+    static (List<float>, float, float) ArclengthFromTimeList(Curve curve, float res)
     {
-        
         if (curve.Surface is not GeodesicSurface surface)
         {
             Debug.LogError("The curve must be on a GeodesicSurface to calculate the arclength parameterization.");
-            return Enumerable.Range(0, (int) (curve.Length / res) + 1).Select(i => i * res).ToList();
+            int normalIntervals = Mathf.FloorToInt(curve.Length / res);
+            float remainingLength = curve.Length - normalIntervals * res;
+            return (Enumerable.Range(0, normalIntervals).Select(i => i * res).ToList(), remainingLength, remainingLength);
+
         }
-        var times = new List<float> { 0f }; 
+        var lengths = new List<float> { 0f }; 
         // l -> t: times[i] = l[i * res]
 
         float T = curve.Length;
         var l = 0f;
         var lastPoint = curve.StartPosition;
-        for (float t = res; t <= T + res; t += res)
+        for (float t = res; t < T; t += res)
         {
-            if (t > T) t = T;
             var p = curve[t];
             l += MathF.Sqrt(surface.DistanceSquared(p, lastPoint));
-            times.Add(l);
+            lengths.Add(l);
         }
-
-        return times;
+        var lastLength = MathF.Sqrt(surface.DistanceSquared(curve.EndPosition, lastPoint));
+        var lastTimeInterval = curve.Length - (lengths.Count - 1) * res;
+        return (lengths, lastLength, lastTimeInterval);
     }
+    
+    public static Func<float, float> ArclengthFromTime(Curve curve, float res = 0.05f)
+    {
+        var (lengths, lastLength, lastTimeInterval) = ArclengthFromTimeList(curve, res);
+        return ListToFunction(lengths, lastLength, lastTimeInterval, res);
+    }
+
+    public static Func<float, float> TimeFromArclength(Curve curve, float res = 0.05f)
+    {
+        var (lengths, lastLength, lastTimeInterval) = ArclengthFromTimeList(curve, res);
+        var f = ListToInverseDerivative(lengths, lastLength, lastTimeInterval, res);
+        return x => f(x).Item1;
+    }
+
+    static Func<float, float> ListToFunction(List<float> lengths, float lastLength, float lastTimeInterval, float res) =>
+        time =>
+        {
+            // todo: check
+            int n = Mathf.FloorToInt(time / res);
+            float deltaT = time - n * res;
+            if (n < 0)
+                return 0;
+            if (n >= 0 && n < lengths.Count - 1)
+                return lengths[n] + (lengths[n + 1] - lengths[n]) * deltaT / res;
+            if (n == lengths.Count - 1)
+                return lengths[n] + lastLength * deltaT / lastTimeInterval;
+            return lastLength + lengths[^1];
+        };
+
+    static Func<float, (float, float)> ListToInverseDerivative(List<float> lengths, float lastLength,
+        float lastTimeInterval, float res) =>
+        length =>
+        { // todo: check
+            if (length <= 0) return (0f, 0f);
+            float dtdl = lastTimeInterval / lastLength;
+            float t = lengths[^1] + lastLength;
+            
+            if (length > lengths[^1] + lastLength)
+                return (t, dtdl );
+            
+            int i = 0;
+            while (i < lengths.Count && lengths[i] < length) 
+                i++;
+            if (i < lengths.Count)
+                dtdl = res / (lengths[i] - lengths[i - 1]);
+            t = res * (i - 1) + (length - lengths[i - 1]) * dtdl;
+            return (t, dtdl);
+        };
+
     public static Curve ByArclength(Curve curve)
     {
         if (curve.Surface is not GeodesicSurface surface)
@@ -102,19 +155,22 @@ public abstract class GeodesicSurface: Surface
 
         var res = 0.1f;
         while (res > curve.Length / 4) res /= 2;
-        var lengths = ArclengthAtTime(curve, res);
+        var (lengths, lastLength, lastTimeInterval) = ArclengthFromTimeList(curve, res);
+        var ArclengthFromTime = ListToFunction(lengths, lastLength, lastTimeInterval, res);
         // t -> l
+        var TimeFromArclength = ListToInverseDerivative(lengths, lastLength, lastTimeInterval, res);
 
-        TangentVector DerivativeAt(float targetLength)
+        return new ParametrizedCurve(curve.Name + " by arclength", lastLength + lengths[^1], surface, DerivativeAt, 
+            from jumpTime in curve.VisualJumpTimes select ArclengthFromTime(jumpTime)) {
+            Color = curve.Color
+        };
+
+        
+        TangentVector DerivativeAt(float length)
         {
-            var i = 0;
-            while (lengths[i] < targetLength) i++;
-            var dtdl = 1 / ( lengths[i] - lengths[i - 1] );
-            var t = res * i + (targetLength - lengths[i - 1]) * dtdl;
+            var (t, dtdl) = TimeFromArclength(length);
             return dtdl * curve.DerivativeAt(t);
         }
-        
-        return new ParametrizedCurve(curve.Name + " by arclength", curve.Length, surface, DerivativeAt); 
     }
 }
 

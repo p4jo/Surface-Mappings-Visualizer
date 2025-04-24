@@ -120,16 +120,24 @@ public class FibredSurface : IPatchedDrawnsformable
         var newGraph = new FibredGraph(true);
 
         var newVertices = new Dictionary<Junction, Junction>(
-            from vertex in graph.Vertices
-            select new KeyValuePair<Junction, Junction>(vertex, vertex.Copy(newGraph))
+            from oldJunction in graph.Vertices
+            select new KeyValuePair<Junction, Junction>(oldJunction, 
+                oldJunction.Copy(newGraph)
+            )
         );
 
-        var newEdges = new Dictionary<UnorientedStrip, UnorientedStrip>(graph.EdgeCount);
-        foreach (var edge in Strips)
-        {
-            newEdges[edge] = edge.CopyUnoriented(graph: newGraph, source: newVertices[edge.Source],
-                target: newVertices[edge.Target]);
-        }
+        var newEdges = new Dictionary<UnorientedStrip, UnorientedStrip>(
+            from oldStrip in Strips
+            select new KeyValuePair<UnorientedStrip, UnorientedStrip>(oldStrip, 
+                oldStrip.CopyUnoriented(graph: newGraph,
+                    source: newVertices[oldStrip.Source],
+                    target: newVertices[oldStrip.Target]
+                )
+            )
+        );
+
+        foreach (var (oldJunction, newJunction) in newVertices) 
+            newJunction.image = newVertices[oldJunction.image];
 
         foreach (var (edge, newEdge) in newEdges)
             newEdge.EdgePath = edge.EdgePath.Select(
@@ -211,7 +219,7 @@ public class FibredSurface : IPatchedDrawnsformable
             return new AlgorithmSuggestion()
             {
                 options = from subforest in a
-                    select (subforest as object,
+                    select (subforest.Edges.Select(e => e.Name) as object,
                         string.Join(", ", subforest.Edges.Select(v => v.Name))
                     ),
                 description = "Collapse an invariant subforest.",
@@ -296,8 +304,8 @@ public class FibredSurface : IPatchedDrawnsformable
         switch (button)
         {
             case "Collapse":
-                if (suggestion.FirstOrDefault().Item1 is FibredGraph subforest)
-                    CollapseInvariantSubforest(subforest);
+                if (suggestion.FirstOrDefault().Item1 is IEnumerable<string> subforestEdges)
+                    CollapseInvariantSubforest(subforestEdges);
                 // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
                 break;
             case "Tighten Selected":
@@ -369,7 +377,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 // todo: split into steps?
                 break;
             default:
-                Debug.LogError("Unknown button.");
+                throw new("Unknown button.");
                 break;
         }
         // sanity tests
@@ -377,18 +385,46 @@ public class FibredSurface : IPatchedDrawnsformable
             s.EdgePath.Count != 0 && !Enumerable.Range(0, s.EdgePath.Count - 1)
                 .All(i => s.EdgePath[i].Target == s.EdgePath[i + 1].Source));
         if (edgeWithBrokenEdgePath != null)
-            Debug.LogError($"The edge {edgeWithBrokenEdgePath} has a broken edge path.");
+            throw new($"The edge {edgeWithBrokenEdgePath} has a broken edge path.");
         var brokenSelfEdge = Strips.FirstOrDefault(s => s.Source == s.Target && s.EdgePath.Count == 0);
         if (brokenSelfEdge != null)
-            Debug.LogError(
+            throw new(
                 $"The edge {brokenSelfEdge} is a self-edge that gets mapped into a vertex! This should not happen as we assume that the fibred surface is embedded as a deformation retract of the surface and thus no loop should be mapped to a vertex (no non-forest into a forest).");
         var duplicateName = graph.Edges.FirstDuplicate(e => e.Name);
         if (duplicateName != null)
-            Debug.LogError($"The name of {duplicateName} is used twice.");
-        var weirdCurveNames = Strips.FirstOrDefault(s => s.Reversed().Curve.Name != s.Name + "'");
-        if (weirdCurveNames != null)
-            Debug.LogError($"The curve {weirdCurveNames} has a weird name.");
+            throw new($"The name of {duplicateName} is used twice.");
+        var weirdCurveName = Strips.FirstOrDefault(s => s.Reversed().Curve.Name != s.Name + "'");
+        if (weirdCurveName != null)
+            throw new($"The curve {weirdCurveName} has a weird name.");
+        var brokenVertex = graph.Vertices.FirstOrDefault(v => v.graph != graph);
+        if (brokenVertex != null)
+            throw new($"The vertex {brokenVertex} doesn't refer to this graph.");
+        var brokenVertexMapEdge = BrokenVertexMapEdge();
+        if (brokenVertexMapEdge != null)
+            throw new($"The edge {brokenVertexMapEdge.Name} starts at {brokenVertexMapEdge.Source} with g({brokenVertexMapEdge.Source}) = {brokenVertexMapEdge.Source.image}, but g({brokenVertexMapEdge.Name}) starts at o(Dg({brokenVertexMapEdge.Name})) = o({brokenVertexMapEdge.Dg?.Name}) = {brokenVertexMapEdge.Dg?.Source}");
+        var brokenVertexGraphAssociation = graph.Vertices.FirstOrDefault(v => v.graph != graph);
+        if (brokenVertexGraphAssociation != null)
+            throw new($"The vertex {brokenVertexGraphAssociation} doesn't refer to this graph.");
+        var brokenEdgeGraphAssociation = Strips.FirstOrDefault(e => e.graph != graph);
+        if (brokenEdgeGraphAssociation != null)
+            throw new($"The edge {brokenEdgeGraphAssociation} doesn't refer to this graph.");
+        for (int k = 0; k < 4; k++)
+        {
+            foreach (var vertex in graph.Vertices)
+            {
+                var star = StarOrdered(vertex).ToList();
+                var starts = (from edge in star select edge.EdgePath.Take(k)).ToHashSet();
+                foreach (var start in starts)
+                {
+                    var edges = (from edge in star where edge.EdgePath.Take(k).SequenceEqual(start) select edge).ToArray();
+                    if (!IsConnectedSet(star, edges))
+                        throw new($"The edges {string.Join(", ", edges.Select(e => e.Name))} are not connected in the star of {vertex.Name}, but all start with the same edge path {string.Join(" ", start.Select(e => e.Name))}.");
+                }
+            }
+        }
     }
+
+    private Strip BrokenVertexMapEdge() => OrientedEdges.FirstOrDefault(e => e.Dg != null && e.Source.image != e.Dg.Source);
 
     public bool ApplyNextSuggestion()
     {
@@ -476,13 +512,16 @@ public class FibredSurface : IPatchedDrawnsformable
     /// </summary>
     static IEnumerable<Strip> SortConnectedSetInStar(List<Strip> sortedStar, ICollection<Strip> connectedSet)
     {
-        int starIndex = sortedStar.FindIndex(e => connectedSet.Contains(e));
+        int startIndex = sortedStar.FindIndex(connectedSet.Contains);
         // this should be the index in the cyclic order where the connected set starts
-        if (starIndex == -1) throw new("The connected set is not in the star.");
-        if (starIndex == 0) starIndex = sortedStar.FindLastIndex(e => !connectedSet.Contains(e)) + 1;
-        // if the connected set is all of star, then this is -1 + 1 = 0.
-        return sortedStar.CyclicShift(starIndex).Take(connectedSet.Count);
+        if (startIndex == -1) throw new("The connected set is not in the star.");
+        if (startIndex == 0) startIndex = sortedStar.FindLastIndex(e => !connectedSet.Contains(e)) + 1;
+        // if the connected set is all of the star, then this is -1 + 1 = 0.
+        return sortedStar.CyclicShift(startIndex).Take(connectedSet.Count);
     }
+    
+    static bool IsConnectedSet(List<Strip> sortedStar, ICollection<Strip> connectedSet) => 
+        SortConnectedSetInStar(sortedStar, connectedSet).All(connectedSet.Contains);
 
     /// <summary>
     /// The smallest invariant subgraph containing this edge.
@@ -593,6 +632,18 @@ public class FibredSurface : IPatchedDrawnsformable
         return IsPeripheryFriendlySubforest(subgraph, peripheralSubgraph, remove, touching);
     }
 
+    public void CollapseInvariantSubforest(IEnumerable<string> edges)
+    {
+        var subforest = new FibredGraph(true);
+        var edgeNames = edges.ToHashSet();
+        foreach (var strip in Strips)
+        {
+            if (edgeNames.Contains(strip.Name))
+                subforest.AddVerticesAndEdge(strip);
+        }
+        CollapseInvariantSubforest(subforest);
+    }
+
     public void CollapseInvariantSubforest(FibredGraph subforest)
     {
         var subforestEdges = Enumerable.ToHashSet(subforest.Edges);
@@ -623,11 +674,24 @@ public class FibredSurface : IPatchedDrawnsformable
             }
         }
 
+        foreach (var junction in graph.Vertices)
+        {
+            if (junction.image == null) continue;
+            if (componentDict.TryGetValue(junction.image, out var index))
+                junction.image = newVertices[index];
+        }
+
         for (var index = 0; index < newVertices.Count; index++)
         {
             var newVertex = newVertices[index];
             var absorbedJunction = componentList[index].Vertices.First();
-            newVertex.image = newVertices[componentDict[absorbedJunction.image]];
+            if (componentDict.TryGetValue(absorbedJunction.image, out var imageIndex))
+                newVertex.image = newVertices[imageIndex];
+            else
+                newVertex.image = absorbedJunction.image;
+
+            graph.AddVertex(newVertex); 
+            // shouldn't be necessary because we assign edge.Source for edges in the subgraph star (if that is empty, then our entire graph was a tree, i.e. the surface was a disk, which is too trivial)
         }
     }
 
@@ -641,7 +705,7 @@ public class FibredSurface : IPatchedDrawnsformable
     public void RemoveValenceOneJunction(Junction junction)
     {
         var star = Star(junction).ToArray();
-        if (star.Length != 1) Debug.LogError($"Supposed valence-one junction has valence {star.Length}");
+        if (star.Length != 1) throw new($"Supposed valence-one junction has valence {star.Length}");
         var removedStrip = star.First();
         Junction otherJunction = removedStrip.Target;
         graph.RemoveVertex(junction);
@@ -667,7 +731,7 @@ public class FibredSurface : IPatchedDrawnsformable
     public void RemoveValenceTwoJunction(Junction junction, Strip removeStrip = null)
     {
         var star = Star(junction).ToArray();
-        if (star.Length != 2) Debug.LogError($"Supposed valence-two junction has valence {star.Length}");
+        if (star.Length != 2) throw new($"Supposed valence-two junction has valence {star.Length}");
 
         if (removeStrip == null)
         {
@@ -762,10 +826,11 @@ public class FibredSurface : IPatchedDrawnsformable
 
     public void PullTightExtremalVertex(Junction vertex)
     {
-        vertex.image = Star(vertex).First()[0].Image;
+        vertex.image = null;
         foreach (var strip in Star(vertex))
         {
             strip.EdgePath = strip.EdgePath.Skip(1).ToList();
+            vertex.image ??= strip.Dg?.Source;
             // for self-loops, this takes one from both ends.
         }
         // isotopy: Move vertex and shorten the strips (only the homeomorphism is changed, not the graph)
@@ -894,7 +959,7 @@ public class FibredSurface : IPatchedDrawnsformable
         var star = StarOrdered(edges[0].Source).ToList();
 
         var edgesOrdered = SortConnectedSetInStar(star, edges).ToList();
-        if (!edges.ToHashSet().SetEquals(edgesOrdered))
+        if (!edges.All(edgesOrdered.Contains))
             throw new($"Edges to fold are not connected in the cyclic order: {string.Join(", ", edges)}");
         
         edges = edgesOrdered;
@@ -927,7 +992,8 @@ public class FibredSurface : IPatchedDrawnsformable
         // Or move all of our already moved vertices along the self-edge (which prolongs all edges at these vertices)
         
         var waypoints = 
-            from edge in edges select edge.Curve.EndPosition;
+            from edge in edges select surface.ClampPoint( edge.Curve.EndPosition, 1e-6f ); 
+        // the ClampPoint prevents that ClampPoint is called again later, but with a too large tolerance
         var connectingCurve = surface.GetPathFromWaypoints(waypoints, newVertexName);
         // todo? Try to avoid the rest of the fibred surface
         var vertexColor = targetVerticesToFold.First().Color;
@@ -995,12 +1061,13 @@ public class FibredSurface : IPatchedDrawnsformable
         return newEdge;
     }
 
-    public (Strip, Strip) SplitEdge(EdgePoint splitPoint, IList<EdgePoint> updateEdgePoints = null)
+    public (Strip, Strip) SplitEdge(EdgePoint splitPoint, IList<EdgePoint> updateEdgePoints = null, float splitTime = -1f)
     {
         updateEdgePoints ??= new List<EdgePoint>();
         var splitEdge = splitPoint.edge;
         var edgePath = splitEdge.EdgePath;
-        var splitTime = splitPoint.GetCurveTimeInJunction();
+        if (splitTime < 0)
+            splitTime = splitPoint.GetCurveTimeInJunction();
 
         var newVertex = new Junction(graph, splitEdge.Curve[splitTime], NextVertexName(), splitPoint.Image);
 
@@ -1118,7 +1185,7 @@ public class FibredSurface : IPatchedDrawnsformable
         i ??= Strip.SharedInitialSegment(strips);
         if (i == 0)
         {
-            Debug.LogError("The edges do not have a common initial segment.");
+            throw new("The edges do not have a common initial segment.");
             return;
         }
 
@@ -1131,18 +1198,34 @@ public class FibredSurface : IPatchedDrawnsformable
 
         var initialStripSegments = new List<Strip>(strips.Count);
         var terminalStripSegments = new Dictionary<string, Strip>(strips.Count);
+        var arclengthParametrization = (from strip in strips select 
+            (   strip.Curve,
+                GeodesicSurface.ArclengthFromTime(strip.Curve),
+                GeodesicSurface.TimeFromArclength(strip.Curve)
+            )).ToArray();
+        float maxDistanceAlongCurves = arclengthParametrization.Min( input =>
+        {
+            var (curve, lengthFromTime, _) = input;
+            float jumpTime = curve.VisualJumpTimes.DefaultIfEmpty(curve.Length).First();
+            return lengthFromTime(jumpTime);
+        });
+        float splitLength = maxDistanceAlongCurves * 0.5f;
+        
         for (var index = 0; index < strips.Count; index++)
         {
             var splitEdgePoint = updateEdgePoints[l + index];
             var edge = splitEdgePoint.edge; // instead of strips[index]
-            var splitIndex = splitEdgePoint.index;
+            int splitIndex = splitEdgePoint.index;
             if (splitIndex == edge.EdgePath.Count) // it is never 0
             {
                 initialStripSegments.Add(edge);
                 continue;
             }
 
-            var (firstSegment, secondSegment) = SplitEdge(splitEdgePoint, updateEdgePoints);
+            var timeFromLength = arclengthParametrization[index].Item3;
+            float splitTime = timeFromLength(splitLength);
+            var (firstSegment, secondSegment) = SplitEdge(splitEdgePoint, updateEdgePoints, splitTime);
+            
             initialStripSegments.Add(firstSegment);
             terminalStripSegments[edge.Name.ToLower()] = secondSegment;
         }
@@ -1221,7 +1304,7 @@ public class FibredSurface : IPatchedDrawnsformable
         if (a == null || b == null) return null; // the edgePoints is actually a vertex of valence other than two
 
         if (!Equals(a.Source, b.Source))
-            Debug.LogError($"The edge path is not an actual edge path at {edgePoint}!");
+            throw new($"The edge path is not an actual edge path at {edgePoint}!");
         if (!FindGate(a).Edges.Contains(b)) return null; // not inefficient
 
         return new Inefficiency(edgePoint);
@@ -1270,8 +1353,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
             updateEdgePoints.AddRange(edgesToFold.Select(edge => new EdgePoint(edge, 0)));
 
-            foreach (var edge in
-                     edgesToSplit) // we split the last edge first, so that we can split the one before and so on.
+            foreach (var edge in edgesToSplit) // we split the last edge first, so that we can split the one before and so on.
                 SplitEdge(edge[1], updateEdgePoints);
 
             edgesToFold = updateEdgePoints.Skip(1).Select(edgePoint => edgePoint.edge).ToList();
@@ -1328,7 +1410,7 @@ public class FibredSurface : IPatchedDrawnsformable
         {
             if (testDry && Q.ContainsEdge(strip.Dg!.UnderlyingEdge)) return true;
             strip.EdgePath = strip.EdgePath.SkipWhile(e => Q.Edges.Contains(e)).ToList();
-            if (strip.Dg == null) Debug.LogError($"The strip {strip} has been absorbed into the periphery.");
+            if (strip.Dg == null) throw new($"The strip {strip} has been absorbed into the periphery.");
         }
 
         if (testDry) return false;
@@ -1408,7 +1490,7 @@ public class FibredSurface : IPatchedDrawnsformable
             var imageOfSource = strip.Source.image;
             var imageOfEdge = newEdges.First(e => e.Source == imageOfSource);
             if (imageOfEdge.Target != strip.Target.image)
-                Debug.LogError(
+                throw new(
                     "The new graph map does not seem to act as a graph automorphism on the new peripheral graph.");
             strip.EdgePath = new[] { imageOfEdge };
         }

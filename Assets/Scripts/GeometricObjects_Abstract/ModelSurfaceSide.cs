@@ -68,10 +68,10 @@ public class ModelSurfaceSide: Curve
     /// </summary>
     /// <param name="point"></param>
     /// <returns></returns>
-    public override (float, Point) GetClosestPoint(Vector3 point)
+    public override (float, Point) GetClosestPoint(Vector3 point, float precision = 1e-5f)
     {
-        var (t, closestPoint) = curve.GetClosestPoint(point);
-        var (t2, closestPoint2) = other.curve.GetClosestPoint(point);
+        var (t, closestPoint) = curve.GetClosestPoint(point, precision);
+        var (t2, closestPoint2) = other.curve.GetClosestPoint(point, precision);
         if (closestPoint.DistanceSquared(point) < closestPoint2.DistanceSquared(point))
             return (t, this[t]);
         return (t2, other[t2]);

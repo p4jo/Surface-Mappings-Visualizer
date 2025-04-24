@@ -37,7 +37,7 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     /// </summary>
     /// <param name="point"></param>
     /// <returns>if this is a ModelSurfaceSide, the returned Point is a ModelSurfaceBoundaryPoint</returns>
-    public virtual (float, Point) GetClosestPoint(Vector3 point)
+    public virtual (float, Point) GetClosestPoint(Vector3 point, float precision = 1e-5f)
     {
         // If curve has more than one position at any time, we should optimize over all of them? This is not clear from the curve.
         // Thus this has to be implemented in the subclasses that have multiple positions. Done for the ModelSurfaceSide.
@@ -54,23 +54,23 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
             return 2 * Vector3.Dot(vector, pointOnCurve - point);
         }
 
-        float learningRate = 0.01f;
+        float learningRate = 0.1f;
         float t = Length / 2;
         for (var i = 0; i < 1000; i++)
         {
             float gradient = fDeriv(t);
-            float change = learningRate * gradient;
+            var (dist, pos) = f(t);
+            float change = learningRate * gradient * Mathf.Clamp(dist, 1, 100);
             t -= change;
             if (t < 0) return (0, StartPosition);
             if (t > Length) return (Length, EndPosition);
 
-            var (dist, pos) = f(t);
-            if (Mathf.Abs(change) < 1e-6)
+            if (Mathf.Abs(change) < precision)
                 return (t, pos);
-            if (dist < 1e-6)
+            if (dist < 1e-4)
                 return (t, pos);
         }
-
+        Debug.Log("Warning: Curve.GetClosestPoint did not converge in 1000 steps");
         return (t, this[t]);
     }
 
@@ -480,12 +480,14 @@ public class ParametrizedCurve : Curve
 {
     
     private readonly Func<float, TangentVector> tangent;
-    public ParametrizedCurve(string name, float length, Surface surface, Func<float, TangentVector> tangent)
+    public ParametrizedCurve(string name, float length, Surface surface, Func<float, TangentVector> tangent,
+        IEnumerable<float> visualJumpTimes = null)
     {
         Length = length;
         Surface = surface;
         this.tangent = tangent;
         Name = name;
+        VisualJumpTimes = visualJumpTimes ?? Enumerable.Empty<float>();
     }
 
     public override string Name { get; set; }
@@ -495,7 +497,9 @@ public class ParametrizedCurve : Curve
     public override Point ValueAt(float t) => DerivativeAt(t).point;
 
     public override TangentVector DerivativeAt(float t) => tangent(t);
-    public override Curve Copy() => new ParametrizedCurve(Name, Length, Surface, tangent) { Color = Color };
+    public override Curve Copy() => new ParametrizedCurve(Name, Length, Surface, tangent, VisualJumpTimes) { Color = Color };
+
+    public override IEnumerable<float> VisualJumpTimes { get; }
 }
 
 public class SplineSegment : InterpolatingCurve

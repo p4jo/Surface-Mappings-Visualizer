@@ -69,28 +69,28 @@ public class Homeomorphism
 
         Vector3 forward(Vector3 x)
         {
-            var y = automorphismOnSubsurface.source.ClampPoint(x);
+            var y = automorphismOnSubsurface.source.ClampPoint(x, 0.01f);
             if (y == null) return x;
             return automorphismOnSubsurface.f(y);
         }
 
         Vector3 backward(Vector3 x)
         {
-            var y = automorphismOnSubsurface.source.ClampPoint(x);
+            var y = automorphismOnSubsurface.source.ClampPoint(x, 0.01f);
             if (y == null) return x;
             return automorphismOnSubsurface.fInv(y);
         }
 
         Matrix3x3 forwardDerivative(Vector3 x)
         {
-            var y = automorphismOnSubsurface.source.ClampPoint(x);
+            var y = automorphismOnSubsurface.source.ClampPoint(x, 0.01f);
             if (y == null) return Matrix3x3.Identity;
             return automorphismOnSubsurface.df(y);
         }
 
         Matrix3x3 backwardDerivative(Vector3 x)
         {
-            var y = automorphismOnSubsurface.source.ClampPoint(x);
+            var y = automorphismOnSubsurface.source.ClampPoint(x, 0.01f);
             if (y == null) return Matrix3x3.Identity;
             return automorphismOnSubsurface.dfInv(y);
         }

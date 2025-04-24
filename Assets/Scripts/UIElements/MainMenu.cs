@@ -147,8 +147,8 @@ public class MainMenu: MonoBehaviour
         {
             ["side a"] = "a",
             ["side b"] = "b",
-            ["side d"] = "c",
-            ["side c"] = "d"
+            ["side c"] = "c",
+            ["side d"] = "d"
         },
         reverse: new Dictionary<string, bool>
         {

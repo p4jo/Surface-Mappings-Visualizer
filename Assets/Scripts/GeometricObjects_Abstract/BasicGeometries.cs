@@ -33,7 +33,7 @@ public enum GeometryType
 public abstract class Plane : GeodesicSurface
 {
 
-    public override Point ClampPoint(Vector3? point) =>
+    public override Point ClampPoint(Vector3? point, float closenessThreshold) =>
         point.HasValue ? (Vector2)point : null;
 
     public override TangentSpace BasisAt(Point position) => new (position, Matrix3x3.InvertZ);
@@ -110,7 +110,7 @@ public class Rectangle : EuclideanPlane
     public override Vector3 MinimalPosition { get; }
     public override Vector3 MaximalPosition { get; }
 
-    public override Point ClampPoint(Vector3? point) => 
+    public override Point ClampPoint(Vector3? point, float closenessThreshold) => 
         point?.Clamp(MinimalPosition, MaximalPosition);
 }
 
@@ -140,7 +140,7 @@ public class Cylinder : Rectangle
         }
     }
 
-    public override Point ClampPoint(Vector3? point)
+    public override Point ClampPoint(Vector3? point, float closenessThreshold)
     {
         if (!point.HasValue) return null;
         var y = (point.Value.y - MinimalPosition.y) % height;
@@ -295,7 +295,7 @@ public class CurveStrip : ParametricSurface
         }
     }
 
-    public override Point ClampPoint(Vector3? point)
+    public override Point ClampPoint(Vector3? point, float closenessThreshold)
     {
         if (!point.HasValue) return null;
         var (t, pt) = curve.GetClosestPoint(point.Value);
