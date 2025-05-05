@@ -75,6 +75,7 @@ public class FibredSurfaceMenu : MonoBehaviour
 
     private void UpdateUI()
     {
+        StopCoroutine(nameof(LoadSuggestionLate));
         backButton.SetActive(ParentEdge() != null);
         foreach (var edge in fibredSurfaces.OutEdges(currentVertex))
         {
@@ -86,46 +87,53 @@ public class FibredSurfaceMenu : MonoBehaviour
         }
         
         graphStatusText.text = FibredSurface.GraphString();
+        StartCoroutine(LoadSuggestionLate());
 
+        
+        LayoutRebuilder.ForceRebuildLayoutImmediate(GetComponent<RectTransform>());
+    }
+
+    IEnumerator LoadSuggestionLate()
+    {
+        descriptionText.text = "Displaying new fibred surface...";
+        yield return new WaitForEndOfFrame();
+        surfaceMenu.Display(FibredSurface);
+        
         var suggestion = currentVertex.suggestion;
         if (suggestion == null)
         {
             descriptionText.text = "Loading next steps...";
+            yield return new WaitForEndOfFrame();
             suggestion = currentVertex.suggestion = FibredSurface.NextSuggestion();
-            // todo: asynchronous loading of suggestions
         }
+        descriptionText.text = "Displaying next steps...";
+        yield return new WaitForEndOfFrame();
         
         descriptionText.text = suggestion.description;
-        if (suggestion != FibredSurface.AlgorithmSuggestion.Finished)
-        {
-            var optionToggles = new Dictionary<Toggle, (object, string)>();
+        if (suggestion == FibredSurface.AlgorithmSuggestion.Finished) yield break;
             
-            foreach (var option in suggestion.options)
-            {
-                var toggleGameObject = Instantiate(optionTogglePrefab, optionList.transform);
-                toggleGameObject.GetComponentInChildren<TextMeshProUGUI>().text = option.Item2;
-                var toggle = toggleGameObject.GetComponent<Toggle>();
-                optionToggles[toggle] = option;
-            }
-
-            foreach (var buttonText in suggestion.buttons)
-            {
-                var button = Instantiate(suggestionButtonPrefab, suggestionButtonList.transform);
-                button.GetComponentInChildren<TextMeshProUGUI>().text = buttonText.AddDotsMiddle(250, 30);
-                button.GetComponent<Button>().onClick.AddListener(() =>
-                {
-                    var selection = (from toggleOptionPair in optionToggles
-                        where toggleOptionPair.Key.isOn
-                        select toggleOptionPair.Value).ToList();
-                    if (selection.Count == 0) selection = new () { optionToggles.First().Value };
-                    DoSuggestion(buttonText, selection);
-                });
-            }
+        var optionToggles = new Dictionary<Toggle, (object, string)>();
+        foreach (var option in suggestion.options)
+        {
+            var toggleGameObject = Instantiate(optionTogglePrefab, optionList.transform);
+            toggleGameObject.GetComponentInChildren<TextMeshProUGUI>().text = option.Item2;
+            var toggle = toggleGameObject.GetComponent<Toggle>();
+            optionToggles[toggle] = option;
         }
 
-
-        surfaceMenu.Display(FibredSurface);
-        
+        foreach (var buttonText in suggestion.buttons)
+        {
+            var button = Instantiate(suggestionButtonPrefab, suggestionButtonList.transform);
+            button.GetComponentInChildren<TextMeshProUGUI>().text = buttonText.AddDotsMiddle(250, 30);
+            button.GetComponent<Button>().onClick.AddListener(() =>
+            {
+                var selection = (from toggleOptionPair in optionToggles
+                    where toggleOptionPair.Key.isOn
+                    select toggleOptionPair.Value).ToList();
+                if (selection.Count == 0) selection = new () { optionToggles.First().Value };
+                DoSuggestion(buttonText, selection);
+            });
+        }
         LayoutRebuilder.ForceRebuildLayoutImmediate(GetComponent<RectTransform>());
     }
 
@@ -214,7 +222,12 @@ public class FibredSurfaceMenu : MonoBehaviour
         }
         else
         {
-            fibredSurfaces.AddVerticesAndEdge(new(currentVertex, newVertex, "Update map"));
+            var text = string.Join(", ",
+                from kvp in map
+                select kvp.Key + " -> " +
+                       string.Join(" ", kvp.Value).AddDots(50)
+            );
+            fibredSurfaces.AddVerticesAndEdge(new(currentVertex, newVertex, $"{mode} map with {text}"));
         }
         UpdateSelectedSurface(newVertex);
     }
