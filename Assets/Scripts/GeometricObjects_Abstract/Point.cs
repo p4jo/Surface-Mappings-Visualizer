@@ -129,7 +129,7 @@ public partial class ModelSurfaceVertex : Point
     public readonly List<float> angles = new();
     
 
-    private Vector3[] positions = Array.Empty<Vector3>();
+    private Vector3[] positions = null;
     
     public ModelSurfaceVertex(){  }
 

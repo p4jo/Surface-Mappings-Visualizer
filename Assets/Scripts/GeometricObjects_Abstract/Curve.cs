@@ -21,6 +21,34 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     public abstract Surface Surface { get; }
     public virtual IEnumerable<float> VisualJumpTimes => Enumerable.Empty<float>();
 
+    public virtual IEnumerable<(float, ModelSurfaceBoundaryPoint)> VisualJumpPoints
+    {
+        get
+        {
+            if (Surface is not ModelSurface modelSurface)
+                yield break; // shouldn't happen unless VisualJumpTimes is already empty (atm this could happen in TransformedCurve, but there it doesn't matter)
+            foreach (float t in VisualJumpTimes)
+            {
+                if (this[t] is ModelSurfaceBoundaryPoint boundaryPoint)
+                    yield return (t, boundaryPoint);
+                else
+                {
+                    var pt1 = modelSurface.ClampPoint(this[t - 1e-4f], 1e-3f);
+                    var pt2 = modelSurface.ClampPoint(this[t + 1e-4f], 1e-3f);
+                    if (pt1 is ModelSurfaceBoundaryPoint p1 && pt2 is ModelSurfaceBoundaryPoint p2 && p1.side == p2.side.other)
+                        yield return (t, p1);
+                    else 
+                        Debug.LogWarning("Something went wrong with the visual jump points in ConcatenatedCurve");
+                }
+            }
+        }
+    }
+
+    public virtual IEnumerable<(string, bool)> SideCrossingWord =>
+        from p in VisualJumpPoints
+        let side = p.Item2.side
+        select (side.Name, side.Surface is ModelSurface surface && !surface.sides.Contains(side));
+
     public virtual Point this[float t] => ValueAt(t);
 
     public abstract Point ValueAt(float t);
@@ -35,7 +63,6 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     /// <summary>
     /// 
     /// </summary>
-    /// <param name="point"></param>
     /// <returns>if this is a ModelSurfaceSide, the returned Point is a ModelSurfaceBoundaryPoint</returns>
     public virtual (float, Point) GetClosestPoint(Vector3 point, float precision = 1e-5f)
     {
@@ -93,7 +120,15 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
         );
     }
 
-    public virtual Curve Restrict(float start, float? end = null) => new RestrictedCurve(this, start, end ?? Length);
+    public virtual Curve Restrict(float start, float? end = null)
+    {
+        var stop = end ?? Length;
+        if (stop > Length)
+            stop = Length;
+        if (start == 0 && stop == Length)
+            return this;
+        return new RestrictedCurve(this, start, stop);
+    }
 
     public abstract Curve Copy();
 }
@@ -126,6 +161,8 @@ public partial class TransformedCurve : Curve
     public override Surface Surface => homeomorphism.target;
 
     public override IEnumerable<float> VisualJumpTimes => curve.VisualJumpTimes;
+    // TODO: If this maps to a model surface, we need to check for visual jumps in the transformed curve!
+    // If this maps to a parametrized surface, from a model surface, we could forget these
 
     public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
 
@@ -134,7 +171,7 @@ public partial class TransformedCurve : Curve
 
     
     public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
-    public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism) {Color = Color} ;
+    public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism) { Name = Name, Color = Color } ;
 
     public override Curve Reversed() => reverseCurve ??= new TransformedCurve(curve.Reversed(), homeomorphism);
 
@@ -154,28 +191,79 @@ public partial class ConcatenatedCurve : Curve
 
     public override float Length { get; }
 
-    public override IEnumerable<float> VisualJumpTimes => from singularPoint in NonDifferentiablePoints where singularPoint.visualJump select singularPoint.time;
+    public override IEnumerable<float> VisualJumpTimes => (
+            from singularPoint in NonDifferentiablePoints
+            where singularPoint.visualJump
+            select singularPoint.time
+        ).Concat(
+            from segment in segments
+            from t in segment.VisualJumpTimes
+            select t + segments.TakeWhile(s => s != segment).Sum(s => s.Length)
+        ).OrderBy(t => t);
+    
+    public override IEnumerable<(float, ModelSurfaceBoundaryPoint)> VisualJumpPoints { 
+        get {
+            return SingularPointsOfConcatenation().Concat(
+                from segment in segments
+                from t in segment.VisualJumpPoints
+                select (t.Item1 + segments.TakeWhile(s => s != segment).Sum(s => s.Length), t.Item2)
+            ).OrderBy(t => t.Item1);
+
+            IEnumerable<(float, ModelSurfaceBoundaryPoint)> SingularPointsOfConcatenation()
+            {
+                if (Surface is not ModelSurface modelSurface)
+                    yield
+                        break; // shouldn't happen unless VisualJumpTimes is already empty (atm this could happen in TransformedCurve, but there it doesn't matter)
+                foreach (var singularPoint in NonDifferentiablePoints)
+                {
+                    if (!singularPoint.visualJump) continue;
+                    if (singularPoint.incomingCurve.EndPosition is ModelSurfaceBoundaryPoint boundaryPoint)
+                        yield return (singularPoint.time, boundaryPoint);
+                    else
+                    {
+                        if (singularPoint.outgoingCurve.StartPosition is ModelSurfaceBoundaryPoint boundaryPoint2)
+                            yield return (singularPoint.time, boundaryPoint2);
+                        else
+                        {
+                            var pt1 = modelSurface.ClampPoint(singularPoint.incomingCurve.EndPosition, 1e-2f);
+                            var pt2 = modelSurface.ClampPoint(singularPoint.outgoingCurve.StartPosition, 1e-2f);
+                            if (pt1 is ModelSurfaceBoundaryPoint p1 && pt2 is ModelSurfaceBoundaryPoint p2 &&
+                                p1.side == p2.side.other)
+                                yield return (singularPoint.time, p1);
+                            else
+                                Debug.LogWarning(
+                                    "Something went wrong with the visual jump points in ConcatenatedCurve");
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     private List<ConcatenationSingularPoint> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints(segments);
 
-    public ConcatenatedCurve(IEnumerable<Curve> curves, string name = null)
+    public ConcatenatedCurve(IEnumerable<Curve> curves, string name = null, bool smoothed = false)
     {
+        if (smoothed)
+            curves = Smoothed(curves);
+        
         segments = curves.SelectMany(
             curve => curve is ConcatenatedCurve concatenatedCurve ? concatenatedCurve.segments : new []{ curve }
         ).ToArray();
 
         float length = (from segment in segments select segment.Length).Sum();
-        if (length == 0) throw new Exception("Length of curve is zero");
+        if (length == 0) 
+            throw new Exception("Length of curve is zero");
         Length = length;
         
         Name = name ?? string.Join(" -> ", from segment in segments select segment.Name);
     }
 
-    public ConcatenatedCurve Smoothed()
+    static List<Curve> Smoothed(IEnumerable<Curve> segments)
     {
         var curves = segments.ToList();
         
-        var singularPoints = CalculateSingularPoints(curves, ignoreSubConcatenatedCurves: true);
+        var singularPoints = CalculateSingularPoints(curves, ignoreSubConcatenatedCurves: true).Where(sp => sp.angleJump).ToList();
 
         List<int> singularIndices = singularPoints.Select(singularPoint => curves.IndexOf(singularPoint.incomingCurve)).ToList();
         if (singularIndices.Any(index => index == -1))
@@ -203,25 +291,29 @@ public partial class ConcatenatedCurve : Curve
             var restrictedIncomingCurve = curves[index] = incomingCurve.Restrict(0, incomingCurve.Length * 0.9f);
             var restrictedOutgoingCurve = curves[index + 1] = outgoingCurve.Restrict(outgoingCurve.Length * 0.1f, outgoingCurve.Length);
             var startOfFirstInterpolated = restrictedIncomingCurve.EndVelocity;
-            var centerVector = new TangentVector(incomingCurve.EndPosition.Positions.ElementAt(singularPoint.incomingPosIndex), Complex.FromPolarCoordinates(length, angle).ToVector3());          
             var endOfLastInterpolated = restrictedOutgoingCurve.StartVelocity;
+            
+            var centerVector = Complex.FromPolarCoordinates(length, angle).ToVector3(); 
+            // centerVector is the abstract vector in the shared tangent space (corresponding to the incomingPosIndex'th position of incomingCurve and the outgoingPosIndex'th position of outgoingCurve)
+            var ingoingCenterVector = new TangentVector(incomingCurve.EndPosition, incomingCurve.EndPosition.PassThrough(singularPoint.incomingPosIndex, 0, centerVector));  
+            var outgoingCenterVector = new TangentVector(outgoingCurve.StartPosition, outgoingCurve.StartPosition.PassThrough(singularPoint.outgoingPosIndex, 0, centerVector));
 
             var firstInterpolated = new SplineSegment(
-                startOfFirstInterpolated, centerVector,incomingCurve.Length * 0.1f,  Surface,  Name + " interp. segment 1"             
+                startOfFirstInterpolated, ingoingCenterVector,incomingCurve.Length * 0.1f,  incomingCurve.Surface,  incomingCurve.Name + " interp. segment"             
             );
 
             var secondInterpolated = new SplineSegment(
-                centerVector, endOfLastInterpolated, incomingCurve.Length * 0.1f, Surface, Name + " interp. segment 2"
+                outgoingCenterVector, endOfLastInterpolated, outgoingCurve.Length * 0.1f, outgoingCurve.Surface, outgoingCurve.Name + " interp. segment"
             );
             
             curves.Insert(index + 1, firstInterpolated);
             curves.Insert(index + 2, secondInterpolated);
         }
 
-        var result = new ConcatenatedCurve(curves, Name + " (smooth)");
-        // result.nonDifferentiablePoints = ...
-        return result; 
+        return curves; 
     }
+
+    public ConcatenatedCurve Smoothed() => new(segments, Name + " smoothed", smoothed: true) { Color = Color };
 
     public override Point EndPosition => segments.Last().EndPosition;
     public override Point StartPosition => segments.First().StartPosition;
@@ -291,7 +383,7 @@ public partial class ConcatenatedCurve : Curve
             bool angleJump = !curve.EndVelocity.VectorAtPositionIndex(herePosIndex).ApproximatelyEquals(
                 nextCurve.StartVelocity.VectorAtPositionIndex(therePosIndex));
             bool actualJump = distanceSquared > 1e-6;
-            // if distance is too l°arge, this means, these points are actually different; even considering multiple positions.
+            // if distance is too large, this means, these points are actually different; even considering multiple positions.
             // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might me far apart (converging to the different positions).
             bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
             if (actualJump || angleJump || visualJump)
@@ -326,7 +418,7 @@ public partial class ConcatenatedCurve : Curve
             var segmentLength = segments[i].Length;
             if (startSegmentIndex == -1)
             {
-                if (movedStartTime >= segmentLength)
+                if (movedStartTime > segmentLength)
                 {
                     movedStartTime -= segmentLength;
                     movedEndTime -= segmentLength;
@@ -335,7 +427,7 @@ public partial class ConcatenatedCurve : Curve
                 startSegmentIndex = i;
             }
 
-            if (movedEndTime >= segmentLength)
+            if (movedEndTime > segmentLength)
             {
                 movedEndTime -= segmentLength;
                 continue;
@@ -457,12 +549,13 @@ public class BasicParametrizedCurve : Curve
 {
     private readonly Func<float, Vector3> value;
     private readonly Func<float, Vector3> derivative;
-    public BasicParametrizedCurve(string name, float length, Surface surface, Func<float, Vector3> value, Func<float, Vector3> derivative)
+    public BasicParametrizedCurve(string name, float length, Surface surface, Func<float, Vector3> value, Func<float, Vector3> derivative, IEnumerable<float> visualJumpTimes = null)
     {
         Length = length;
         Surface = surface;
         this.value = value;
         this.derivative = derivative;
+        VisualJumpTimes = visualJumpTimes ?? Enumerable.Empty<float>();
         Name = name;
     }
 
@@ -473,7 +566,9 @@ public class BasicParametrizedCurve : Curve
     public override Point ValueAt(float t) => value(t);
 
     public override TangentVector DerivativeAt(float t) => new TangentVector(value(t), derivative(t));
-    public override Curve Copy() => new BasicParametrizedCurve(Name, Length, Surface, value, derivative) { Color = Color };
+    public override Curve Copy() => new BasicParametrizedCurve(Name, Length, Surface, value, derivative, VisualJumpTimes) { Color = Color };
+
+    public override IEnumerable<float> VisualJumpTimes { get; }
 }
 
 public class ParametrizedCurve : Curve
@@ -494,7 +589,7 @@ public class ParametrizedCurve : Curve
     public override float Length { get; }
 
     public override Surface Surface { get; }
-    public override Point ValueAt(float t) => DerivativeAt(t).point;
+    public override Point ValueAt(float t) => tangent(t).point;
 
     public override TangentVector DerivativeAt(float t) => tangent(t);
     public override Curve Copy() => new ParametrizedCurve(Name, Length, Surface, tangent, VisualJumpTimes) { Color = Color };

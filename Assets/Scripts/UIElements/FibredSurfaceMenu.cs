@@ -73,6 +73,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         surfaceMenu.Display(FibredSurface, remove: true);
     }
 
+    private IEnumerator suggestionCoroutine;
     private void UpdateUI()
     {
         StopCoroutine(nameof(LoadSuggestionLate));
@@ -87,7 +88,12 @@ public class FibredSurfaceMenu : MonoBehaviour
         }
         
         graphStatusText.text = FibredSurface.GraphString();
-        StartCoroutine(LoadSuggestionLate());
+        if (suggestionCoroutine != null)
+        {
+            StopCoroutine(suggestionCoroutine);
+        }
+        suggestionCoroutine = LoadSuggestionLate();
+        StartCoroutine(suggestionCoroutine);
 
         
         LayoutRebuilder.ForceRebuildLayoutImmediate(GetComponent<RectTransform>());
@@ -98,6 +104,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         descriptionText.text = "Displaying new fibred surface...";
         yield return new WaitForEndOfFrame();
         surfaceMenu.Display(FibredSurface);
+        yield return new WaitForEndOfFrame();
         
         var suggestion = currentVertex.suggestion;
         if (suggestion == null)
@@ -143,7 +150,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         var newFibredSurface = FibredSurface.Copy();
         var tag = buttonText + "\n" + selection.Select(e => e.Item2.AddDots(50)).Take(4).ToCommaSeparatedString() + (selection.Count > 4 ? "..." : "");
         
-        newFibredSurface.ApplySuggestion(selection, buttonText);
+        newFibredSurface.ApplySuggestion(selection, buttonText); // often takes several seconds. Blocks the UI.
         
         MenuVertex newVertex = new(newFibredSurface, null);
         fibredSurfaces.AddVerticesAndEdge(new MenuEdge( 

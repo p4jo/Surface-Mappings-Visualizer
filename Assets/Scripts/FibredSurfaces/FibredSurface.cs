@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using JetBrains.Annotations;
 using MathNet.Numerics.LinearAlgebra;
 using QuikGraph;
@@ -64,7 +66,9 @@ public class FibredSurface : IPatchedDrawnsformable
                     junctionDrawables.TryGetValue(name, out var displayable)
                         ? displayable
                         : edgeDescriptions.FirstOrDefault(tuple => tuple.Item2 == name).Item1?.StartPosition
-                          ?? edgeDescriptions.FirstOrDefault(tuple => tuple.Item3 == name).Item1?.EndPosition, name)
+                          ?? edgeDescriptions.FirstOrDefault(tuple => tuple.Item3 == name).Item1?.EndPosition, 
+                    name: name,
+                    color: NextVertexColor()) // image is set below
             )
         );
         var strips = (
@@ -423,6 +427,9 @@ public class FibredSurface : IPatchedDrawnsformable
                 }
             }
         }
+        var brokenJumpPoints = Strips.FirstOrDefault(e => e.Curve.VisualJumpPoints.Count() != e.Curve.VisualJumpTimes.Count());
+        if (brokenJumpPoints != null)
+            HandleInconsistentBehavior($"The edge {brokenJumpPoints} has a broken jump point.");
     }
 
     private Strip BrokenVertexMapEdge() => OrientedEdges.FirstOrDefault(e => e.Dg != null && e.Source.image != e.Dg.Source);
@@ -468,7 +475,10 @@ public class FibredSurface : IPatchedDrawnsformable
             strip.Source != junction ? new[] { strip.Reversed() } :
             new[] { strip });
     }
-
+    /// <summary>
+    /// This is the cyclic order of the star of the given junction.
+    /// If firstEdge is not null, the order is shifted to start with firstEdge.
+    /// </summary>
     public static IEnumerable<Strip> StarOrdered(Junction junction, Strip firstEdge = null)
     {
         var orderedStar = Star(junction).OrderBy(strip => strip.OrderIndexStart);
@@ -663,9 +673,13 @@ public class FibredSurface : IPatchedDrawnsformable
                 graph,
                 component.Edges.Select(e => e.Curve).Concat<IDrawnsformable>(component.Vertices),
                 // yes this is component.Patches but component is a FibredGraph, not FibredSurface... 
-                name: NextVertexName()
+                name: NextVertexName(),
+                color: NextVertexColor()
             );
             newVertices.Add(newVertex);
+            
+            // ReplaceVertices(SubgraphStarOrdered(component), newVertex);
+            
             var orderIndex = 0;
             foreach (var strip in SubgraphStarOrdered(component).ToList())
             {
@@ -816,6 +830,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
     IEnumerable<EdgePoint> GetBackTracks(Strip edge = null)
     {
+        // FirstOrDefault() gets called > 300 times on this in a typical call to PullTightAll (takes > 1 second) 
         if (edge != null)
             return from edgePoint in GetBackTracks()
                 where Equals(edgePoint.DgAfter(), edge)
@@ -826,8 +841,9 @@ public class FibredSurface : IPatchedDrawnsformable
             from i in Enumerable.Range(1, strip.EdgePath.Count - 1)
             // only internal points: Valence-2 extremal vertices are found in parallel anyways.
             let edgePoint = new EdgePoint(strip, i)
+            // gets called > 20000 times in a typical call to PullTightAll (takes > 1 second)
             where Equals(edgePoint.DgBefore(), edgePoint.DgAfter())
-            select edgePoint;
+            select edgePoint; 
     }
 
     private void PullTightExtremalVertex(Junction vertex)
@@ -903,49 +919,220 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #region Moving Vertices
 
-    public void MoveJunction(Strip e, float length)
+    class MovementForFolding
     {
-        // todo: test. Use?
-        var v = e.Source;
-        // todo: move the patches of the junction
-        // from patch in v.Patches select patch
-        // v.Patches.First(patch => patch is Point)
-        var newJunction = new Junction(graph, e.Curve[length], v.Name);
-        var precompositionCurve = e.Curve.Restrict(0, length).Reversed();
-        e.Curve = e.Curve.Restrict(length);
-        var star = StarOrdered(v, e).SkipWhile(edge => edge.Equals(e)).ToList();
-        float shift = 0.02f * Mathf.Sqrt(star.Count);
+        public readonly IList<Strip> edges;
+        public readonly Strip preferredEdge;
+        public readonly IReadOnlyDictionary<Junction, IEnumerable<(string, bool)>> vertexMovements; // the vertices that are folded and how they are moved
+        public readonly int l; // number of side crossings along f that the resulting edge will have
+        private readonly List<(string, bool)> c;
+        private int badness = -1;
+        private readonly Dictionary<Strip,int> edgeCancellations;
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="edges">edges to fold as ordered in the cyclic order of the star</param>
+        /// <param name="preferredEdge"></param>
+        /// <param name="l"></param>
+        /// <exception cref="ArgumentException"></exception>
+        public MovementForFolding(IList<Strip> edges, Strip preferredEdge, int l)
+        {
+            this.edges = edges; 
+            this.preferredEdge = preferredEdge;
+            this.l = l;
+            
+            c = preferredEdge.Curve.SideCrossingWord.Take(l).ToList();
+            if (c.Count < l)
+                throw new ArgumentException($"The edge {preferredEdge} has not enough side crossings: {c.Count} < {l}", nameof(preferredEdge));
+
+            edgeCancellations =
+                edges.ToDictionary(edge => edge, edge => edge.Curve.SideCrossingWord.SharedInitialSegment(c));
+            
+            vertexMovements = new Dictionary<Junction, IEnumerable<(string, bool)>>(
+                from edge in edges
+                let sharedInitialSegment= edgeCancellations[edge]
+                select new KeyValuePair<Junction, IEnumerable<(string, bool)>>(
+                    edge.Target, // vertex
+                    edge.Curve.SideCrossingWord.Skip(sharedInitialSegment).Inverse()
+                        .Concat( c.Skip(sharedInitialSegment) )
+                    // the movement of the vertex as a word in the sides of the model surface that it crosses
+                    // with the skips this Concat is exactly ConcatWithCancellation
+                )
+            );
+            
+        }
+
+        public int Badness {
+            get
+            {
+                if (badness != -1)
+                    return badness;
+                
+                var count = 0;
+                foreach (var edge in edges.First().graph.Edges)
+                {
+                    if (edges.Contains(edge)) continue;
+                    
+                    var sideCrossingWord = edge.Curve.SideCrossingWord;
+                    if (vertexMovements.TryGetValue(edge.Source, out var movement)) 
+                        sideCrossingWord = movement.Inverse().ConcatWithCancellation(sideCrossingWord);
+                    if (vertexMovements.TryGetValue(edge.Target, out var movement2))
+                        sideCrossingWord = sideCrossingWord.ConcatWithCancellation(movement2);
+                    count += sideCrossingWord.Count();
+                }
+
+                count += l; // l is the number of side crossings along the edge that results from folding
+                badness = count;
+                return count;
+            }
+        }
+
+        public void MoveVerticesForFolding(FibredSurface fibredSurface, bool removeEdges = false)
+        {
+            // shorten the prefereed curve if necessary
+            var preferredCurve = preferredEdge.Curve;
+            var (t0l, t1l) = preferredCurve.VisualJumpTimes.Prepend(0f).Skip(l);
+            var timeFEnd = (t1l + t0l) / 2; 
+            if (t1l == 0) // preferredCurve.VisualJumpTimes has only l elements, i.e. the curve ends before crossing another side
+                timeFEnd = preferredCurve.Length;
+
+            if (timeFEnd < preferredCurve.Length)
+                fibredSurface.MoveJunction(preferredEdge.Reversed(), preferredCurve.Length - timeFEnd);
+            preferredCurve = preferredEdge.Curve; // = preferredCurve.Restrict(0, timeFEnd);
+            
+            if (removeEdges)
+                foreach (var edge in edges)
+                    if (!Equals(edge, preferredEdge))
+                        fibredSurface.graph.RemoveEdge(edge.UnderlyingEdge);
+
+            var stringWidths = (from edge in edges select baseShiftStrength * Mathf.Sqrt(Star(edge.Target).Count())).ToArray();
+            var preferredEdgeIndex = edges.IndexOf(preferredEdge);
+            var edgeIndex = -1;
+
+            foreach (var edge in edges)
+            {
+                edgeIndex++;
+                if (Equals(edge, preferredEdge))
+                    continue;
+                var vertex = edge.Target;
+                var backwardsCurve = edge.Curve.Reversed();
+                
+                
+                var sharedSegment = edgeCancellations[edge];
+                var n = backwardsCurve.SideCrossingWord.Count() - sharedSegment; 
+                // pull back the vertex for n steps (through n sides) along the edge.
+                // Then the edge agrees with the shared initial segment with the preferred edge.
+            
+                var timeX = 0f; // the time along the backwards curve "close" to the preferred edge, where the edges attached to the vertex will turn to the preferred edge
+                if (n > 0)
+                {
+                    var (t0x, t1x) = backwardsCurve.VisualJumpTimes.Skip(n - 1);
+                    if (t1x == 0) // backwardsCurve.VisualJumpTimes has only n elements, i.e. the curve ends before crossing another side (sharedSegment = 0)
+                        t1x = backwardsCurve.Length;
+                    timeX = (t0x + 2 * t1x) / 3; // a bit closer to the last side crossing along the original edge that is shared with the preferred edge 
+                    // todo: fixed distance to last crossing (or the source vertex if there is no crossing)? Shorter for the preferred edge in that case for better visuals?
+
+                    fibredSurface.MoveJunction(vertex, backwardsCurve, timeX, removeEdges ? edge.Reversed() : null);
+                    // moves along backwardsCurve and shortens the edge itself (unless we removed it)
+                }
+
+                var (t0, t1) = preferredCurve.VisualJumpTimes.Prepend(0f).Skip(sharedSegment); 
+                // the same as the Skip(sharedSegment - 1) but with the first element 0 for the case sharedSegment = 0
+                var timeF = (t0 * 3 + t1) / 4; // a bit closer to the last side crossing along the preferred edge that is shared with the original edge 
+                if (t1 == 0) // preferredCurve.VisualJumpTimes has only sharedSegment elements, i.e. the curve ends before crossing another side (l = sharedSegment = length of preferredCurve.VisualJumpPoints)
+                    timeF = preferredCurve.Length;
+
+                Curve restCurve = null;
+                Point timeFPoint = preferredCurve[timeF];
+                if (l > sharedSegment)
+                {
+                    float relativeShiftStrength;
+                    if (edgeIndex < preferredEdgeIndex)
+                        relativeShiftStrength = stringWidths[edgeIndex] / 2f + stringWidths[(edgeIndex + 1)..preferredEdgeIndex].Sum();
+                    else 
+                        relativeShiftStrength = - stringWidths[edgeIndex] / 2f - stringWidths[(preferredEdgeIndex + 1)..edgeIndex].Sum();
+                        
+                    restCurve = new ShiftedCurve(preferredCurve.Restrict(timeF), relativeShiftStrength, ShiftedCurve.ShiftType.FixedEndpoint);
+                    timeFPoint = restCurve.StartPosition;
+                }
+                
+                // turning from the backwards curve to the preferred curve
+                var intermediateCurve = fibredSurface.GetBasicGeodesic(
+                    backwardsCurve[timeX],
+                    timeFPoint,
+                    "intermediate");
+
+                Curve forwardMovementCurve = intermediateCurve;
+                if (restCurve != null)
+                    forwardMovementCurve = new ConcatenatedCurve(new[]
+                    {
+                        intermediateCurve,
+                        restCurve
+                    }, smoothed: true);
+
+                
+                if (forwardMovementCurve.Length > 1e-3) 
+                    fibredSurface.MoveJunction(vertex, forwardMovementCurve, forwardMovementCurve.Length);
+                // this prolongs the edge (unless we removed it) 
+                
+                // todo: addedShiftStrength positive or negative depending on the direction of the edge and the cyclic order.
+                // More than one (better: add up the widths) if several vertices are moved along this edge, so that all of the edges are disjoint (hard)
+                
+                continue;
+            }
+        }
+
+        public override string ToString() {
+            var sb = new StringBuilder();
+            sb.AppendLine($"Movement plan: Shorten the \"preferred edge\" {preferredEdge.Name} to the first {l}/{preferredEdge.Curve.SideCrossingWord.Count()} side crossings: ");
+            sb.AppendLine($"  {string.Join(", ", c)}");
+            sb.AppendLine($"Badness: {Badness}");
+            sb.AppendLine($"Vertex movements:");
+            foreach (var (vertex, movement) in vertexMovements)
+                sb.AppendLine($"{vertex}: {(from sideCrossing in movement select sideCrossing.Item1 + (sideCrossing.Item2 ? "'" : "")).ToCommaSeparatedString()}");
+            return sb.ToString(); 
+        }
+    }
+
+    public void MoveJunction(Strip e, float length) => MoveJunction(e.Source, e.Curve, length, e);
+
+    
+    const float baseShiftStrength = 0.07f;
+    public void MoveJunction(Junction v, Curve curve, float length, Strip e = null) 
+    {
+        v.Patches = new []{ curve[length] };
+        
+        var precompositionCurve = curve.Restrict(0, length).Reversed();
+        var star = StarOrdered(v, e).ToList();
+        if (e != null)
+        {
+            star.RemoveAt(0);
+            var name = e.Name;
+            e.Curve = e.Curve.Restrict(length);
+            e.Name = name;
+        }
+ 
+        float shift = baseShiftStrength / Mathf.Sqrt(star.Count);
+        
         for (var i = 0; i < star.Count; i++)
         {
             var edge = star[i];
-            var shiftStrength = (i - (star.Count - 1f) / 2f) * shift;
-            var name = edge.Name;
-            var shiftedCurve = new ShiftedCurve(precompositionCurve, 
-                t =>
-                {
-                    var x = t / length;
-                    return shiftStrength * 1.69f * x / (0.15f + x) * (1 - x) / (1.15f - x);
-                });
+            var shiftStrength = ((star.Count - 1f) / 2f - i) * shift;
+            var shiftedCurve = new ShiftedCurve(precompositionCurve, shiftStrength, ShiftedCurve.ShiftType.SymmetricFixedEndpoints);
 
+            var name = edge.Name;
             edge.Curve = new ConcatenatedCurve(new[]
             {
                 shiftedCurve,
                 // surface.GetGeodesic(shiftedCurve.EndPosition, edge.Curve.StartPosition, ""),
                 edge.Curve
-            });//.Smoothed();
+            }) { Color = edge.Color }; // smooth?
             edge.Name = name;
         }
-
-        foreach (var strip in Strips.ToArray())
-        {
-            if (strip.Source == v)
-                strip.Source = newJunction;
-            if (strip.Target == v)
-                strip.Target = newJunction;
-        }
-
-        graph.RemoveVertex(v);
+        
     }
+
     
     #endregion
     
@@ -973,25 +1160,43 @@ public class FibredSurface : IPatchedDrawnsformable
         
         edges = edgesOrdered;
 
-        var edgeSelection = (
-            from i in Enumerable.Range(0, edges.Count)
-            select i % 2 == 0 ? edges[edges.Count / 2 + i / 2] : edges[edges.Count / 2 - i / 2 - 1]
-        ).ToList();
-        var preferredOldEdge =
-            edgeSelection.FirstOrDefault(e => e is UnorientedStrip && !char.IsDigit(e.Name[^1])) ?? 
-            edgeSelection.FirstOrDefault(e => !char.IsDigit(e.Name[^1])) ??
-            edgeSelection.FirstOrDefault(e => e is UnorientedStrip) ??
-            edgeSelection.First();
         
+        var movements = new List<MovementForFolding>(
+            from edge in edges
+            from i in Enumerable.Range(0, edge.Curve.SideCrossingWord.Count() + 1).Reverse()
+            select new MovementForFolding(edges, edge, i)
+        );
+        
+        var badness = movements.Min(m => m.Badness);
+
+        var moveSelection = (
+            from i in Enumerable.Range(0, edges.Count)
+            let e = i % 2 == 0 ? edges[edges.Count / 2 + i / 2] : edges[edges.Count / 2 - i / 2 - 1] // prefer the middle edges
+            let mv = movements.FirstOrDefault(m => Equals(m.preferredEdge, e) && m.Badness == badness) 
+            where mv != null // choose only the ones with the least amount of edge-crossings
+            select mv
+        ).ToList();
+        
+        var movement =
+            moveSelection.FirstOrDefault(e => e.preferredEdge is UnorientedStrip && !char.IsDigit(e.preferredEdge.Name[^1])) ??
+            moveSelection.FirstOrDefault(e => !char.IsDigit(e.preferredEdge.Name[^1])) ??
+            moveSelection.FirstOrDefault(e => e.preferredEdge is UnorientedStrip) ??
+            moveSelection.First();
+
+        var targetVerticesToFold =
+            (from edge in edges select edge.Target).WithoutDuplicates().ToArray(); // has the correct order
+        var preferredOldEdge = movement.preferredEdge;
+        
+        var cyclicOrderAtFoldedVertex = StarAtFoldedVertex().ToList();
+        
+        movement.MoveVerticesForFolding(this, removeEdges: true);
+
         string name = null;
         if (!char.IsLetter(preferredOldEdge.Name[^1]))
             name = NextEdgeName();
         else name = preferredOldEdge.Name.ToLower();
 
-        var newVertexName = NextVertexName();
 
-        var targetVerticesToFold =
-            (from edge in edges select edge.Target).WithoutDuplicates().ToArray(); // has the correct order
         // todo: if the (folding) edges pass through a side, we should isotope in the following way:
         // Move all of the vertices in targetVerticesToFold that arent the source vertex edges[0].Source (all or all but one) along 
         // (any of) the corresponding edge in reverse.
@@ -1000,55 +1205,23 @@ public class FibredSurface : IPatchedDrawnsformable
         // (affecting the start of all of our folding edges and all other edges at that vertex)
         // Or move all of our already moved vertices along the self-edge (which prolongs all edges at these vertices)
         
-        var waypoints = 
-            from edge in edges select surface.ClampPoint( edge.Curve.EndPosition, 1e-6f ); 
         // the ClampPoint prevents that ClampPoint is called again later, but with a too large tolerance
-        var connectingCurve = surface.GetPathFromWaypoints(waypoints, newVertexName);
-        // TODO: follow the edges when crossing the boundary
-        // TODO: make the edges follow this curve so that vertices are points? Move vertices? Too much work - move only the Point that the edge connects to? Then this movement is not necessary if its not the preferred old edge. Prefer the edge that goes through boundary. That is the edge that gets folded completely in "fold initial segments". The others can be split so that they don't cross the boundary.
-        // todo? Try to avoid the rest of the fibred surface
-        var vertexColor = targetVerticesToFold.First().Color;
-        var newVertex = new Junction(graph, targetVerticesToFold.Append<IDrawnsformable>(connectingCurve),
-            newVertexName, targetVerticesToFold.First().image, vertexColor);
-        graph.AddVertex(newVertex);
-        /* float indexOffset = 1;
-        foreach (var vertex in targetVerticesToFold)
-        {
-          var star_ = Star(vertex).ToArray();
-          foreach (var edge in star_)
-          {
-              edge.Source = newVertex;
-              edge.OrderIndexStart += indexOffset;
-          }
-
-          graph.RemoveVertex(vertex);
-          indexOffset = star_.Max(e => e.OrderIndexStart) + 1; // for this to work we assume that all order indices are > -1
-        } */
-        int currentSortIndex = 1; // the new edge has sortIndex 0
-        foreach (var vertex in targetVerticesToFold)
-        {
-            var localStar = StarOrdered(vertex).ToList();
-            var outerEdges = localStar.ToHashSet();
-            outerEdges.ExceptWith(from e in edges select e.Reversed());
-            var outerEdgesSorted = SortConnectedSetInStar(localStar, outerEdges);
-            foreach (var edge in outerEdgesSorted)
-            {
-                edge.OrderIndexStart = currentSortIndex++;
-                edge.Source = newVertex;
-            }         
-            graph.RemoveVertex(vertex);
-        }
-        // graph.RemoveEdges(from edge in edges select edge.UnderlyingEdge);
+        // var waypoints = from edge in edges select surface.ClampPoint( edge.Curve.EndPosition, 1e-6f ); 
+        // var connectingCurve = surface.GetPathFromWaypoints(waypoints, newVertexName);
+        // var patches = targetVerticesToFold.Append<IDrawnsformable>(connectingCurve);
         
-        var newEdge = preferredOldEdge.Copy(name: name, target: newVertex, orderIndexEnd: 0); 
-        // orderIndexStart might have been set in the loop above (if one of the targetVerticesToFold was the source of the edge)
-        graph.AddEdge(newEdge.UnderlyingEdge);
+        // var newVertexName = NextVertexName();
+        // var vertexColor = NextVertexColor();
+        var newVertex = preferredOldEdge.Target; // .Copy(name: newVertexName, color: vertexColor);
+        // graph.AddVertex(newVertex);
 
-        foreach (var junction in graph.Vertices)
-        {
-            if (targetVerticesToFold.Contains(junction.image))
-                junction.image = newVertex;
-        }
+        var newEdge = preferredOldEdge; //.Copy(name: name, target: newVertex, orderIndexEnd: 0);
+        newEdge.UnderlyingEdge.Name = name;
+        newEdge.OrderIndexEnd = 0;
+        // orderIndexStart might have been set in the loop above (if one of the targetVerticesToFold was the source of the edge)
+        
+        // graph.AddEdge(newEdge.UnderlyingEdge);
+
 
         foreach (var edge in edges)
         {
@@ -1060,7 +1233,32 @@ public class FibredSurface : IPatchedDrawnsformable
                 updateEdgePoints[k] = reverse ? res.Reversed() : res;
             }
         }
+        ReplaceVertices(cyclicOrderAtFoldedVertex, newVertex);
+        ReplaceEdges(edges, newEdge);
+        
 
+        return newEdge;
+
+        IEnumerable<Strip> StarAtFoldedVertex()
+        {
+            yield return preferredOldEdge;
+            
+            foreach (var vertex in targetVerticesToFold)
+            {
+                var localStar = StarOrdered(vertex).ToList();
+                var outerEdges = localStar.ToHashSet();
+                outerEdges.ExceptWith(from e in edges select e.Reversed());
+                var outerEdgesSorted = SortConnectedSetInStar(localStar, outerEdges);
+                foreach (var edge in outerEdgesSorted)
+                {
+                    yield return edge;
+                }         
+            }
+        }
+    }
+
+    private void ReplaceEdges(ICollection<Strip> edges, Strip newEdge)
+    {
         foreach (var strip in Strips)
         {
             strip.EdgePath = strip.EdgePath.Select(
@@ -1068,8 +1266,33 @@ public class FibredSurface : IPatchedDrawnsformable
                     edges.Contains(edge.Reversed()) ? newEdge.Reversed() : edge
             ).ToList();
         }
+    }
 
-        return newEdge;
+    void ReplaceVertices(ICollection<Junction> vertices, Junction newVertex)
+    {
+        foreach (var strip in OrientedEdges)
+            if (vertices.Contains(strip.Source))
+                strip.Source = newVertex;
+
+        foreach (var vertex in vertices)
+            graph.RemoveVertex(vertex);
+        
+        foreach (var junction in graph.Vertices)
+        {
+            if (vertices.Contains(junction.image))
+                junction.image = newVertex;
+        }
+    }
+    
+    void ReplaceVertices(IEnumerable<Strip> newOrderedStar, Junction newVertex)
+    {
+        ReplaceVertices(newOrderedStar.Select(strip => strip.Source).ToHashSet(), newVertex);
+        int index = 0;
+        foreach (var strip in newOrderedStar)
+        {
+            strip.OrderIndexStart = index;
+            index++;
+        }
     }
 
     public (Strip, Strip) SplitEdge(EdgePoint splitPoint, IList<EdgePoint> updateEdgePoints = null, float splitTime = -1f)
@@ -1080,7 +1303,7 @@ public class FibredSurface : IPatchedDrawnsformable
         if (splitTime < 0)
             splitTime = splitPoint.GetCurveTimeInJunction();
 
-        var newVertex = new Junction(graph, splitEdge.Curve[splitTime], NextVertexName(), splitPoint.Image);
+        var newVertex = new Junction(graph, splitEdge.Curve[splitTime], NextVertexName(), splitPoint.Image, NextVertexColor());
 
         var firstSegment = splitEdge.Copy(
             curve: splitEdge.Curve.Restrict(0, splitTime),
@@ -1221,6 +1444,7 @@ public class FibredSurface : IPatchedDrawnsformable
             return lengthFromTime(jumpTime);
         });
         float splitLength = maxDistanceAlongCurves * 0.5f;
+        // todo: optimize this with respect to the movements
         
         for (var index = 0; index < strips.Count; index++)
         {
@@ -1250,7 +1474,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
 
         var newEdge = FoldEdges(initialStripSegments, updateEdgePoints);
-        newEdge.Color = NextEdgeColor();
+        // newEdge.Color = NextEdgeColor();
     }
 
     #endregion
@@ -1437,7 +1661,7 @@ public class FibredSurface : IPatchedDrawnsformable
             // give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
             // todo: currently this does not follow the boundary of <Q>.
             string name = NextVertexName();
-            var newJunction = new Junction(graph, surface.GetPathFromWaypoints(positions, name), name);
+            var newJunction = new Junction(graph, surface.GetPathFromWaypoints(positions, name), name, color: NextVertexColor()); // image set below
             newJunctions.Add(newJunction);
             var orderIndex = 0;
             foreach (var edge in gateInOrder)
@@ -1585,17 +1809,25 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #endregion
 
-    #region Names
+    #region Names and Colors
 
     readonly List<string> edgeNames = new()
     {
-        "a", "b", "c", "d", /*"e",*/ "x", "y", "z", "w", "u", "h", "i", "j", "k", "l", "m", "n", "o",
+        "a", "b", "c", "d", /*"e",*/ "x", "y", "z", /*"w",*/ "u", "h", "i", "j", "k", "l", "m", "n", "o",
         "α", "β", "γ", "δ", "ε", "ζ", "θ", "κ", "λ", "μ", "ξ", "π", "ρ", "σ", "τ", "φ", "ψ", "ω",
     };
 
     readonly List<string> vertexNames = new()
     {
         "v", "w", "p", "q", "r", "s", "t",
+    };
+    
+    readonly List<Color> edgeColors = Curve.colors;
+
+    readonly List<Color> vertexColors = new()
+    {
+        Color.black, new Color32(26, 105, 58, 255), new Color32(122, 36, 0, 255),
+        new Color(0.3f, 0.3f, 0.3f), 
     };
 
     void DeferNames()
@@ -1621,9 +1853,26 @@ public class FibredSurface : IPatchedDrawnsformable
 
     Color NextEdgeColor()
     {
-        var colorUsage = Curve.colors.ToDictionary(c => c, c => 0);
+        var colorUsage = edgeColors.ToDictionary(c => c, c => 0);
         foreach (var strip in Strips) 
             colorUsage[strip.Color]++;
+        var (leastUsedColor, _) = colorUsage.Keys.ArgMin(c => colorUsage[c]);
+        return leastUsedColor;
+    }
+
+    Color NextVertexColor()
+    {
+        var colorUsage = vertexColors.ToDictionary(c => c, c => 0);
+        foreach (var junction in graph.Vertices)
+        {
+            if (colorUsage.ContainsKey(junction.Color))
+                colorUsage[junction.Color]++;
+            else
+            {
+                colorUsage[junction.Color] = 1;
+                Debug.LogWarning($"The color {junction.Color} of junction {junction} is not in the list of vertex colors.");   
+            }
+        }
         var (leastUsedColor, _) = colorUsage.Keys.ArgMin(c => colorUsage[c]);
         return leastUsedColor;
     }
@@ -1708,4 +1957,13 @@ public class FibredSurface : IPatchedDrawnsformable
     // todo: Extend weights to the prePeriphery. Implement the train tracks.
 
     #endregion
+
+    public Curve GetBasicGeodesic(Point start, Point end, string name)
+    {
+        var surface = this.surface;
+        if (surface is ModelSurface modelSurface)
+            return modelSurface.GetBasicGeodesic(start, end, name);
+        Debug.LogWarning($"The surface {surface} is not a model surface.");
+        return surface.GetGeodesic(start, end, name);
+    }
 }

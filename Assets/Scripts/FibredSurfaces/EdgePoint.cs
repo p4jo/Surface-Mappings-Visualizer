@@ -196,7 +196,15 @@ public class Inefficiency: EdgePoint
 
      public override string ToString()
      {
-            return $"Inefficiency of order {order} folding initial segments of {edgesToFold.Select(e => e.Name).ToCommaSeparatedString()}, at {base.ToString()}";
+         var fullyFoldedEdgesText = (from e in edgesToFold where e.EdgePath.Count == initialSegmentToFold select e.Name).ToCommaSeparatedString();
+         var partiallyFoldedEdgesText = (from e in edgesToFold where e.EdgePath.Count > initialSegmentToFold select e.Name).ToCommaSeparatedString();
+         
+         var text = $"Inefficiency of order {order} folding {fullyFoldedEdgesText}";
+         if (fullyFoldedEdgesText != "" && partiallyFoldedEdgesText != "")
+             text += $" and initial segments of {partiallyFoldedEdgesText}";
+         else if (partiallyFoldedEdgesText != "")
+             text += $"initial segments of {partiallyFoldedEdgesText}";
+         return $"{text} at {base.ToString()}";
      }
      
 

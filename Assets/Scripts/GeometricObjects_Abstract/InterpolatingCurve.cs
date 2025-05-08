@@ -68,10 +68,13 @@ public class HyperbolicGeodesicSegment : Curve
     public override Point StartPosition { get; }
     
     private Point endPosition;
-    public override Point EndPosition => endPointGiven ? endPosition : base.EndPosition;
+    public override Point EndPosition => endPosition ?? base.EndPosition;
+
+    public override TangentVector StartVelocity => new (StartPosition, DerivativeAt(0).vector); // so that the base point is still ModelSurfaceBoundaryPoint if StartPosition is on the boundary.
+    
+    public override TangentVector EndVelocity => new (EndPosition, DerivativeAt(length).vector); // so that the base point is still ModelSurfaceBoundaryPoint if EndPosition is on the boundary.
 
     private readonly bool diskModel;
-    private readonly bool endPointGiven;
 
     /// <summary>
     /// A geodesic segment in the hyperbolic plane. We use either the Poincaré disk model or the upper half plane model.
@@ -90,7 +93,7 @@ public class HyperbolicGeodesicSegment : Curve
         Initialize(start, end);
     }
 
-    public HyperbolicGeodesicSegment(TangentVector startVelocity, float length, HyperbolicPlane surface, string name, bool diskModel)
+    public HyperbolicGeodesicSegment(TangentVector startVelocity, float length, Surface surface, string name, bool diskModel)
     {
         if (length < 0)
             throw new System.ArgumentException("Length must be non-negative.");

@@ -45,7 +45,11 @@ public class TransformedPatch : IPatchedDrawnsformable
 public class PatchedDrawnsformable : IPatchedDrawnsformable
 {
     protected List<IDrawnsformable> patches;
-    public IEnumerable<IDrawnsformable> Patches => patches;
+    public IEnumerable<IDrawnsformable> Patches
+    {
+        get => patches;
+        set => patches = value.ToList();
+    }
 
     public string Name { get; set; }
 

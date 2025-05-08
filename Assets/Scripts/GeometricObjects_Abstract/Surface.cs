@@ -42,8 +42,8 @@ public abstract class GeodesicSurface: Surface
 {
     protected GeodesicSurface(string name, int genus, bool is2D) : base(name, genus, is2D){}
 
-    public abstract Curve GetGeodesic(Point start, Point end, string name);
-    public abstract Curve GetGeodesic(TangentVector startVelocity, float length, string name);
+    public abstract Curve GetGeodesic(Point start, Point end, string name, GeodesicSurface surface = null);
+    public abstract Curve GetGeodesic(TangentVector startVelocity, float length, string name, GeodesicSurface surface = null);
 
     public virtual Curve GetPathFromWaypoints(IEnumerable<Point> points, string name)
     {
@@ -54,11 +54,9 @@ public abstract class GeodesicSurface: Surface
             let end = pointArray[i+1]
             select GetGeodesic(start, end, name);
         // todo: optimize over possible tangent vectors at the concatenation -> do this in ConcatenatedCurve!
-        var concatenatedCurve = new ConcatenatedCurve(geodesicSegments, name);
-        return concatenatedCurve.Smoothed();  
+        return new ConcatenatedCurve(geodesicSegments, name, smoothed: true);
+        // todo: shouldn't smooth at the visual jump points, only at the actual concatenation points above. This could be done with "ignoreSubConcatenatedCurves", as we do, but only if we reintroduce nested concatenated curves. Currently, there is no distinction between the kinds of concatenations; Apart from the "angle jump" property of singular points, if it works
     }
-    
-    public virtual Curve ShiftedCurve(Curve curve, float shift, string name = null) => new ShiftedCurve(curve, shift, name);
 
     public abstract float DistanceSquared(Point startPoint, Point endPoint);
 
@@ -161,7 +159,9 @@ public abstract class GeodesicSurface: Surface
         var TimeFromArclength = ListToInverseDerivative(lengths, lastLength, lastTimeInterval, res);
 
         return new ParametrizedCurve(curve.Name + " by arclength", lastLength + lengths[^1], surface, DerivativeAt, 
-            from jumpTime in curve.VisualJumpTimes select ArclengthFromTime(jumpTime)) {
+            from jumpTime in curve.VisualJumpTimes select ArclengthFromTime(jumpTime)) { 
+            // todo: these jump times are not accurate enough for displaying the curve probably...
+            // When displaying the curve, one could display the original curve?
             Color = curve.Color
         };
 
@@ -179,17 +179,70 @@ public class ShiftedCurve : Curve
     private readonly Curve curve;
     private readonly Func<float, float> shift;
 
+    public enum ShiftType
+    {
+        /// <summary>
+        /// shift(t) = const.
+        /// </summary>
+        Uniform,
+        /// <summary>
+        /// shift(t) = const. * 1.69f * x / (0.15f + x) * (1 - x) / (1.15f - x) where x = t / curve.Length
+        /// </summary>
+        SymmetricFixedEndpoints,
+        FixedEndpoint,
+        FixedStartpoint
+    }
+
+    /// <summary>
+    /// A curve that is shifted to the left using geodesics on the surface at every point of the curve.
+    /// These short geodesics start at curve[t] into the direction curve.BasisAt(t).B.Normalized with length shift(t).
+    /// Shifted curves compound: If you shift a shifted curve, the shift is added to the original shift.
+    /// </summary>
+    /// <param name="curve"></param>
+    /// <param name="shift"></param>
+    /// <param name="name"></param>
+    /// <exception cref="ArgumentException"></exception>
     public ShiftedCurve(Curve curve, Func<float, float> shift, string name = null)
     {
         if (curve.Surface is not GeodesicSurface) 
             throw new ArgumentException($"To shift the curve {curve}, the underlying surface must be a GeodesicSurface.");
-        this.curve = curve;
-        this.shift = shift;
+        if (curve is ShiftedCurve shiftedCurve)
+        {
+            this.curve = shiftedCurve.curve;
+            this.shift = t => shiftedCurve.shift(t) + shift(t);    
+        }
+        else
+        {
+            this.curve = curve;
+            this.shift = shift;
+        }
+
         this.Name = name ?? curve.Name + " shifted by " + shift(curve.Length / 2);
     }
 
-    public ShiftedCurve(Curve curve, float shift, string name = null) : this(curve, t => shift, name)
-    { }
+    public ShiftedCurve(Curve curve, float constant, ShiftType type = ShiftType.Uniform, string name = null) : 
+        this(curve, shift: type switch
+            {
+                ShiftType.Uniform =>  t => constant,
+                ShiftType.SymmetricFixedEndpoints => t =>
+                    {
+                        var x = t / curve.Length;
+                        return constant * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
+                    },
+                ShiftType.FixedEndpoint => t =>
+                    {
+                        var x = (1f + t / curve.Length) / 2f;
+                        return constant * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
+                    },
+                ShiftType.FixedStartpoint => t =>
+                    {
+                        var x = (t / curve.Length) / 2f;
+                        return constant * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
+                    },
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+            }, name: name)
+    {  }
+
     
     public sealed override string Name { get; set; }
     
@@ -197,20 +250,92 @@ public class ShiftedCurve : Curve
 
     public override float Length => curve.Length;
     public override Surface Surface => curve.Surface;
-    
+
+    private List<float> _visualJumpTimes;
+    public override IEnumerable<float> VisualJumpTimes
+    {
+        get
+        {
+            if (_visualJumpTimes != null) 
+                return _visualJumpTimes;
+            _visualJumpTimes = new List<float>();
+
+            var res = 0.04f;
+            const float goalRes = 0.0001f;
+            foreach (var t in curve.VisualJumpTimes)
+            {
+                var time = t;
+                float localCurveJump = 0f;
+                while (goalRes < res)
+                {
+                    while (time >= t - 3 * res && time > (_visualJumpTimes.Count == 0 ? 0 : _visualJumpTimes.LastOrDefault()))
+                    {
+                        localCurveJump = LocalCurveJump(time);
+                        if (localCurveJump >= 0f && localCurveJump >= shift(t))
+                            break;
+                        time -= res;
+                    }
+
+                    res /= 2;
+
+                    while (time <= t + 3 * res && time < curve.Length)
+                    {
+                        localCurveJump = LocalCurveJump(time);
+                        if (localCurveJump <= shift(t))
+                            break;
+                        time += res;
+                    } 
+                    res /= 4;
+                }
+                if (localCurveJump == 0f)
+                    _visualJumpTimes.Add(t);
+                else
+                    _visualJumpTimes.Add(time);
+            }
+            
+            return _visualJumpTimes;
+
+            float LocalCurveJump(float t)
+            {
+                if (shift(t) == 0f)
+                    return 0f;
+                var visualJumpTime = LocalCurve(t, shift(t) * 3).VisualJumpTimes.FirstOrDefault();
+                return visualJumpTime == 0f ? -1f : visualJumpTime;
+            }
+            // todo: make more efficient (do it like in the definition of geodesic with start vector)
+            
+        }
+    }
+
     private GeodesicSurface geodesicSurface => (GeodesicSurface) Surface;
     
     public override Point ValueAt(float t)
     {
+        var s = shift(t);
+        if (MathF.Abs(s) < 1e-5f)
+            return curve.ValueAt(t);
+        return LocalCurve(t, s).EndPosition;
+    }
+
+    private Curve LocalCurve(float t, float s)
+    {
         var basis = curve.BasisAt(t);
-        var localCurve = geodesicSurface.GetGeodesic(basis.B.Normalized, shift(t), $"shift geodesic for {curve.Name} at time {t}");
-        return localCurve.EndPosition;
+        var localCurve = geodesicSurface.GetGeodesic(basis.B.Normalized, s, $"shift geodesic for {curve.Name} at time {t}");
+        return localCurve;
     }
 
     public override TangentVector DerivativeAt(float t)
     {
+        var s = shift(t);
+        if (MathF.Abs(s) < 1e-5f)
+            return curve.DerivativeAt(t);
         var basis = curve.BasisAt(t);
-        var localCurve = geodesicSurface.GetGeodesic(basis.B.Normalized, shift(t), $"shift geodesic for {curve.Name} at time {t}");
+        var localCurve = geodesicSurface.GetGeodesic(basis.B.Normalized, s, $"shift geodesic for {curve.Name} at time {t}");
         return new (localCurve.EndPosition, basis.basis.a); // this is not really correct, but for small shifts it is good enough. It is unfeasible to calculate this correctly (derivative of exponential map...)
     }
+
+    public override Curve Reversed() => 
+        new ShiftedCurve(curve.Reversed(), t => -shift(t), Name + "'") {Color = Color};
+
+    public override Curve Restrict(float start, float? end = null) => new ShiftedCurve(curve.Restrict(start, end), t => shift(t + start), Name + $"[{start:g2}, {end:g2}]") {Color = Color};
 }

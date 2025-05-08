@@ -203,6 +203,9 @@ public static class Helpers
         return list.Where(hashSet.Add);
     }
 
+    /// <summary>
+    /// Rotates the list so that the first element is the one specified.
+    /// </summary>
     public static IEnumerable<T> CyclicShift<T>(this IEnumerable<T> list, T firstElement)
     {
         var done = false;
@@ -250,6 +253,84 @@ public static class Helpers
     
     public static IEnumerable<T> Loop<T>(this IEnumerable<T> list, int length) => list.EndlessLoop().Take(length);
     
+    
+    public static List<(T, bool)> ConcatWithCancellation<T>(this IEnumerable<(T, bool)> list, IEnumerable<(T, bool)> other)
+    {
+        var newList = new List<(T, bool)>(list);
+        var doneCancelling = false;
+        foreach (var (t, reverse) in other)
+        {
+            if (doneCancelling || newList.Count == 0 || !newList[^1].Equals((t, !reverse)))
+            {
+                doneCancelling = true;
+                newList.Add((t, reverse));
+                continue;
+            }
+
+            newList.RemoveAt(newList.Count - 1);
+        }
+
+        return newList;
+    }
+    
+    public static List<(T, bool)> ConcatWithCancellation<T>(this IEnumerable<(T, bool)> list, IEnumerable<(T, bool)> other, out int cancellation)
+    {
+        var newList = new List<(T, bool)>(list);
+        var doneCancelling = false;
+        cancellation = 0;
+        foreach (var (t, reverse) in other)
+        {
+            if (doneCancelling || newList.Count == 0 || !newList[^1].Equals((t, !reverse)))
+            {
+                doneCancelling = true;
+                newList.Add((t, reverse));
+                continue;
+            }
+
+            newList.RemoveAt(newList.Count - 1);
+            cancellation++;
+        }
+
+        return newList;
+    }
+
+    public static int SharedInitialSegment<T>(this IEnumerable<T> list, IEnumerable<T> other)
+    {
+        using var enumerator = list.GetEnumerator();
+        using var otherEnumerator = other.GetEnumerator();
+        var equality = 0;
+
+        while (enumerator.MoveNext() && otherEnumerator.MoveNext())
+        {
+            if (Equals(enumerator.Current, otherEnumerator.Current))
+                equality++;
+            else
+                break;
+        }
+        return equality;
+    }
+    
+    public static int CancellationLength<T>(this IEnumerable<(T, bool)> list, IEnumerable<(T, bool)> other)
+    {
+        using var enumerator = list.Reverse().GetEnumerator();
+        using var otherEnumerator = other.GetEnumerator();
+        var cancellation = 0;
+
+        while (enumerator.MoveNext() && otherEnumerator.MoveNext())
+        {
+            if (enumerator.Current.Equals((otherEnumerator.Current.Item1, !otherEnumerator.Current.Item2)))
+                cancellation++;
+            else
+                break;
+        }
+        return cancellation;
+    }
+    
+    
+    public static IEnumerable<(T, bool)> Inverse<T>(this IEnumerable<(T, bool)> list) => 
+        list.Reverse().Select(t => (t.Item1, !t.Item2));
+
+
     public static ObjectWithString WithToString(this object obj, string toString) => new(obj, toString);
 
     public class ObjectWithString
@@ -281,6 +362,7 @@ public static class Helpers
     }
 
     public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, string comma = ", ") => string.Join(comma, list);
+    
 }
 
 

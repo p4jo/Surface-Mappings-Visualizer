@@ -17,20 +17,27 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
     private static int _lastId = 0;
     private readonly int id = _lastId++;
     
-    public Junction(FibredGraph graph, IEnumerable<IDrawnsformable> drawables, string name = null, Junction image = null, Color? color = null): base(drawables)
+    public Junction(FibredGraph graph, IEnumerable<IDrawnsformable> drawables, string name = null, Junction image = null, Color? color = null) :
+        base(drawables)
     {
         this.graph = graph;
         this.image = image;
         if (color.HasValue) Color = color.Value;
         Name = name ?? "v" + id;
     }
-    public Junction(FibredGraph graph, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : this(graph, new[] {drawable}, name, image, color)
+    
+    public Junction(FibredGraph graph, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : 
+        this(graph, new[] {drawable}, name, image, color)
     { }
     
-    public Junction Copy(FibredGraph graph = null, string name = null, Junction image = null, Color? color = null)
-    {
-        return new Junction(graph ?? this.graph, from patch in Patches select patch.Copy(), name ?? Name, image ?? this.image, color ?? Color);
-    }
+    public Junction Copy(FibredGraph graph = null, string name = null, Junction image = null, Color? color = null, IEnumerable<IDrawnsformable> patches = null) =>
+        new(
+            graph ?? this.graph,
+            patches ?? from patch in Patches select patch.Copy(),
+            name ?? Name,
+            image ?? this.image,
+            color ?? Color
+        );
 
     public void AddDrawable(IDrawnsformable drawable)
     {
@@ -56,9 +63,9 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
 
     public override int GetHashCode() => id;
 
-    public string ToColorfulString()
-    {
-        
-        return $"{((IDrawable) this).ColorfulName} with cyclic ordered star {FibredSurface.StarOrdered(this).Select(j => ((IDrawable) j).ColorfulName).ToCommaSeparatedString()}";
-    }
+    public string ToColorfulString() =>
+        ((IDrawable)this).ColorfulName + " with cyclic ordered star " +
+        FibredSurface.StarOrdered(this).Select(
+            j => ((IDrawable)j).ColorfulName
+        ).ToCommaSeparatedString();
 }

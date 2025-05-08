@@ -244,10 +244,10 @@ public partial class ModelSurface: GeodesicSurface
         // the corresponding homeomorphisms must be defined elsewhere (where this is called from)
     }
     
-    public Curve GetBasicGeodesic(Point startPoint, Point endPoint, string name) => GeometrySurface.GetGeodesic(startPoint, endPoint, name);
-    public Curve GetBasicGeodesic(TangentVector tangentVector, float length, string name) => GeometrySurface.GetGeodesic(tangentVector, length, name);
+    public Curve GetBasicGeodesic(Point startPoint, Point endPoint, string name, GeodesicSurface surface = null) => GeometrySurface.GetGeodesic(startPoint, endPoint, name, surface ?? this);
+    public Curve GetBasicGeodesic(TangentVector tangentVector, float length, string name, GeodesicSurface surface = null) => GeometrySurface.GetGeodesic(tangentVector, length, name, surface ?? this);
     
-    public override Curve GetGeodesic(Point startPoint, Point endPoint, string name)
+    public override Curve GetGeodesic(Point startPoint, Point endPoint, string name, GeodesicSurface surface = null)
     {
         if (startPoint is not IModelSurfacePoint)
             startPoint = ClampPoint(startPoint.Position, 0.001f);
@@ -260,28 +260,30 @@ public partial class ModelSurface: GeodesicSurface
 
         var (_, centerPoint) = DistanceMinimizer(startPoint, endPoint, GeometrySurface);
         if (centerPoint == null)
-            return GetBasicGeodesic(startPoint, endPoint, name);
+            return GetBasicGeodesic(startPoint, endPoint, name, surface);
         
         var ((_, firstCenterPosition), _) = startPoint.ClosestPosition(centerPoint);
         var ((_, secondCenterPosition), _) = endPoint.ClosestPosition(centerPoint);
-        if (secondCenterPosition == firstCenterPosition)
+        if (secondCenterPosition == firstCenterPosition) // else we would go from centerPoint.Position to centerPoint.Position
             Debug.Log("Weird reflection at the boundary. For some reason it thought that going to the boundary is efficient, but we actually don't go through it because that takes longer.");
-        var firstSegment = GetBasicGeodesic(startPoint, firstCenterPosition, name + "pt 1");
-        var secondSegment = GetBasicGeodesic(secondCenterPosition, endPoint, name + "pt 2");
+        if (firstCenterPosition != centerPoint.Position) // else, we actually want to go from centerPoint.Positions[1] to centerPoint.Position[2]
+            centerPoint = centerPoint.SwitchSide(); // we want to go from centerPoint.Position[2] to centerPoint.Position[1]
+        var firstSegment = GetBasicGeodesic(startPoint, centerPoint, name + "pt 1", surface);
+        var secondSegment = GetBasicGeodesic(centerPoint.SwitchSide(), endPoint, name + "pt 2", surface);
         return new ConcatenatedCurve(new[] { firstSegment, secondSegment }, name); // .Smoothed(); // TODO: this doesn't work as expected
     }
 
-    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name)
+    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name, GeodesicSurface surface = null)
     {
         if (length < 0) 
-            return GetGeodesic(-startVelocity, -length, name);
+            return GetGeodesic(-startVelocity, -length, name, surface);
         List<Curve> segments = new();
         var currentStartVector = startVelocity;
         int i = 0;
         Vector3 lastPos = startVelocity.point.Position;
         while (length > 0)
         {
-            var currentSegment = GetBasicGeodesic(currentStartVector, length, name + $"pt {i}");
+            var currentSegment = GetBasicGeodesic(currentStartVector, length, name + $"pt {i}", surface);
             float res = 0.1f;
             float t = res; // we shouldn't need to check at 0 (it should be the last start point)
             while (res >= length)
@@ -309,15 +311,19 @@ public partial class ModelSurface: GeodesicSurface
                         continue;
                     case ModelSurfaceVertex:
                     case ModelSurfaceBoundaryPoint:
-                        if (!stillAtTheStartingSide) break;
+                        if (!stillAtTheStartingSide) 
+                            goto afterWhileLoop; // break does the same as continue
                         t += res;
                         continue;
                     default:
                         throw new Exception($"Weird type of clamped point: {p}");
                 }
             }
+            afterWhileLoop:
             
             i++;
+            if (length < t)
+                t = length;
             length -= t;
             if (t > 0)
                 segments.Add(currentSegment.Restrict(0, t));
@@ -333,7 +339,7 @@ public partial class ModelSurface: GeodesicSurface
             if (p is ModelSurfaceBoundaryPoint pt)
                 p = pt.SwitchSide();
             if (p is ModelSurfaceVertex vertex)
-                p = vertex.Positions.ElementAt(vertex.Positions.Count());
+                p = vertex.Positions.ElementAt(vertex.Positions.Count() - 1); // todo? not actually thought through, use angles!
             if (pPos.ApproximatelyEquals(p))
                 throw new Exception("Bug: The position wasn't updated to the other side.");
             currentStartVector = new(p, p.PassThrough(0, 1, endTangentVec.vector));
@@ -341,10 +347,10 @@ public partial class ModelSurface: GeodesicSurface
         return new ConcatenatedCurve(segments, name);
     }
 
-    private (float, Point) DistanceMinimizer(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
+    private (float, ModelSurfaceBoundaryPoint) DistanceMinimizer(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
     {
         var shortestLength = baseGeometrySurface.DistanceSquared(startPoint, endPoint);
-        Point result = null;
+        ModelSurfaceBoundaryPoint result = null;
         if (startPoint is not IModelSurfacePoint start || endPoint is not IModelSurfacePoint end)
             throw new Exception("Start and end point should have the type IModelSurfacePoint");
         foreach (var side in sides)
@@ -353,10 +359,7 @@ public partial class ModelSurface: GeodesicSurface
             var (c, d) = end.ClosestBoundaryPoints(side);
             if (a == null || b == null || c == null || d == null)
                 throw new Exception("Lazy Programmer!");
-                
-            float LengthVia(ModelSurfaceBoundaryPoint x) =>
-                baseGeometrySurface.DistanceSquared(x, startPoint) + baseGeometrySurface.DistanceSquared(x, endPoint); // this minimizes over the positions
-                
+
             ModelSurfaceBoundaryPoint[] points = {
                 a, b, c, d,
                 new ModelSurfaceBoundaryPoint(side, (a.t + d.t) / 2 ),
@@ -368,11 +371,15 @@ public partial class ModelSurface: GeodesicSurface
             if (!(distance < shortestLength)) continue;
             shortestLength = distance;
             result = minPoint;
+            continue;
+
+            float LengthVia(ModelSurfaceBoundaryPoint x) =>
+                baseGeometrySurface.DistanceSquared(x, startPoint) + baseGeometrySurface.DistanceSquared(x, endPoint); // this minimizes over the positions
         }
         return (shortestLength, result);
     }
 
-    public override float DistanceSquared(Point startPoint, Point endPoint) => throw new NotImplementedException();
+    public override float DistanceSquared(Point startPoint, Point endPoint) => Mathf.Pow(GetGeodesic(startPoint, endPoint, "Distance").Length , 2); // todo: extremely inefficient
 
     public override Point ClampPoint(Vector3? pos, float closenessThreshold) // todo: this is extremely inefficient
     {
@@ -389,7 +396,7 @@ public partial class ModelSurface: GeodesicSurface
             select (pt, x.Item2.DistanceSquared(point))
         ).ToArray();
         var bestCloseness = distances.Min(x => x.Item2);
-        var closestPoints = from x in distances where x.Item2 < bestCloseness * secondaryClosestSideSquareDistanceFactor select x;
+        var closestPoints = from x in distances where x.Item2 <= bestCloseness * secondaryClosestSideSquareDistanceFactor select x;
         foreach (var (closestPt, closeness) in closestPoints)
         {
             var closestSide = closestPt.side;

@@ -119,55 +119,60 @@ public class MainMenu: MonoBehaviour
         var surfaceMenu = surfaceMenus[0]; 
         fibredSurfaceMenu.gameObject.SetActive(true);
         var surface = surfaceMenu.geodesicSurface as ModelSurface;
-        
-        // if (surface.Name)
-        // var map = new Dictionary<string, string>
-        // {
-        //     ["a"] = "a B A b D C A",
-        //     ["b"] = "a c d B a b c d B",
-        //     ["c"] = "c c d B",
-        //     ["d"] = "b c d B"
-        // };
-        // FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, map, reverse: new Dictionary<string, bool>
-        // {
-        //     ["a"] = false,
-        //     ["b"] = false,
-        //     ["c"] = true,
-        //     ["d"] = true
-        // });
-        var map = new Dictionary<string, string> 
-        {
-            ["a"] = "a",
-            ["b"] = "b",
-            ["c"] = "c",
-            ["d"] = "d"
-        };
-        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, map, 
-        names: new Dictionary<string, string>
-        {
-            ["side a"] = "a",
-            ["side b"] = "b",
-            ["side c"] = "c",
-            ["side d"] = "d"
-        },
-        reverse: new Dictionary<string, bool>
-        {
-            ["a"] = true,
-            ["b"] = true,
-            ["c"] = false,
-            ["d"] = false
-        }
+
+        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, 
+            map: new Dictionary<string, string>
+            {
+                ["a"] = "a B A b D C A",
+                ["b"] = "a c d B a b c d B",
+                ["c"] = "c c d B",
+                ["d"] = "b c d B"
+            },
+            names: new Dictionary<string, string>
+            {
+                ["side a"] = "a",
+                ["side b"] = "b",
+                ["side c"] = "d",
+                ["side d"] = "c"
+            },
+            reverse: new Dictionary<string, bool>
+            {
+                ["a"] = false,
+                ["b"] = false,
+                ["c"] = true,
+                ["d"] = true
+            }
         );
-        // var v = fibredSurface.graph.Vertices.First();
-        // var e = fibredSurface.Strips.First();
-        // fibredSurface.MoveJunction(e, e.Curve.Length - 0.5f);
+        // var map = new Dictionary<string, string> 
+        // {
+        //     ["a"] = "a",
+        //     ["b"] = "b",
+        //     ["c"] = "c",
+        //     ["d"] = "d"
+        // };
+        // FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, map, 
+        //     names: new Dictionary<string, string>
+        //     {
+        //         ["side a"] = "a",
+        //         ["side b"] = "b",
+        //         ["side c"] = "c",
+        //         ["side d"] = "d"
+        //     },
+        //     reverse: new Dictionary<string, bool>
+        //     {
+        //         ["a"] = true,
+        //         ["b"] = true,
+        //         ["c"] = false,
+        //         ["d"] = false
+        //     }
+        // );
         
         fibredSurfaceMenu.Initialize(fibredSurface, surfaceMenu);
-
-        fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
-        fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
-        fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
-        fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
+        //
+        // fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
+        // fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
+        // fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
+        // fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
         
         // fibredSurfaceMenu.StartAlgorithm();
     }
