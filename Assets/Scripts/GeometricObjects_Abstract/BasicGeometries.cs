@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using UnityEngine;
+using Vector2 = UnityEngine.Vector2;
+using Vector3 = UnityEngine.Vector3;
 
 public enum GeometryType
 {
@@ -78,7 +81,27 @@ public class HyperbolicPlane : Plane
             return 2 * (float) Math.Atanh((u - v).sqrMagnitude / (u - vBar).sqrMagnitude);
         }
     }
-
+    
+    
+    public static Complex Möbius(Complex z, Complex a, Complex b, Complex c, Complex d) => (a * z + b) / (c * z + d);
+    public static Complex MöbiusDerivative(Complex z, Complex a, Complex b, Complex c, Complex d) => (a * d - b * c) / ((c * z + d) * (c * z + d));
+    
+    public static Homeomorphism MöbiusTransformation(Complex a, Complex b, Complex c, Complex d, Surface source, Surface target) =>
+        new(
+            source,
+            target, 
+            z => Möbius(z.ToComplex(), a, b, c, d).ToVector3(),
+            z => Möbius(z.ToComplex(), d, -b, -c, a).ToVector3(),
+            z => MöbiusDerivative(z.ToComplex(), a, b, c, d).ToMatrix3x3(),
+            z => MöbiusDerivative(z.ToComplex(), d, -b, -c, a).ToMatrix3x3(),
+            "Möbius(" + a + ", " + b + ", " + c + ", " + d + ")"
+        );
+    
+    static Homeomorphism CayleyTransform = MöbiusTransformation(
+        -Complex.One, Complex.ImaginaryOne, Complex.One, Complex.ImaginaryOne,
+        new HyperbolicPlane(false, "Poincaré Half Plane"),
+        new HyperbolicPlane(true, "Poincaré Disk")
+    ); 
 }
 
 public class EuclideanPlane : Plane

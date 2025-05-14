@@ -20,11 +20,17 @@
         [SerializeField] protected GameObject pointerPrefab;
         [SerializeField] protected float scale = 1f;
         [SerializeField] protected Vector3 imageOffset;
-        [SerializeField] protected new Camera camera;
+        [SerializeField] public new Camera camera;
 
         protected SurfaceVisualizer()
         {
             id = lastID++;
+        }
+
+        public virtual void Initialize(Camera camera = null)
+        {
+            if (camera != null)
+                this.camera = camera;
         }
 
 
@@ -144,7 +150,7 @@
             {
                 if (activePointers.ContainsKey(position)) 
                     continue;
-                var pointer = inactivePointers.Pop() ?? Instantiate(pointerPrefab, transform);
+                var pointer = inactivePointers.Pop() ?? NewPointer();
                 pointer.SetActive(true);
                 pointer.transform.localPosition = displayPosition(position);
                 pointer.GetComponent<Renderer>().material.color = point.Color;
@@ -171,7 +177,7 @@
                 
             foreach (var position in pointPositions)
             {
-                var pointer = activePreviewPointers.Pop() ?? inactivePointers.Pop() ?? Instantiate(pointerPrefab, transform);
+                var pointer = activePreviewPointers.Pop() ?? inactivePointers.Pop() ?? NewPointer();
                 pointer.SetActive(true);
                 pointer.transform.localPosition = displayPosition(position);
                 pointer.GetComponent<Renderer>().material.color = point.Color;
@@ -186,4 +192,10 @@
             activePreviewPointers = newActivePointers;
         }
 
+        private GameObject NewPointer()
+        {
+            var newPointer = Instantiate(pointerPrefab, transform);
+            newPointer.GetComponent<ScaleWithCamera>().camera = camera;
+            return newPointer;
+        }
     }

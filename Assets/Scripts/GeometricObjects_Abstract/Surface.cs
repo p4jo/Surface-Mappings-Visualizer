@@ -5,7 +5,7 @@ using UnityEngine;
 
 public abstract class Surface 
 {
-    public string Name { get; protected set; }
+    public string Name { get; set; }
     public int Genus { get; protected set; }
     public readonly List<Point> punctures = new();
     public readonly bool is2D;
@@ -287,10 +287,9 @@ public class ShiftedCurve : Curve
                     } 
                     res /= 4;
                 }
-                if (localCurveJump == 0f)
-                    _visualJumpTimes.Add(t);
-                else
-                    _visualJumpTimes.Add(time);
+                if (time < 0f || time > curve.Length)
+                    continue;
+                _visualJumpTimes.Add(time);
             }
             
             return _visualJumpTimes;

@@ -322,6 +322,8 @@ public partial class ConcatenatedCurve : Curve
 
     public override Point ValueAt(float t)
     {
+        if (t >= Length) // bc. Length % Length = 0 ...
+            return EndPosition;
         t %= Length;
         foreach (var segment in segments)
         {
@@ -346,7 +348,7 @@ public partial class ConcatenatedCurve : Curve
         throw new Exception("What the heck");
     }
 
-    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name + "'") {Color = Color};
+    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name + "'") { Color = Color };
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
@@ -354,7 +356,7 @@ public partial class ConcatenatedCurve : Curve
             return this;
         return new ConcatenatedCurve(from segment in segments select segment.ApplyHomeomorphism(homeomorphism),
             Name + " --> " + homeomorphism.target.Name
-        );
+        ) { Color = Color };
     }
 
     public override Curve Copy() => new ConcatenatedCurve(from segment in segments select segment.Copy(), Name) { Color = Color };

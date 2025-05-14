@@ -53,3 +53,8 @@ public partial class ConcatenatedCurve
 {
     protected override Color DefaultColor => segments.First().Color;
 }
+
+public partial class ModelSurfaceSide
+{
+    protected override Color DefaultColor => curve.Color;
+}

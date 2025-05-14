@@ -2,7 +2,7 @@ using System;
 using JetBrains.Annotations;
 using UnityEngine;
 
-public class ModelSurfaceSide: Curve
+public partial class ModelSurfaceSide: Curve
 {
     public readonly Curve curve;
     public readonly bool rightIsInside;
@@ -16,17 +16,17 @@ public class ModelSurfaceSide: Curve
         this.curve = curve;
         this.rightIsInside = rightIsInside;
         angle = Mathf.Atan2(curve.StartVelocity.vector.y, curve.StartVelocity.vector.x);
+        if (curve.Surface is not ModelSurface)
+            Debug.LogWarning($"The surface of a curve that we promote to a ModelSurfaceSide is not a ModelSurface: {curve.Name} has surface {curve.Surface.Name}");
     }
 
-    public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, Surface surface) :
+    public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, ModelSurface surface) :
         this(
             ModelSurface.BaseGeometrySurfaces[geometryType]
-                .GetGeodesic( side.start, side.end, side.label),
+                .GetGeodesic( side.start, side.end, side.label, surface),
             side.rightIsInside
         )
-    {
-        Surface = surface;
-    }
+    { }
 
     [CanBeNull] private string _name;
     public override string Name
@@ -39,7 +39,7 @@ public class ModelSurfaceSide: Curve
     public override Point StartPosition => curve.StartPosition;
     public override TangentVector EndVelocity => curve.EndVelocity;
     public override TangentVector StartVelocity => curve.StartVelocity;
-    public override Surface Surface { get; }
+    public override Surface Surface => curve.Surface;
 
     public override Point ValueAt(float t) => new ModelSurfaceBoundaryPoint(this, t);
 
@@ -93,15 +93,17 @@ public class ModelSurfaceSide: Curve
     {
         if (homeomorphism.isIdentity)
             return this;
+        var transformedCurve = curve.ApplyHomeomorphism(homeomorphism);
+        transformedCurve.Color = Color; // if this has a set color (not DefaultColor), then we have to copy it to the result
         if (homeomorphism.target is not ModelSurface) 
-            return curve.ApplyHomeomorphism(homeomorphism);
+            return transformedCurve;
         
         bool orientationReversing = homeomorphism.df(StartPosition.Position).Determinant() < 0;
         
-        var result = new ModelSurfaceSide(curve.ApplyHomeomorphism(homeomorphism), 
+        var result = new ModelSurfaceSide(transformedCurve, 
             orientationReversing ? rightIsInside : !rightIsInside);
         result.other = new ModelSurfaceSide(other.curve.ApplyHomeomorphism(homeomorphism),
-            orientationReversing ? other.rightIsInside : !other.rightIsInside);
+            orientationReversing ? other.rightIsInside : !other.rightIsInside) { Color = other.Color };
         result.other.other = result;
         return result;
     }

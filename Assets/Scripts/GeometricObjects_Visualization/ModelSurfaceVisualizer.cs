@@ -10,8 +10,10 @@ public class ModelSurfaceVisualizer : SurfaceVisualizer
     // because it is harder and this way is basically the same as for the 3D surfaces
 
 
-    public void Initialize(ModelSurface surface, RawImage drawingArea, float scale = 1f, Vector2 offset = default)
+    public void Initialize(ModelSurface surface, Camera camera = null, float scale = 1f, Vector2 offset = default)
     {
+        gameObject.name = surface.Name;
+        base.Initialize(camera);
         this.surface = surface;
         var tooltipTarget = GetComponentInChildren<TooltipTarget>(); // tooltipTarget is on a quad that is a child. It is scaled and offset, thus its transform is bad for transforming hit to local coords (we only want to subtract the (id*100, 0, 0))
         tooltipTarget.Initialize(this, transformForHitCoordsToLocal: transform); // drawingArea.rectTransform);

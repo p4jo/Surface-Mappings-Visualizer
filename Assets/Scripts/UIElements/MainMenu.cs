@@ -26,11 +26,30 @@ public class MainMenu: MonoBehaviour
     private void Start()
     {
         // var testSurface = SurfaceGenerator.ModelSurface4GGon(2, 0, "Genus-2 surface", 
-        //         new string[] { "side d", "side c", "side a", "side b" } // labelling from [BH] example 6.1.
+        //         new string[] { "side d", "side c", "side a", "side b" } // labelling from 
         //     );
         // var surface = new AbstractSurface(testSurface);
         var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
         var surface = SurfaceGenerator.CreateSurface(parameters);
+        if (surface.drawingSurfaces.Values.FirstOrDefault() is ModelSurface { geometryType : GeometryType.HyperbolicDisk } modelSurface)
+        {
+            foreach (var side in modelSurface.sides)
+            {
+                if (side.curve is not HyperbolicGeodesicSegment geodesic) throw new Exception("Geodesic expected");
+                if (side.other.curve is not HyperbolicGeodesicSegment geodesic2) throw new Exception("Geodesic expected");
+                // the Möbius transformation saved in geodesic sends the usual geodesic i e^t to the geodesic
+                // thus the Möbius transformation sending the first geodesic to the second is
+                // geodesic2.MöbiusTransformation * geodesic.MöbiusTransformation.Inverse;
+                var a = geodesic2.α * geodesic.δ - geodesic2.β * geodesic.γ;
+                var b = geodesic2.β * geodesic.α - geodesic2.α * geodesic.β;
+                var c = geodesic2.γ * geodesic.δ - geodesic2.δ * geodesic.γ;
+                var d = geodesic2.δ * geodesic.α - geodesic2.γ * geodesic.β;
+                var möbiusTransformation = HyperbolicPlane.MöbiusTransformation(
+                    a, b, c, d, modelSurface, modelSurface.Copy(modelSurface.Name + " [" + side.Name + "]", a, b, c, d)
+                );
+                surface.AddHomeomorphism(möbiusTransformation, drawTargetInSameWindowAsSource: true);
+            }
+        }
         Initialize(surface);
     }
     
@@ -48,7 +67,7 @@ public class MainMenu: MonoBehaviour
             if (drawingSurface is not ModelSurface modelSurface) continue;
             foreach (ModelSurfaceSide side in modelSurface.sides)
             {
-                surfaceMenu.Display(side, surfaceName, preview: false);
+                surfaceMenu.Display(side, surfaceName, preview: false, propagateToDrawingSurfaces: false);
                 // surfaceMenu.Display(side.other, surfaceName, preview: false);
             }
         }
@@ -120,7 +139,7 @@ public class MainMenu: MonoBehaviour
         fibredSurfaceMenu.gameObject.SetActive(true);
         var surface = surfaceMenu.geodesicSurface as ModelSurface;
 
-        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, 
+        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, // [BH] example 6.1.
             map: new Dictionary<string, string>
             {
                 ["a"] = "a B A b D C A",

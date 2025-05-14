@@ -14,8 +14,8 @@ public class AbstractSurface
     /// These represent the edges between the drawn representations of the same surface
     /// </summary>
     private readonly Dictionary<(string, string), Homeomorphism> homeomorphisms = new();
-
-    public GeodesicSurface geodesicSurface;
+    
+    public readonly Dictionary<string, string> windowAssignment = new();
 
 
     public AbstractSurface()
@@ -24,20 +24,26 @@ public class AbstractSurface
     {
         AddDrawingSurface(surface);
     }
-
+    public AbstractSurface (Homeomorphism homeomorphism)
+    {
+        AddHomeomorphism(homeomorphism);
+    }
 
     public void AddDrawingSurface(Surface surface)
     {
         drawingSurfaces.TryAdd(surface.Name, surface);
         homeomorphisms.TryAdd((surface.Name, surface.Name), Homeomorphism.Identity(surface));
+        windowAssignment.TryAdd(surface.Name, surface.Name);
     }
 
-    public void AddHomeomorphism(Homeomorphism homeomorphism)
+    public void AddHomeomorphism(Homeomorphism homeomorphism, bool drawTargetInSameWindowAsSource = false)
     {
         AddDrawingSurface(homeomorphism.source);
         AddDrawingSurface(homeomorphism.target);
         homeomorphisms[(homeomorphism.source.Name, homeomorphism.target.Name)] = homeomorphism;
         homeomorphisms[(homeomorphism.target.Name, homeomorphism.source.Name)] = homeomorphism.Inverse;
+        if (drawTargetInSameWindowAsSource)
+            windowAssignment[homeomorphism.target.Name] = homeomorphism.source.Name;
     }
     
     public Homeomorphism GetHomeomorphism(string source, string target)
@@ -59,10 +65,4 @@ public class AbstractSurface
         throw new Exception($"No homeomorphism given from {source} to {target}, not even with one step in between");
     }
 
-    public static AbstractSurface FromHomeomorphism(Homeomorphism homeomorphism)
-    {
-        var res = new AbstractSurface();
-        res.AddHomeomorphism(homeomorphism);
-        return res;
-    }
 }

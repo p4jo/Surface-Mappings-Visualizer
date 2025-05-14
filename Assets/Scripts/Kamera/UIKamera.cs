@@ -2,7 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class UICamera : Kamera {
+public class UIKamera : Kamera {
     [SerializeField] RectTransform renderRectTransform;
     Rect renderRect => renderRectTransform.rect;
     [SerializeField] RawImage renderTarget;

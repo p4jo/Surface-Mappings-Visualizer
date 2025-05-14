@@ -1241,7 +1241,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
         IEnumerable<Strip> StarAtFoldedVertex()
         {
-            yield return preferredOldEdge;
+            yield return preferredOldEdge.Reversed();
             
             foreach (var vertex in targetVerticesToFold)
             {
@@ -1270,12 +1270,13 @@ public class FibredSurface : IPatchedDrawnsformable
 
     void ReplaceVertices(ICollection<Junction> vertices, Junction newVertex)
     {
-        foreach (var strip in OrientedEdges)
+        foreach (var strip in OrientedEdges.ToList())
             if (vertices.Contains(strip.Source))
                 strip.Source = newVertex;
 
         foreach (var vertex in vertices)
-            graph.RemoveVertex(vertex);
+            if (vertex != newVertex)
+                graph.RemoveVertex(vertex);
         
         foreach (var junction in graph.Vertices)
         {
@@ -1568,7 +1569,12 @@ public class FibredSurface : IPatchedDrawnsformable
 
         while (edgesToFold.Any(edge =>
                    Equals(p, new EdgePoint(edge, initialSegment))
-               )) initialSegment--;
+               ))
+        {
+            Debug.Log(
+                $"When folding the inefficiency (illegal turn) \"{p}\" we had to decrease the initial segment because the point where the illegal turn happened was the same as the subdivision / folding point");
+                initialSegment--;
+        }
 
         var updateEdgePoints = new List<EdgePoint>() { p };
 

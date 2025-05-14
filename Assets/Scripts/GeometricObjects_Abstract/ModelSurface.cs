@@ -33,6 +33,15 @@ public partial class ModelSurface: GeodesicSurface
         }
         
         public static Color NextColor() => colors.MoveNext() ? colors.Current : Color.white;
+
+        public PolygonSide ApplyMöbiusTransformation(Complex complex, Complex complex1, Complex complex2, Complex complex3) =>
+            new(
+                label,
+                HyperbolicPlane.Möbius(start.ToComplex(), complex, complex1, complex2, complex3).ToVector2(),
+                HyperbolicPlane.Möbius(end.ToComplex(), complex, complex1, complex2, complex3).ToVector2(),
+                rightIsInside,
+                color
+            );
     }
 
     #endregion
@@ -59,6 +68,14 @@ public partial class ModelSurface: GeodesicSurface
     public override Vector3 MaximalPosition { get; }
 
     protected GeodesicSurface GeometrySurface => BaseGeometrySurfaces[geometryType]; // Euclidean or Hyperbolic plane.
+
+    public ModelSurface Copy(string name) => new(name, Genus, punctures.Count, geometryType, sidesAsParameters);
+    
+    public ModelSurface Copy(string name, Complex a, Complex b, Complex c, Complex d) => new(name, Genus, punctures.Count, geometryType, (
+            from sideParameter in sidesAsParameters
+            select sideParameter.ApplyMöbiusTransformation(a, b, c, d)        
+        ).ToList()
+    );
 
     public ModelSurface(string name,
         int genus,
@@ -240,7 +257,6 @@ public partial class ModelSurface: GeodesicSurface
         
         // todo: implement (this should be basically the same as the constructor and be called from there)
         // todo: check if the inside of the polygon agrees! All rays (from boundary curves) into the "inside" should hit boundary curves on their "inside" side!
-        Genus += addedGenus;
         // the corresponding homeomorphisms must be defined elsewhere (where this is called from)
     }
     

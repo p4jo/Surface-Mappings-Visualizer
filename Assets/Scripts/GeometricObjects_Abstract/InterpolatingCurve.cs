@@ -57,7 +57,7 @@ public class FlatGeodesicSegment : InterpolatingCurve
 public class HyperbolicGeodesicSegment : Curve
 {
     /// These are the coefficients of the Möbius transformation that sends i to StartPosition and i e^Length to EndPosition. It is an isometry from the upper half plane to either the upper half plane or the unit disk, depending on the bool diskModel.
-    private Complex α, β, γ, δ;
+    public readonly Complex α, β, γ, δ;
 
     public override string Name { get; set; }
     
@@ -74,7 +74,7 @@ public class HyperbolicGeodesicSegment : Curve
     
     public override TangentVector EndVelocity => new (EndPosition, DerivativeAt(length).vector); // so that the base point is still ModelSurfaceBoundaryPoint if EndPosition is on the boundary.
 
-    private readonly bool diskModel;
+    public readonly bool diskModel;
 
     /// <summary>
     /// A geodesic segment in the hyperbolic plane. We use either the Poincaré disk model or the upper half plane model.
@@ -90,7 +90,20 @@ public class HyperbolicGeodesicSegment : Curve
         StartPosition = start;
         endPosition = end;
         this.diskModel = diskModel;
-        Initialize(start, end);
+        (α, β, γ, δ) = Coefficients(start, end);
+    }
+
+    public HyperbolicGeodesicSegment(Complex a, Complex b, Complex c, Complex d, Surface surface, string name,
+        bool diskModel = true)
+    {
+        Name = name;
+        Surface = surface;
+        this.diskModel = diskModel;
+        α = a;
+        β = b;
+        γ = c;
+        δ = d;
+        StartPosition = base.StartPosition; // calculate the start position from the coefficients
     }
 
     public HyperbolicGeodesicSegment(TangentVector startVelocity, float length, Surface surface, string name, bool diskModel)
@@ -102,10 +115,10 @@ public class HyperbolicGeodesicSegment : Curve
         StartPosition = startVelocity.point;
         this.diskModel = diskModel;
         this.length = length;
-        Initialize(startVelocity);
+        (α, β, γ, δ) = Coefficients(startVelocity);
     }
-
-    private void Initialize(TangentVector startVelocity)
+    
+    private (Complex, Complex, Complex, Complex) Coefficients(TangentVector startVelocity)
     {
         double a = 0, b = 0, c = 0, d = 0;
         Complex p = startVelocity.point.Position.ToComplex();
@@ -130,26 +143,26 @@ public class HyperbolicGeodesicSegment : Curve
         d = a * p.Imaginary - c * p.Real;
         
         if (diskModel)
-        {
+            return (
             // invert and multiply by the Cayley transform (1  -i \\ 1  i) which isometrically maps the upper half plane to the unit disk.
-            α = new Complex(d, c); 
-            β = new Complex(-b, -a);
-            γ = new Complex(d, -c); 
-            δ = new Complex(-b, a);
-        }
-        else
-        {
-            // invert
-            α = d;
-            β = -b;
-            γ = -c;
-            δ = a;
-        }
-        
+                new Complex(d, c), // α 
+                new Complex(-b, -a), // β
+                new Complex(d, -c), // γ
+                new Complex(-b, a) // δ
+            );
+
+        // invert
+        return (
+            d, // α 
+            -b, // β
+            -c, // γ
+            a // δ
+        );
+
     }
 
 
-    private void Initialize(Point start, Point end)
+    private (Complex, Complex, Complex, Complex) Coefficients(Point start, Point end)
     {
         double a = 0, b = 0, c = 0, d = 0;
         Complex p = start.Position.ToComplex();
@@ -173,23 +186,22 @@ public class HyperbolicGeodesicSegment : Curve
             Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred half-axis.");
 
         if (diskModel)
-        {
-            // invert and multiply by the Cayley transform (1  -i \\ 1  i) which isometrically maps the upper half plane to the unit disk.
-            α = new Complex(d, c); 
-            β = new Complex(-b, -a);
-            γ = new Complex(d, -c); 
-            δ = new Complex(-b, a);
-        }
-        else
-        {
-            // invert
-            α = d;
-            β = -b;
-            γ = -c;
-            δ = a;
-        }
+            return (
+                // invert and multiply by the Cayley transform (1  -i \\ 1  i) which isometrically maps the upper half plane to the unit disk.
+                new Complex(d, c), // α 
+                new Complex(-b, -a), // β
+                new Complex(d, -c), // γ
+                new Complex(-b, a) // δ
+            );
+
+        // invert
+        return (
+            d, // α 
+            -b, // β
+            -c, // γ
+            a // δ
+        );
         
-        return;
 
         // This is the Möbius transformation that sends p to i and q to the imaginary axis.
         bool AssignIsometry(bool alternative)

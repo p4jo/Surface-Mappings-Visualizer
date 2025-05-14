@@ -380,7 +380,7 @@ public static class SurfaceGenerator
     {
         var p = parameters.First();
         if (p.connectedSumEmbedding)
-            return AbstractSurface.FromHomeomorphism(
+            return new AbstractSurface(
                 GenusGSurfaceConnectedSumFlat(p.genus, p.punctures).embedding
             );
         return new AbstractSurface(

@@ -4,7 +4,7 @@ using UnityEngine.Serialization;
 
 public class ScaleWithCamera : MonoBehaviour
 {
-    [SerializeField] private Camera camera;
+    [SerializeField] public new Camera camera;
     [SerializeField] private Vector3 baseScale;
 
     void Update()

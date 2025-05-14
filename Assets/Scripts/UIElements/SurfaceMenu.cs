@@ -65,23 +65,33 @@ public class SurfaceMenu: MonoBehaviour
         this.cameraManager = cameraManager;
         this.mainMenu = mainMenu;
         var i = -1;
+        Dictionary<string, Vector3> drawingSurfacePositions = new(); 
+        Dictionary<string, Kamera> windowKameras = new();
         foreach (var (drawingSurfaceName, drawingSurface) in surface.drawingSurfaces)
         {
             i++;
 
+            string windowName = surface.windowAssignment[drawingSurface.Name];
+            bool showOwnWindow = !windowKameras.ContainsKey(windowName);
+            
             SurfaceVisualizer surfaceVisualizer;
             GameObject surfaceVisualizerGameObject;
-            RawImage panel;
+            RawImage panel = null;
             switch (drawingSurface)
             {
                 case ParametricSurface parametricSurface:
                 {
-                    var surfaceVisualizerUI = Instantiate(parametricSurfaceVisualizerUIPrefab, transform);
+                    if (showOwnWindow)
+                    {
+                        var surfaceVisualizerUI = Instantiate(parametricSurfaceVisualizerUIPrefab, transform);
+                        panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
+                    }
+                    
                     surfaceVisualizerGameObject = Instantiate(parametricSurfaceVisualizerPrefab);
-                    panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
                     
                     var parametricSurfaceVisualizer = 
                         surfaceVisualizerGameObject.GetComponentInChildren<ParametricSurfaceVisualizer>();
+                    
                     parametricSurfaceVisualizer.Initialize(parametricSurface);
                     surfaceVisualizer = parametricSurfaceVisualizer;
                     break;
@@ -94,37 +104,68 @@ public class SurfaceMenu: MonoBehaviour
                     // surfaceVisualizer = modelSurfaceVisualizer;
                     //
                     // now same as parametrix
-                    var surfaceVisualizerUI = Instantiate(modelSurfaceVisualizerUIPrefab, transform);
-                    panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
+                    if (showOwnWindow)
+                    {
+                        var surfaceVisualizerUI = Instantiate(parametricSurfaceVisualizerUIPrefab, transform);
+                        panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
+                    }
+                    
                     surfaceVisualizerGameObject = Instantiate(modelSurfaceVisualizerPrefab); // no parent                   
 
                     var modelSurfaceVisualizer = 
                         surfaceVisualizerGameObject.GetComponentInChildren<ModelSurfaceVisualizer>();
                     
-                    modelSurfaceVisualizer.Initialize(modelSurface, panel);
+                    modelSurfaceVisualizer.Initialize(modelSurface);
                     surfaceVisualizer = modelSurfaceVisualizer;
-                    
                     break;
                 }
                 default:
                     throw new NotImplementedException();
             }
-            if (this.geodesicSurface is null && drawingSurface is GeodesicSurface geodesicSurface)
+            if (showOwnWindow && this.geodesicSurface is null && drawingSurface is GeodesicSurface geodesicSurface)
                 this.geodesicSurface = geodesicSurface;
+            
+            
+            if (drawingSurfacePositions.ContainsKey(windowName))
+                surfaceVisualizerGameObject.transform.position =
+                    drawingSurfacePositions[windowName];
+            else
+                surfaceVisualizerGameObject.transform.position =
+                    drawingSurfacePositions[windowName] =
+                        new Vector3(100 * i,0, 0);
 
-            surfaceVisualizerGameObject.transform.position = new Vector3(100 * surfaceVisualizer.id, 0, 0);
                     
-            var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UICamera>();
-            
-            kamera.Initialize(panel, canvas, drawingSurface.MinimalPosition, drawingSurface.MaximalPosition);
-            var closenessThresholdBaseValue = 0.01f / kamera.Cam.orthographicSize / kamera.Cam.orthographicSize;
-            cameraManager.AddKamera(kamera);
-            
-            mainMenu.UIMoved += () => kamera.UIMoved();
+            var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UIKamera>();
+            if (showOwnWindow)
+            {
+                kamera.Initialize(panel, canvas, drawingSurface.MinimalPosition, drawingSurface.MaximalPosition);
+                windowKameras.Add(windowName, kamera);
+                cameraManager.AddKamera(kamera);
+                mainMenu.UIMoved += () => kamera.UIMoved();
+            }
+            else 
+            {
+                // Don't actually use the camera nor the panel.
+                // This will be displayed in the same window (with the same camera) as the surface with name surface.windowAssignment[drawingSurface.Name]
+                kamera.gameObject.SetActive(false);
+                surfaceVisualizer.camera = windowKameras[windowName].Cam;
+            }
+
+            var orthographicSize = kamera.Cam.orthographicSize;
+            var closenessThresholdBaseValue = 0.01f / orthographicSize / orthographicSize;
             
             visualizers.Add(drawingSurfaceName, surfaceVisualizer);
-            surfaceVisualizer.MouseEvent += (location, button) =>
-                MouseEvent(drawingSurface.ClampPoint(location, closenessThresholdBaseValue * kamera.Cam.orthographicSize * kamera.Cam.orthographicSize), drawingSurface.Name, button);
+            surfaceVisualizer.MouseEvent += 
+                (location, button) => {
+                    var orthographicSize = kamera.Cam.orthographicSize;
+                    MouseEvent(
+                        drawingSurface.ClampPoint(
+                            location, 
+                            closenessThresholdBaseValue * orthographicSize * orthographicSize
+                        ),
+                        drawingSurface.Name,
+                        button);
+                };
         }
         if (this.geodesicSurface is null)
             throw new Exception("None of the surfaces provides geodesics");
