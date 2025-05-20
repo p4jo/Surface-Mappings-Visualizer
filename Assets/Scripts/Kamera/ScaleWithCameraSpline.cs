@@ -10,6 +10,8 @@ public class ScaleWithCameraSpline : MonoBehaviour
 
     void Update()
     {
+        // todo: Performance. This triggers a complete rebuild of the mesh of the spline, during zooming.
+        // Could we maybe save zoomed in meshes?
         splineViewer.size = camera.orthographicSize * baseScale;    
     }
     

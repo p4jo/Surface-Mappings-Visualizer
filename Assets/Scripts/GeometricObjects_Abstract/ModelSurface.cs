@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using NUnit.Framework.Constraints;
 using UnityEditor.Analytics;
 using UnityEngine;
@@ -34,11 +33,11 @@ public partial class ModelSurface: GeodesicSurface
         
         public static Color NextColor() => colors.MoveNext() ? colors.Current : Color.white;
 
-        public PolygonSide ApplyMöbiusTransformation(Complex complex, Complex complex1, Complex complex2, Complex complex3) =>
+        public PolygonSide ApplyHomeomorphism(Homeomorphism homeomorphism, string labelAddition = "") =>
             new(
-                label,
-                HyperbolicPlane.Möbius(start.ToComplex(), complex, complex1, complex2, complex3).ToVector2(),
-                HyperbolicPlane.Möbius(end.ToComplex(), complex, complex1, complex2, complex3).ToVector2(),
+                label + labelAddition,
+                homeomorphism.f(start),
+                homeomorphism.f(end),
                 rightIsInside,
                 color
             );
@@ -71,10 +70,28 @@ public partial class ModelSurface: GeodesicSurface
 
     public ModelSurface Copy(string name) => new(name, Genus, punctures.Count, geometryType, sidesAsParameters);
     
-    public ModelSurface Copy(string name, Complex a, Complex b, Complex c, Complex d) => new(name, Genus, punctures.Count, geometryType, (
-            from sideParameter in sidesAsParameters
-            select sideParameter.ApplyMöbiusTransformation(a, b, c, d)        
-        ).ToList()
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="homeomorphism">A homeomorphism of the base surface. The geometry type is set depending on if this is HyperbolicPlane etc.</param>
+    /// <param name="labelAddition"></param>
+    /// <returns></returns>
+    public ModelSurface Copy(string name, Homeomorphism homeomorphism, string labelAddition = "") =>
+        new(name,
+            Genus, 
+            punctures.Count, 
+            geometryType: homeomorphism.target switch
+            {
+                HyperbolicPlane { diskModel: true } => GeometryType.HyperbolicDisk,
+                HyperbolicPlane { diskModel: false } => GeometryType.HyperbolicPlane,
+                EuclideanPlane => GeometryType.Flat,
+                _ => geometryType
+            }, 
+            (
+                from sideParameter in sidesAsParameters
+                select sideParameter.ApplyHomeomorphism(homeomorphism, labelAddition)    
+            ).ToList()
     );
 
     public ModelSurface(string name,
@@ -93,7 +110,10 @@ public partial class ModelSurface: GeodesicSurface
             newSide.Color = side.color;
             var oldSide = this.sides.FirstOrDefault(existingSide => existingSide.Name == newSide.Name);
             if (oldSide != null)
+            {
                 oldSide?.AddOther(newSide);
+                newSide.Name += "*";
+            }
             else
                 sides.Add(newSide);
         }
@@ -274,7 +294,7 @@ public partial class ModelSurface: GeodesicSurface
         if (endPoint is null)
             throw new Exception("The end point is not on the surface.");
 
-        var (_, centerPoint) = DistanceMinimizer(startPoint, endPoint, GeometrySurface);
+        var centerPoint = DistanceMinimizer(startPoint, endPoint, GeometrySurface);
         if (centerPoint == null)
             return GetBasicGeodesic(startPoint, endPoint, name, surface);
         
@@ -286,7 +306,8 @@ public partial class ModelSurface: GeodesicSurface
             centerPoint = centerPoint.SwitchSide(); // we want to go from centerPoint.Position[2] to centerPoint.Position[1]
         var firstSegment = GetBasicGeodesic(startPoint, centerPoint, name + "pt 1", surface);
         var secondSegment = GetBasicGeodesic(centerPoint.SwitchSide(), endPoint, name + "pt 2", surface);
-        return new ConcatenatedCurve(new[] { firstSegment, secondSegment }, name); // .Smoothed(); // TODO: this doesn't work as expected
+        return new ConcatenatedCurve(new[] { firstSegment, secondSegment },
+            name); //.Smoothed(); // todo?: this doesn't work as expected. Shouldn't be necessary, bc. there shouldn't really be an angle jump
     }
 
     public override Curve GetGeodesic(TangentVector startVelocity, float length, string name, GeodesicSurface surface = null)
@@ -363,16 +384,55 @@ public partial class ModelSurface: GeodesicSurface
         return new ConcatenatedCurve(segments, name);
     }
 
-    private (float, ModelSurfaceBoundaryPoint) DistanceMinimizer(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
+    private ModelSurfaceBoundaryPoint DistanceMinimizer(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
     {
+        if (startPoint is not IModelSurfacePoint start || endPoint is not IModelSurfacePoint end)
+            throw new("Start and end point should have the type IModelSurfacePoint");
+        var (optimalSide, _) = DistanceMinimizingDeckTransformation1Side(startPoint, endPoint);
+        var geodesic = baseGeometrySurface.GetGeodesic(startPoint, endPoint.ApplyHomeomorphism(optimalSide.DeckTransformation()), "DistanceMinimizer");
+        var a = start.ClosestBoundaryPoints(optimalSide);
+        var b = end.ClosestBoundaryPoints(optimalSide.other);
+        var t1 = Mathf.Sqrt( a.DistanceSquared(startPoint) );
+        var t2 = Mathf.Sqrt(  b.DistanceSquared(endPoint) );
+        var t = (t1 + (geodesic.Length - t2)) / 2;
+        t = Mathf.Clamp(t, 0, geodesic.Length);
+        var intersectionPoint = ClampPoint(geodesic[t], Mathf.Max(t, geodesic.Length - t) / 5f, allowVertices: false);
+        if (intersectionPoint is ModelSurfaceBoundaryPoint sidePoint)
+            return sidePoint;
+        Debug.LogError($"Intersection point {intersectionPoint} is not a ModelSurfaceBoundaryPoint, but {intersectionPoint.GetType()}");
+        return null;
+    }
+
+    private (ModelSurfaceSide optimalSide, float shortestLength) DistanceMinimizingDeckTransformation1Side(Point startPoint,
+        Point endPoint)
+    {
+        ModelSurfaceSide optimalSide = null;
+        float shortestLength = GeometrySurface.DistanceSquared(startPoint, endPoint);
+        foreach (var side in AllSideCurves)
+        {
+            float distance = GeometrySurface.DistanceSquared(startPoint, endPoint.ApplyHomeomorphism(side.DeckTransformation()));
+
+            if (!(distance < shortestLength)) continue;
+            shortestLength = distance;
+            optimalSide = side;
+        }
+        return (optimalSide, shortestLength);
+    }
+
+    private ModelSurfaceBoundaryPoint DistanceMinimizerOld(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
+    {
+        // removed because of TODO: Take the deck transformation φ on the base surface that belongs to crossing this side and return the (projection) of the geodesic on the base surface from start to φ(end).
+
         var shortestLength = baseGeometrySurface.DistanceSquared(startPoint, endPoint);
         ModelSurfaceBoundaryPoint result = null;
         if (startPoint is not IModelSurfacePoint start || endPoint is not IModelSurfacePoint end)
             throw new Exception("Start and end point should have the type IModelSurfacePoint");
         foreach (var side in sides)
         {
-            var (a, b) = start.ClosestBoundaryPoints(side);
-            var (c, d) = end.ClosestBoundaryPoints(side);
+            var a = start.ClosestBoundaryPoints(side);
+            var b = start.ClosestBoundaryPoints(side.other);
+            var c = end.ClosestBoundaryPoints(side);
+            var d = end.ClosestBoundaryPoints(side.other);
             if (a == null || b == null || c == null || d == null)
                 throw new Exception("Lazy Programmer!");
 
@@ -392,13 +452,19 @@ public partial class ModelSurface: GeodesicSurface
             float LengthVia(ModelSurfaceBoundaryPoint x) =>
                 baseGeometrySurface.DistanceSquared(x, startPoint) + baseGeometrySurface.DistanceSquared(x, endPoint); // this minimizes over the positions
         }
-        return (shortestLength, result);
+        return result;
     }
 
-    public override float DistanceSquared(Point startPoint, Point endPoint) => Mathf.Pow(GetGeodesic(startPoint, endPoint, "Distance").Length , 2); // todo: extremely inefficient
+    public override float DistanceSquared(Point startPoint, Point endPoint) => 
+        DistanceMinimizingDeckTransformation1Side(startPoint, endPoint).Item2;
+    // sped up by 50 times from using GetGeodesic(....).Length ^ 2
 
-    public override Point ClampPoint(Vector3? pos, float closenessThreshold) // todo: this is extremely inefficient
+    public override Point ClampPoint(Vector3? point, float closenessThreshold) => 
+        ClampPoint(point, closenessThreshold, allowVertices: true);
+
+    private Point ClampPoint(Vector3? pos, float closenessThreshold, bool allowVertices) 
     {
+        // todo: Performance. This is extremely inefficient and actually takes most of the time of the whole program.
         const float secondaryClosestSideSquareDistanceFactor = 1.5f;
         if (pos == null) return null;
         var p = pos.Value; 
@@ -407,9 +473,9 @@ public partial class ModelSurface: GeodesicSurface
         
         var distances = (
             from side in AllSideCurves 
-            let x = side.curve.GetClosestPoint(p, closenessThreshold * 0.1f) 
-            let pt = new ModelSurfaceBoundaryPoint(side, x.Item1)
-            select (pt, x.Item2.DistanceSquared(point))
+            let t = side.curve.GetClosestPoint(p) // this is where the most time is spent!
+            let pt = new ModelSurfaceBoundaryPoint(side, t) // = side[t]
+            select (pt, side.curve[t].DistanceSquared(point)) // here pt.DistanceSquared(point) would minimize over this side and the other side, so it would give the same result for both connected sides (which would be wrong)
         ).ToArray();
         var bestCloseness = distances.Min(x => x.Item2);
         var closestPoints = from x in distances where x.Item2 <= bestCloseness * secondaryClosestSideSquareDistanceFactor select x;
@@ -421,11 +487,13 @@ public partial class ModelSurface: GeodesicSurface
             if (closeness < closenessThreshold)
             {
                 if (res is ModelSurfaceVertex) continue;
-                if (time.ApproximateEquals(0))
-                    res = vertices[closestSide.vertexIndex];
-                else if (time.ApproximateEquals(closestSide.curve.Length))
-                    res = vertices[closestSide.other.vertexIndex];
-                else res = closestPt;
+                res = allowVertices switch
+                {
+                    true when time.ApproximateEquals(0) => vertices[closestSide.vertexIndex],
+                    true when time.ApproximateEquals(closestSide.curve.Length) => vertices[
+                        closestSide.other.vertexIndex],
+                    _ => closestPt
+                };
                 continue;
             }
             // closestPtPosition == closestPt (but as a BasicPoint probably, so it is already calculated)
@@ -448,6 +516,39 @@ public partial class ModelSurface: GeodesicSurface
     /// <param name="position"></param>
     /// <returns></returns>
     public override TangentSpace BasisAt(Point position) => new(position, Matrix3x3.InvertZ);
+    
+    public Homeomorphism SwitchHyperbolicModel()
+    {
+        Homeomorphism baseHomeomorphism;
+        string nameAddition;
+        switch (geometryType)
+        {
+            case GeometryType.HyperbolicDisk:
+                baseHomeomorphism = HyperbolicPlane.CayleyTransform.Inverse;
+                nameAddition = " [halfplane]";
+                break;
+            case GeometryType.HyperbolicPlane:
+                baseHomeomorphism = HyperbolicPlane.CayleyTransform;
+                nameAddition = " [disk]";
+                break;
+            default:
+                return null;
+        }
+        var newSurface = Copy(Name + nameAddition, baseHomeomorphism, nameAddition);
+        return new Homeomorphism(this, newSurface, baseHomeomorphism.f, baseHomeomorphism.fInv, baseHomeomorphism.df,
+            baseHomeomorphism.dfInv, "Cayley transform");
+    }
+
+    public Homeomorphism ToKleinModel()
+    {
+        if (geometryType != GeometryType.HyperbolicDisk)
+            return null;
+        Homeomorphism baseHomeomorphism = HyperbolicPlane.ToKleinModel;
+        var nameAddition = " [Klein]";
+        var newSurface = Copy(Name + nameAddition, baseHomeomorphism, nameAddition);
+        return new Homeomorphism(this, newSurface, baseHomeomorphism.f, baseHomeomorphism.fInv, baseHomeomorphism.df,
+            baseHomeomorphism.dfInv, "Disk To Klein model");
+    }
 }
 
 public class ModelSurfaceInteriorPoint : BasicPoint, IModelSurfacePoint
@@ -458,21 +559,11 @@ public class ModelSurfaceInteriorPoint : BasicPoint, IModelSurfacePoint
         this.closestBoundaryPoints = closestBoundaryPoints;
     }
 
-    public (ModelSurfaceBoundaryPoint, ModelSurfaceBoundaryPoint) ClosestBoundaryPoints(ModelSurfaceSide side)
-    {
-        ModelSurfaceBoundaryPoint a = null, b = null;
-        foreach (var boundaryPoint in closestBoundaryPoints)
-        {
-            if (boundaryPoint.side == side)
-                a = boundaryPoint;
-            else if (boundaryPoint.side == side.other)
-                b = boundaryPoint;
-        }
-        return (a, b);
-    }
+    public ModelSurfaceBoundaryPoint ClosestBoundaryPoints(ModelSurfaceSide side) => 
+        closestBoundaryPoints.First(boundaryPoint => boundaryPoint.side == side);
 }
 
 public interface IModelSurfacePoint
 {
-    (ModelSurfaceBoundaryPoint, ModelSurfaceBoundaryPoint) ClosestBoundaryPoints(ModelSurfaceSide side);
+    ModelSurfaceBoundaryPoint ClosestBoundaryPoints(ModelSurfaceSide side);
 }

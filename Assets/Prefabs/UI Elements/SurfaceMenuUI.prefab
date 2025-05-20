@@ -447,10 +447,10 @@ RectTransform:
   - {fileID: 7609118218973020171}
   m_Father: {fileID: 5402010997301542240}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 50, y: -40}
-  m_SizeDelta: {x: 100, y: 20}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &9061596954934517660
 CanvasRenderer:
@@ -718,7 +718,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &5402010997301542240
 RectTransform:
   m_ObjectHideFlags: 0
@@ -737,10 +737,10 @@ RectTransform:
   - {fileID: 795881270372846965}
   m_Father: {fileID: 4263936745799075017}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 65, y: -65}
-  m_SizeDelta: {x: 100, y: 110}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &5053154792037069110
 MonoBehaviour:
@@ -803,10 +803,10 @@ RectTransform:
   - {fileID: 1517336616714054967}
   m_Father: {fileID: 5402010997301542240}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 50, y: -70}
-  m_SizeDelta: {x: 100, y: 20}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &2025005293969400874
 CanvasRenderer:
@@ -957,10 +957,10 @@ RectTransform:
   - {fileID: 1576349962420862429}
   m_Father: {fileID: 5402010997301542240}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 50, y: -100}
-  m_SizeDelta: {x: 100, y: 20}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &8081389659490745530
 CanvasRenderer:
@@ -1085,10 +1085,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4263936745799075017}
+  - component: {fileID: 4991592527981686739}
   - component: {fileID: 3835809519100849990}
   - component: {fileID: 4804414378177239328}
   - component: {fileID: 2901821052067462677}
-  - component: {fileID: 4991592527981686739}
   m_Layer: 5
   m_Name: SurfaceMenuUI
   m_TagString: Untagged
@@ -1116,6 +1116,28 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 1000, y: 200}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &4991592527981686739
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5480847993651993140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5e20706859dc4577a577af517b99a55d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  parametricSurfaceVisualizerUIPrefab: {fileID: 1296885786719671624, guid: 8fc7b3aa27aa5204a999c309433e3c3e, type: 3}
+  parametricSurfaceVisualizerPrefab: {fileID: 7141618544272409706, guid: c08f04b5205d08c4a93d090c3b25e7db, type: 3}
+  modelSurfaceVisualizerUIPrefab: {fileID: 1296885786719671624, guid: 8fc7b3aa27aa5204a999c309433e3c3e, type: 3}
+  modelSurfaceVisualizerPrefab: {fileID: 7141618544272409706, guid: 80bf56c013f48b849b819bac73292898, type: 3}
+  mainMenu: {fileID: 0}
+  currentCurveName: 
+  currentCurveColor: {r: 0, g: 0, b: 0, a: 0}
+  previewPointColor: {r: 0, g: 0, b: 0, a: 0}
+  previewCurveColor: {r: 0, g: 0, b: 0, a: 0}
+  closenessThresholdBaseValue: 0.001
 --- !u!222 &3835809519100849990
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1170,27 +1192,6 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: 0
   m_LayoutPriority: 1
---- !u!114 &4991592527981686739
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5480847993651993140}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5e20706859dc4577a577af517b99a55d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  parametricSurfaceVisualizerUIPrefab: {fileID: 1296885786719671624, guid: 8fc7b3aa27aa5204a999c309433e3c3e, type: 3}
-  parametricSurfaceVisualizerPrefab: {fileID: 7141618544272409706, guid: c08f04b5205d08c4a93d090c3b25e7db, type: 3}
-  modelSurfaceVisualizerUIPrefab: {fileID: 1296885786719671624, guid: 8fc7b3aa27aa5204a999c309433e3c3e, type: 3}
-  modelSurfaceVisualizerPrefab: {fileID: 7141618544272409706, guid: 80bf56c013f48b849b819bac73292898, type: 3}
-  mainMenu: {fileID: 0}
-  currentCurveName: 
-  currentCurveColor: {r: 0, g: 0, b: 0, a: 0}
-  previewPointColor: {r: 0, g: 0, b: 0, a: 0}
-  previewCurveColor: {r: 0, g: 0, b: 0, a: 0}
 --- !u!1 &7169205348540684095
 GameObject:
   m_ObjectHideFlags: 0
@@ -1226,10 +1227,10 @@ RectTransform:
   - {fileID: 1982294580089502919}
   m_Father: {fileID: 5402010997301542240}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 50, y: -10}
-  m_SizeDelta: {x: 100, y: 20}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &5380963605708329830
 CanvasRenderer:

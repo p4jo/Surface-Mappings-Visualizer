@@ -33,10 +33,6 @@ public partial class Curve: IDrawnsformable<Curve>
         new Color32(108, 108, 108, 255),
         new Color32(47, 196, 107, 255),
     };
-    
-    // public float Width { get; set; } = 0.1f;
-    // todo: width - min max behaivor relative to camera zoom or absolute...?
-
 }
 
 public partial class TransformedCurve

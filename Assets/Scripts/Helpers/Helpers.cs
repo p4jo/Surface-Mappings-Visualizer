@@ -101,6 +101,13 @@ public static class Helpers
             Mathf.Min(a.z, b.z)
         );
     }
+    
+    public static bool AtLeast(this Vector3 a, Vector3 b, bool ignoreZ = false) => 
+        a.x >= b.x && a.y >= b.y && (ignoreZ || a.z >= b.z);
+    
+    public static bool AtMost(this Vector3 a, Vector3 b, bool ignoreZ = false) =>
+        a.x <= b.x && a.y <= b.y && (ignoreZ || a.z <= b.z);
+    
     public static (T, float) ArgMin<T>(this IEnumerable<T> enumerable, System.Func<T, float> selector)
     {
         var min = float.MaxValue;

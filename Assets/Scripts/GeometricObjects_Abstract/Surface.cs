@@ -53,9 +53,9 @@ public abstract class GeodesicSurface: Surface
             let start = pointArray[i]
             let end = pointArray[i+1]
             select GetGeodesic(start, end, name);
-        // todo: optimize over possible tangent vectors at the concatenation -> do this in ConcatenatedCurve!
+        
         return new ConcatenatedCurve(geodesicSegments, name, smoothed: true);
-        // todo: shouldn't smooth at the visual jump points, only at the actual concatenation points above. This could be done with "ignoreSubConcatenatedCurves", as we do, but only if we reintroduce nested concatenated curves. Currently, there is no distinction between the kinds of concatenations; Apart from the "angle jump" property of singular points, if it works
+        // done: shouldn't smooth at the visual jump points, only at the actual concatenation points above. This could be done with "ignoreSubConcatenatedCurves", as we do, but only if we reintroduce nested concatenated curves. Currently, there is no distinction between the kinds of concatenations; Apart from the "angle jump" property of singular points, if it works
     }
 
     public abstract float DistanceSquared(Point startPoint, Point endPoint);
@@ -160,7 +160,7 @@ public abstract class GeodesicSurface: Surface
 
         return new ParametrizedCurve(curve.Name + " by arclength", lastLength + lengths[^1], surface, DerivativeAt, 
             from jumpTime in curve.VisualJumpTimes select ArclengthFromTime(jumpTime)) { 
-            // todo: these jump times are not accurate enough for displaying the curve probably...
+            // todo: Feature / Bug. These jump times are not accurate enough for displaying the curve probably...
             // When displaying the curve, one could display the original curve?
             Color = curve.Color
         };
@@ -271,7 +271,7 @@ public class ShiftedCurve : Curve
                     while (time >= t - 3 * res && time > (_visualJumpTimes.Count == 0 ? 0 : _visualJumpTimes.LastOrDefault()))
                     {
                         localCurveJump = LocalCurveJump(time);
-                        if (localCurveJump >= 0f && localCurveJump >= shift(t))
+                        if (localCurveJump >= MathF.Abs(shift(time)))
                             break;
                         time -= res;
                     }
@@ -281,7 +281,7 @@ public class ShiftedCurve : Curve
                     while (time <= t + 3 * res && time < curve.Length)
                     {
                         localCurveJump = LocalCurveJump(time);
-                        if (localCurveJump <= shift(t))
+                        if (localCurveJump <= MathF.Abs(shift(time)))
                             break;
                         time += res;
                     } 
@@ -301,7 +301,7 @@ public class ShiftedCurve : Curve
                 var visualJumpTime = LocalCurve(t, shift(t) * 3).VisualJumpTimes.FirstOrDefault();
                 return visualJumpTime == 0f ? -1f : visualJumpTime;
             }
-            // todo: make more efficient (do it like in the definition of geodesic with start vector)
+            // todo: Performance. Make more efficient (do it like in the definition of geodesic with start vector)
             
         }
     }

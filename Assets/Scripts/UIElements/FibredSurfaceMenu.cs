@@ -164,7 +164,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     {
         var suggestion = currentVertex.suggestion ?? (currentVertex.suggestion = FibredSurface.NextSuggestion());
         if (suggestion == FibredSurface.AlgorithmSuggestion.Finished) return false;
-        // todo: asynchronous loading of suggestions?
+        // todo: Performance. Also wait for a frame here?
         DoSuggestion(suggestion.buttons.First(), new []{ suggestion.options.First() });
         return true;
     }

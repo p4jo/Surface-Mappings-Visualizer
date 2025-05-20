@@ -31,28 +31,40 @@ public class MainMenu: MonoBehaviour
         // var surface = new AbstractSurface(testSurface);
         var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
         var surface = SurfaceGenerator.CreateSurface(parameters);
-        if (surface.drawingSurfaces.Values.FirstOrDefault() is ModelSurface { geometryType : GeometryType.HyperbolicDisk } modelSurface)
+        if (surface.drawingSurfaces.Values.FirstOrDefault() is ModelSurface modelSurface)
         {
-            foreach (var side in modelSurface.sides)
-            {
-                if (side.curve is not HyperbolicGeodesicSegment geodesic) throw new Exception("Geodesic expected");
-                if (side.other.curve is not HyperbolicGeodesicSegment geodesic2) throw new Exception("Geodesic expected");
-                // the Möbius transformation saved in geodesic sends the usual geodesic i e^t to the geodesic
-                // thus the Möbius transformation sending the first geodesic to the second is
-                // geodesic2.MöbiusTransformation * geodesic.MöbiusTransformation.Inverse;
-                var a = geodesic2.α * geodesic.δ - geodesic2.β * geodesic.γ;
-                var b = geodesic2.β * geodesic.α - geodesic2.α * geodesic.β;
-                var c = geodesic2.γ * geodesic.δ - geodesic2.δ * geodesic.γ;
-                var d = geodesic2.δ * geodesic.α - geodesic2.γ * geodesic.β;
-                var möbiusTransformation = HyperbolicPlane.MöbiusTransformation(
-                    a, b, c, d, modelSurface, modelSurface.Copy(modelSurface.Name + " [" + side.Name + "]", a, b, c, d)
+            foreach (var side in modelSurface.AllSideCurves) 
+                surface.AddHomeomorphism(
+                    side.DeckTransformation(),
+                    drawTargetInSameWindowAsSource: true
                 );
-                surface.AddHomeomorphism(möbiusTransformation, drawTargetInSameWindowAsSource: true);
+            var modelChange = modelSurface.SwitchHyperbolicModel();
+            if (modelChange != null)
+            {
+                surface.AddHomeomorphism(modelChange);
+                if (modelChange.target is ModelSurface modelChangeTarget)
+                    foreach (var side in modelChangeTarget.AllSideCurves) 
+                        surface.AddHomeomorphism(
+                            side.DeckTransformation(),
+                            drawTargetInSameWindowAsSource: true
+                        );
+            }
+            var toKleinModel = modelSurface.ToKleinModel();
+            if (toKleinModel != null)
+            {
+                surface.AddHomeomorphism(toKleinModel);
+                // if (ToKleinModel.target is ModelSurface modelChangeTarget)
+                //     foreach (var side in modelChangeTarget.AllSideCurves) 
+                //         surface.AddHomeomorphism(
+                //             side.DeckTransformation(), // not implemented for Klein model. It would act as if it is a euclidean plane
+                //             drawTargetInSameWindowAsSource: true
+                //         );
             }
         }
         Initialize(surface);
     }
-    
+
+
     public void Initialize(AbstractSurface surface)
     {
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
@@ -131,7 +143,7 @@ public class MainMenu: MonoBehaviour
         surfaceMenus.Add(menu);
     }
 
-    public void InitializeFibredSurface() // todo: let user draw / select own graph?
+    public void InitializeFibredSurface() // todo: Feature. Let the user draw / select own graph?
     {
         if (fibredSurfaceMenu.FibredSurface is not null) return;
         

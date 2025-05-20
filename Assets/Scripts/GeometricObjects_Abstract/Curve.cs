@@ -61,45 +61,47 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     public virtual Curve Reversed() => reverseCurve ??= new ReverseCurve(this);
 
     /// <summary>
-    /// 
+    /// Get the closest point in spline segment. Used for projection
+    /// Copied and slightly modified from Dreamteck Splines
     /// </summary>
-    /// <returns>if this is a ModelSurfaceSide, the returned Point is a ModelSurfaceBoundaryPoint</returns>
-    public virtual (float, Point) GetClosestPoint(Vector3 point, float precision = 1e-5f)
+    private float GetClosestTimeInternal(int iterations, Point point, float start, float end, int slices)
     {
-        // If curve has more than one position at any time, we should optimize over all of them? This is not clear from the curve.
-        // Thus this has to be implemented in the subclasses that have multiple positions. Done for the ModelSurfaceSide.
-        (float, Point) f(float t)
+        // TODO: Performance. This is responsible for most of the time when the program freezes.
+        if (start >= end)
+            throw new ArgumentException("Start time must be before the end time");
+        while (--iterations >= 0)
         {
-            var pointOnCurve = this[t]; 
-            return ((pointOnCurve.Position - point).sqrMagnitude, pointOnCurve);
-            // return (pointOnCurve.Distance(point), pointOnCurve);
-        }
+            var closestTime = 0.0f;
+            var closestDistance = Mathf.Infinity;
+            var tick = (end - start) / slices;
+            var t = start;
+            while (true)
+            {
+                float dist = point.DistanceSquared(ValueAt(t));
+                if (dist < closestDistance)
+                {
+                    closestDistance = dist;
+                    closestTime = t;
+                }
 
-        float fDeriv(float t)
-        {
-            var (pointOnCurve, vector) = DerivativeAt(t);
-            return 2 * Vector3.Dot(vector, pointOnCurve - point);
-        }
+                if (t >= end) break;
+                t = Mathf.Clamp(t + tick, start, end);
+            }
 
-        float learningRate = 0.1f;
-        float t = Length / 2;
-        for (var i = 0; i < 1000; i++)
-        {
-            float gradient = fDeriv(t);
-            var (dist, pos) = f(t);
-            float change = learningRate * gradient * Mathf.Clamp(dist, 1, 100);
-            t -= change;
-            if (t < 0) return (0, StartPosition);
-            if (t > Length) return (Length, EndPosition);
-
-            if (Mathf.Abs(change) < precision)
-                return (t, pos);
-            if (dist < 1e-4)
-                return (t, pos);
+            start = Mathf.Clamp(closestTime - tick, start, end);
+            end = Mathf.Clamp(closestTime + tick, start, end);
         }
-        Debug.Log("Warning: Curve.GetClosestPoint did not converge in 1000 steps");
-        return (t, this[t]);
+        
+        float startDist = point.DistanceSquared(ValueAt(start));
+        float endDist = point.DistanceSquared(ValueAt(end));
+        if (startDist < endDist) return start;
+        if (endDist < startDist) return end;
+        return (start + end) / 2;
     }
+
+    private const int GetClosestPointIterations = 4;
+    public virtual float GetClosestPoint(Vector3 point) => 
+        GetClosestTimeInternal(GetClosestPointIterations, point, 0, Length, 10);
 
     public virtual Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => homeomorphism.isIdentity ? this : new TransformedCurve(this, homeomorphism);
 
@@ -161,7 +163,7 @@ public partial class TransformedCurve : Curve
     public override Surface Surface => homeomorphism.target;
 
     public override IEnumerable<float> VisualJumpTimes => curve.VisualJumpTimes;
-    // TODO: If this maps to a model surface, we need to check for visual jumps in the transformed curve!
+    // TODO: Feature / Bug. Implement this! If this maps to a model surface, we need to check for visual jumps in the transformed curve!
     // If this maps to a parametrized surface, from a model surface, we could forget these
 
     public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
@@ -225,6 +227,7 @@ public partial class ConcatenatedCurve : Curve
                             yield return (singularPoint.time, boundaryPoint2);
                         else
                         {
+                            // todo: Performance. Can we avoid the expensive calls to ClampPoint?
                             var pt1 = modelSurface.ClampPoint(singularPoint.incomingCurve.EndPosition, 1e-2f);
                             var pt2 = modelSurface.ClampPoint(singularPoint.outgoingCurve.StartPosition, 1e-2f);
                             if (pt1 is ModelSurfaceBoundaryPoint p1 && pt2 is ModelSurfaceBoundaryPoint p2 &&
@@ -378,7 +381,7 @@ public partial class ConcatenatedCurve : Curve
                 nextCurve = segments[0];
             else
                 break;
-            timeA += curve.Length; // todo: this seems to not work correctly in some cases (the time is the 0.1f*Length off in the smoothed curves) and this compounds.
+            timeA += curve.Length; // todo: Bug. this seems to not work correctly in some cases (the time is the 0.1f*Length off in the smoothed curves) and this compounds.
             
             var (herePosIndex, therePosIndex, distanceSquared) = curve.EndPosition.ClosestPositionIndices(nextCurve.StartPosition);
             // if (!curve.EndPosition.Equals(nextCurve.StartPosition))
@@ -386,10 +389,16 @@ public partial class ConcatenatedCurve : Curve
                 nextCurve.StartVelocity.VectorAtPositionIndex(therePosIndex));
             bool actualJump = distanceSquared > 1e-6;
             // if distance is too large, this means, these points are actually different; even considering multiple positions.
-            // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might me far apart (converging to the different positions).
+            // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might be far apart (converging to the different positions).
             bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
+            if (visualJump && curve.EndPosition is not ModelSurfaceBoundaryPoint || 
+                nextCurve.StartPosition is not ModelSurfaceBoundaryPoint)
+            {
+                Debug.LogWarning($"Visual jump between {curve.Name} and {nextCurve.Name} but these are not saved with boundary points as endpoints.");
+            }
             if (actualJump || angleJump || visualJump)
             {
+                // todo: Performance. Save the corresponding model surface boundary points in case of a visual jump. This might (or might not) improve performance in the calls to VisualJumpPoints, which is called in the property FibredSurface.MovementForFolding.Badness which is supposed to be completely combinatorial (i.e. without calls to GetClosestPoint or similar geometric functions). 
                 res.Add(new ConcatenationSingularPoint
                 {
                     incomingCurve = curve,

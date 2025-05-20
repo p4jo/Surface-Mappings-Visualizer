@@ -13,7 +13,7 @@ using Vector3 = UnityEngine.Vector3;
 [Serializable]
 public struct SurfaceParameter
 {
-    // todo: this should be split into two tpyes:
+    // todo: Feature. this should be split into two tpyes:
     // One being basically the input for the constructor of Modelsurface
     // One describing embedded surfaces, e.g. where the genera are. This affects only the embeddings (homeomorphisms)
     public int genus, punctures;
@@ -134,7 +134,7 @@ public static class SurfaceGenerator
     }
     private static Matrix3x3 dFlatTorusEmbedding(Vector2 point, float largeRadius, float smallRadius)
     {
-        // todo: make this more efficient
+        // todo: Performance (non-critical)
         var (φ, θ) = (point.x, point.y);
         var r = largeRadius + smallRadius * Mathf.Sin(θ);
         var dfdφ = new Vector3(-r * Mathf.Sin(φ), r * Mathf.Cos(φ), 0);
@@ -314,7 +314,7 @@ public static class SurfaceGenerator
                 FixSmallX(ref x, ref y, ref r);
                 return NewTorus(Inv(x, y, r));
             }
-            // todo: interpolate (e.g. using a spline surface, e.g. the NURBS
+            // todo: Feature. Interpolate (e.g. using a spline surface, e.g. the NURBS
             var t = (r - 1) / pufferZone;
             var dir = new Vector2(x, y) / r;
             
@@ -338,7 +338,7 @@ public static class SurfaceGenerator
         {
             if (errorForBeingOnTorus(pt - center, largeRadius, smallRadius) < 1e-3)
                 return NewTorusInverse(pt - center);
-            // todo: inverse of the interpolated sections
+            // todo: Feature. Inverse of the interpolated sections
             return originalInverse(pt);
         }
         
@@ -367,12 +367,12 @@ public static class SurfaceGenerator
                 cutoutCenter + new Vector2(cutoutRadius * Mathf.PI * dir.x, cutoutRadius * Mathf.PI * dir.y);
             var end = NewTorus(closestPointOnNew);
             var v = (end - start) / pufferZone; 
-            // todo: derivative of closestPointOnNew, closestPointOnOriginal, start, end
+            // todo: Feature. Derivative of closestPointOnNew, closestPointOnOriginal, start, end
 
             var (drdx, drdy) = Dr(x, y);
             return new Matrix3x3(v * drdx, v * drdy, Vector3.forward); // this is wrong
-            // todo: do the interpolation
-            // todo: make the derivative function entangled with the normal function for less redundancy
+            // todo: Feature. Do the interpolation
+            // todo: Clean Code. Make the derivative function entangled with the normal function for less redundancy
         }
     }
 
@@ -389,7 +389,7 @@ public static class SurfaceGenerator
         );
         foreach (var parameter in parameters)
         {
-            //todo
+            // todo: Feature.
         }
     }
 

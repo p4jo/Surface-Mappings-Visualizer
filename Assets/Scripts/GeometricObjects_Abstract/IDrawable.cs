@@ -10,6 +10,9 @@ public interface IDrawable
 { // these are things that our visualization can show (has to handle)
     string Name { get; set; }
     Color Color { get; set; }
+    // TODO: Don't make it the responsibility of the implementer to copy these properties.
+    // TODO: Add more properties. Style for curves (dashed, width, etc.). Add Hoverability, i.e. make IToolTip, so that we can select / highlight curves etc.
+    // btw. there is a Raycast method in Dreamteck.Spline.
     
     IDrawable Copy();
     

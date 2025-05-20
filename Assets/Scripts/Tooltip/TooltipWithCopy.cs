@@ -7,6 +7,6 @@ public class TooltipWithCopy : Tooltip {
     }
     public override void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) {
         GUIUtility.systemCopyBuffer = copyableString;
-        // TODO: fix this for mobile or WebGL
+        // TODO: Feature / Bug. Fix this for mobile or WebGL (more relevant for Graphicayley!)
     }
 }

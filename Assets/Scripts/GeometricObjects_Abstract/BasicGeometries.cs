@@ -50,7 +50,7 @@ public abstract class Plane : GeodesicSurface
 
 public class HyperbolicPlane : Plane
 {
-    private readonly bool diskModel;
+    public readonly bool diskModel;
     public HyperbolicPlane(bool diskModel, string name = "Hyperbolic Plane") : base(name, 0, true)
     {
         this.diskModel = diskModel;
@@ -97,11 +97,38 @@ public class HyperbolicPlane : Plane
             "Möbius(" + a + ", " + b + ", " + c + ", " + d + ")"
         );
     
-    static Homeomorphism CayleyTransform = MöbiusTransformation(
+    /// <summary>
+    /// The Cayley transform is a homeomorphism from the Poincaré half plane to the Poincaré disk.
+    /// </summary>
+    public static readonly Homeomorphism CayleyTransform = MöbiusTransformation(
         -Complex.One, Complex.ImaginaryOne, Complex.One, Complex.ImaginaryOne,
         new HyperbolicPlane(false, "Poincaré Half Plane"),
         new HyperbolicPlane(true, "Poincaré Disk")
-    ); 
+    );
+
+    public static readonly Homeomorphism ToKleinModel = new(
+        new HyperbolicPlane(true, "Poincaré Disk"),
+        new EuclideanPlane( "Klein Disk"), // todo? add the possibility to the class
+        z => 2f / (1 + z.sqrMagnitude) * z, // we assume that z.z == 0
+        z => 1f / (1 + Mathf.Sqrt(1 - z.sqrMagnitude)) * z, // we assume that z.z == 0
+        z =>
+        {
+            float scale = 1f / (1 + z.sqrMagnitude);
+            return 2 * scale * scale * new Matrix3x3(
+                1 + z.y * z.y - z.x * z.x, -2 * z.x * z.y,
+                -2 * z.x * z.y, 1 - z.y * z.y + z.x * z.x
+            );
+        },
+        z =>
+        {
+            float sqrt = Mathf.Sqrt(1 - z.sqrMagnitude);
+            float scale = 1 + sqrt;
+            return (1 / scale / scale / sqrt) * new Matrix3x3(
+                scale - z.y * z.y, z.x * z.y,
+                z.x * z.y, scale - z.x * z.x);
+        },
+         "Poincaré Disk to Klein Disk"
+    );
 }
 
 public class EuclideanPlane : Plane
@@ -115,6 +142,26 @@ public class EuclideanPlane : Plane
         => new FlatGeodesicSegment(tangentVector, length, surface ?? this, name);
 
     public override float DistanceSquared(Point startPoint, Point endPoint) => startPoint.DistanceSquared(endPoint); // this minimizes over the positions
+
+    public static Homeomorphism Isometry(TangentVector lineStartVelocity, TangentVector line2StartVelocity, ModelSurface source, ModelSurface target)
+    {
+        var a = lineStartVelocity.point.Position.ToComplex();
+        var b = line2StartVelocity.point.Position.ToComplex();
+        var c = line2StartVelocity.vector.ToComplex() / lineStartVelocity.vector.ToComplex();
+        var cMatrix = c.ToMatrix3x3();
+        var cInv = 1 / c;
+        var cInvMatrix = cInv.ToMatrix3x3();
+        // this maps lineStartVelocity to the line2StartVelocity
+        return new(
+            source,
+            target,
+            input => ((input.ToComplex() - a) * c + b).ToVector3(),
+            input => ((input.ToComplex() - b) * cInv + a).ToVector3(),
+            _ => cMatrix,
+            _ => cInvMatrix,
+            "Isometry from " + lineStartVelocity + " to " + line2StartVelocity
+        );
+    }
 }
 
 public class Rectangle : EuclideanPlane
@@ -294,12 +341,13 @@ public class CurveStrip : ParametricSurface
             var (s, t) = (pos.x, pos.y);
             var (pt, basis) = curve.BasisAt(t);
             return pt.Position + basis.b.normalized * (s * width);
+            // todo: Feature: Reuse the code from ShiftedCurve!
         }
 
         Vector3 StripEmbeddingInverse(Vector3 pos)
         { // copilot!
-            (float t, Point pt)  = curve.GetClosestPoint(pos);
-            var (_, basis) = curve.BasisAt(t);
+            var t = curve.GetClosestPoint(pos);
+            var (pt, basis) = curve.BasisAt(t);
             var s = Vector3.Dot(pos - pt.Position, basis.b.normalized) / width;
             if (s > width || s < 0)
                 Debug.Log("tried to apply inverse strip embedding outside of the strip");
@@ -321,7 +369,8 @@ public class CurveStrip : ParametricSurface
     public override Point ClampPoint(Vector3? point, float closenessThreshold)
     {
         if (!point.HasValue) return null;
-        var (t, pt) = curve.GetClosestPoint(point.Value);
+        float t = curve.GetClosestPoint(point.Value);
+        var pt = curve.ValueAt(t);
         
         if ((point.Value - pt.Position).sqrMagnitude > Mathf.Pow(baseSurface.width, 2))
             return null;

@@ -30,7 +30,7 @@ public class ParametricSurface: Surface
     { 
         // this should only be called on hits of ray with collider, so these shouldn't be too far.
         // Still we probably need to optimize over both variables
-        // todo
+        // todo: Feature. ClampPoint for parametric surfaces.
         return point.HasValue ? new BasicPoint(point.Value) : null;
     }
 
@@ -40,6 +40,7 @@ public class ParametricSurface: Surface
     }
     //     => embedding.source.BasisAt(
     //     position.ApplyHomeomorphism(embedding.Inverse)
-    // ).ApplyHomeomorphism(embedding); // todo: inefficient: a) we transform the point by the homeomorphism and then back... b) the source is a model surface which has a very constant basis.
+    // ).ApplyHomeomorphism(embedding);
+    // inefficient: a) we transform the point by the homeomorphism and then back... b) the source is a model surface which has a very constant basis.
 
 }

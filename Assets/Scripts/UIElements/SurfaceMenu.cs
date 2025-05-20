@@ -52,6 +52,7 @@ public class SurfaceMenu: MonoBehaviour
     private readonly HashSet<(IDrawnsformable, string)> currentStuffShown = new();
     [SerializeField] private Color previewPointColor;
     [SerializeField] private Color previewCurveColor;
+    [SerializeField] private float closenessThresholdBaseValue = 0.01f;
 
     public event Action<IDrawnsformable, string> StuffShown;
     public event Action<IDrawnsformable, string> StuffDeleted;
@@ -120,7 +121,7 @@ public class SurfaceMenu: MonoBehaviour
                     break;
                 }
                 default:
-                    throw new NotImplementedException();
+                    throw new NotImplementedException(); // fine
             }
             if (showOwnWindow && this.geodesicSurface is null && drawingSurface is GeodesicSurface geodesicSurface)
                 this.geodesicSurface = geodesicSurface;
@@ -151,20 +152,34 @@ public class SurfaceMenu: MonoBehaviour
                 surfaceVisualizer.camera = windowKameras[windowName].Cam;
             }
 
-            var orthographicSize = kamera.Cam.orthographicSize;
-            var closenessThresholdBaseValue = 0.01f / orthographicSize / orthographicSize;
+            float orthographicSize = kamera.Cam.orthographicSize;
+            float orthographicNormalization= 1f / orthographicSize / orthographicSize;
             
             visualizers.Add(drawingSurfaceName, surfaceVisualizer);
             surfaceVisualizer.MouseEvent += 
                 (location, button) => {
-                    var orthographicSize = kamera.Cam.orthographicSize;
-                    MouseEvent(
-                        drawingSurface.ClampPoint(
-                            location, 
-                            closenessThresholdBaseValue * orthographicSize * orthographicSize
-                        ),
-                        drawingSurface.Name,
-                        button);
+                    if (location is null)
+                    {
+                        MouseEvent(null, drawingSurfaceName, button);
+                        return;
+                    }    
+
+                    float currentOrthographicSize = kamera.Cam.orthographicSize;
+                    float closenessThreshold = closenessThresholdBaseValue * orthographicNormalization * currentOrthographicSize * currentOrthographicSize;
+                    foreach (var otherDrawingSurface in surface.drawingSurfaces.Values.Where(otherDrawingSurface => 
+                                 otherDrawingSurface != drawingSurface &&
+                                 location.Value.AtLeast(otherDrawingSurface.MinimalPosition, ignoreZ: true) &&
+                                 location.Value.AtMost(otherDrawingSurface.MaximalPosition, ignoreZ: true) 
+                            ).Prepend(drawingSurface) // this is the one that the TooltipManager Raycast has hit. The Where enumerable is only traversed when this ClampPoint is null, i.e. we're actually outside the surface
+                        )
+                    {
+                        var point = otherDrawingSurface.ClampPoint(location, closenessThreshold);
+                        if (point == null) 
+                            continue;
+                        MouseEvent(point, otherDrawingSurface.Name, button);
+                        return;
+                    }
+                    MouseEvent(null, drawingSurfaceName, button);
                 };
         }
         if (this.geodesicSurface is null)
@@ -214,13 +229,13 @@ public class SurfaceMenu: MonoBehaviour
                 var previewSegment = geodesicSurface.GetGeodesic(lastPoint, location.ApplyHomeomorphism(homeo), "previewGeodesicSegment");
                 previewSegment.Color = previewCurveColor;
                 return (previewSegment, geodesicSurface.Name);
-                // todo: ends for curves, ends at points (-> vertices)
+                // todo: Feature. Ends for curves, e.g. at points (-> vertices)
             case MenuMode.SelectPoint when location is not null:
             case MenuMode.AddPoint when location is not null:
                 location.Color = previewPointColor;
                 return (location, drawingSurfaceName);
             case MenuMode.PreviewGrid:
-                // todo: implement grid
+                // todo: Feature. Implement grid
                 return (location, drawingSurfaceName); 
             default:
                 return (null, drawingSurfaceName);
@@ -235,7 +250,7 @@ public class SurfaceMenu: MonoBehaviour
             case MenuMode.AddCurve:
             {
                 if (string.IsNullOrEmpty(currentCurveName)){
-                    // todo: ask user
+                    // todo: Feature. Ask user
                     currentCurveName = (
                         from i in Enumerable.Range(0, 52)
                         select ((char)('a' + i)).ToString()
@@ -268,6 +283,8 @@ public class SurfaceMenu: MonoBehaviour
 
     public void MouseEvent(Point location, string surfaceName, int button)
     {
+        if (location is not null)
+            Debug.Log($"Hovering over {surfaceName}");
         if (button < 0)
         {
             var (drawable, drawingSurfaceName) = PreviewDrawable(location, surfaceName);

@@ -21,6 +21,7 @@ public partial class ModelSurface
             case AutomorphismType.DehnTwist when parameters.Length == 1 && parameters[0] is Curve curve:
                 var strip = new CurveStrip(curve, closed: true);
                 var homeoOnStrip = strip.embedding * strip.DehnTwist * strip.embedding.Inverse;
+                // todo: Feature / bug: Fix strips and Dehn twists. Escpecially bugged for side curves if looking in the wrong direction.
                 return Homeomorphism.ContinueAutomorphismOnSubsurface(homeoOnStrip, curve.Surface);
             case AutomorphismType.HalfTwist when parameters.Length == 2 && parameters[0] is Point a && parameters[1] is Point b:
                 throw new NotImplementedException();

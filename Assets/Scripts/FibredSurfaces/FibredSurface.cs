@@ -1167,7 +1167,7 @@ public class FibredSurface : IPatchedDrawnsformable
             select new MovementForFolding(edges, edge, i)
         );
         
-        var badness = movements.Min(m => m.Badness);
+        var badness = movements.Min(m => m.Badness); // todo: takes a lot of time
 
         var moveSelection = (
             from i in Enumerable.Range(0, edges.Count)
@@ -1437,7 +1437,7 @@ public class FibredSurface : IPatchedDrawnsformable
             (   strip.Curve,
                 GeodesicSurface.ArclengthFromTime(strip.Curve),
                 GeodesicSurface.TimeFromArclength(strip.Curve)
-            )).ToArray();
+            )).ToArray(); // This took up 90 % of the time (6s for a simple fold), because of ModelSurface.DistanceSquared calling ClampPoint often. 
         float maxDistanceAlongCurves = arclengthParametrization.Min( input =>
         {
             var (curve, lengthFromTime, _) = input;

@@ -10,23 +10,23 @@ public class TooltipManager : MonoBehaviour {
 
     public static TooltipManager Instance { get; private set; }
 
-    [SerializeField] RectTransform tooltipPanel;
-    [SerializeField] TMP_Text tooltipText;
-    [SerializeField] CameraManager cameraManager;
+    [SerializeField] private RectTransform tooltipPanel;
+    [SerializeField] private TMP_Text tooltipText;
+    [SerializeField] private CameraManager cameraManager;
     // [SerializeField] float hoverTime = 1f;
-    
-    TooltipContent content;
-    float timer;
-    bool uiActivated;
-    bool objectActivated;
-    bool Activated => uiActivated || objectActivated;
-    bool isActive;
-    int layerMask;
-    Transform lastHoverObject;
-    ITooltipOnHover lastTooltipThing;
+
+    private TooltipContent content;
+    private float timer;
+    private bool uiActivated;
+    private bool objectActivated;
+    private bool Activated => uiActivated || objectActivated;
+    private bool isActive;
+    private int layerMask;
+    private Transform lastHoverObject;
+    private ITooltipOnHover lastTooltipThing;
     private Vector3 lastHoverPosition;
 
-    void Awake() {
+    private void Awake() {
         if (Instance == this) 
             return;
         if (Instance == null) {
@@ -36,18 +36,13 @@ public class TooltipManager : MonoBehaviour {
         Destroy(gameObject);
     }
 
-    void Start() {
+    private void Start() {
         Cursor.visible = true;
         tooltipPanel.gameObject.SetActive(false);
     }
 
-    void Update()
+    private void Update()
     {
-        if (Input.GetKeyUp(KeyCode.K))
-        {
-            int a;
-            a = 1;
-        }
 
         var mousePosition = Input.mousePosition;
         if (!uiActivated && cameraManager.TryGetKamera(mousePosition, out var kamera)) { // UI elements have priority
@@ -113,7 +108,7 @@ public class TooltipManager : MonoBehaviour {
         tooltipThing.OnHover(kamera, position);
     }
 
-    void ShowTooltip()
+    private void ShowTooltip()
     {
         var text = content.text ?? "";
         if (!string.IsNullOrWhiteSpace(content.url)) 

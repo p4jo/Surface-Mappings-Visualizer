@@ -244,17 +244,8 @@ public partial class ModelSurfaceBoundaryPoint : Point, IModelSurfacePoint
         return transformedCurve[t];
     }
 
-    public (ModelSurfaceBoundaryPoint, ModelSurfaceBoundaryPoint) ClosestBoundaryPoints(ModelSurfaceSide side)
-    {
-        ModelSurfaceBoundaryPoint a = null, b = null;
-        if (side == this.side)
-            a = this;
-        else if (side == this.side.other)
-            b = this;
-        a ??= side.GetClosestPoint(this).Item2 as ModelSurfaceBoundaryPoint;
-        b ??= side.other.GetClosestPoint(this).Item2 as ModelSurfaceBoundaryPoint;
-        return (a, b);
-    }
-    
+    public ModelSurfaceBoundaryPoint ClosestBoundaryPoints(ModelSurfaceSide side) => 
+        side == this.side ? this : new(side, side.curve.GetClosestPoint(this));
+
     public ModelSurfaceBoundaryPoint SwitchSide() => new(side.other, t);
 }

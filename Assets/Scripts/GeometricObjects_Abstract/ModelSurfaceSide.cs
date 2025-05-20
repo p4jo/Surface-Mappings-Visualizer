@@ -63,18 +63,16 @@ public partial class ModelSurfaceSide: Curve
     
     /// <summary>
     /// The closest point on either this or the other curve.
+    ///
+    /// NOT TRUE ANYMORE:
     /// The Position (i.e. Positions.First()) will be the on the curve out of the two identified ones that is closest
     /// (this is the SideCurve that is returned inside the Point which is the ModelSurfaceBoundaryPoint).
     /// </summary>
-    /// <param name="point"></param>
-    /// <returns></returns>
-    public override (float, Point) GetClosestPoint(Vector3 point, float precision = 1e-5f)
+    public override float GetClosestPoint(Vector3 point)
     {
-        var (t, closestPoint) = curve.GetClosestPoint(point, precision);
-        var (t2, closestPoint2) = other.curve.GetClosestPoint(point, precision);
-        if (closestPoint.DistanceSquared(point) < closestPoint2.DistanceSquared(point))
-            return (t, this[t]);
-        return (t2, other[t2]);
+        float t = curve.GetClosestPoint(point);
+        float t2 = other.curve.GetClosestPoint(point);
+        return curve[t].DistanceSquared(point) < other.curve[t2].DistanceSquared(point) ? t : t2;
     }
 
     public ModelSurfaceSide ReverseModelSide()
@@ -115,4 +113,42 @@ public partial class ModelSurfaceSide: Curve
         copy.AddOther(otherCopy); // this will also set the color
         return copy;
     }
+
+    private Homeomorphism deckTransformation;
+    public Homeomorphism DeckTransformation()
+    {
+        if (deckTransformation != null) return deckTransformation;
+        if (curve.Surface is not ModelSurface modelSurface) throw new Exception("Model surface expected");
+        string labelAddition = " [" + Name + "]";
+        switch (other.curve)
+        {
+            case HyperbolicGeodesicSegment geodesic:
+                if (curve is not HyperbolicGeodesicSegment geodesic2) throw new Exception("Geodesic expected");
+                // the Möbius transformation saved in geodesic sends the usual geodesic i e^t to the geodesic
+                // thus the Möbius transformation sending the first geodesic to the second is
+                // geodesic2.MöbiusTransformation * geodesic.MöbiusTransformation.Inverse;
+                var a = geodesic2.α * geodesic.δ - geodesic2.β * geodesic.γ;
+                var b = geodesic2.β * geodesic.α - geodesic2.α * geodesic.β;
+                var c = geodesic2.γ * geodesic.δ - geodesic2.δ * geodesic.γ;
+                var d = geodesic2.δ * geodesic.α - geodesic2.γ * geodesic.β;
+                deckTransformation = HyperbolicPlane.MöbiusTransformation(
+                    a, b, c, d, modelSurface, modelSurface
+                );
+                deckTransformation.target = modelSurface.Copy(modelSurface.Name + labelAddition, deckTransformation, labelAddition);
+                return deckTransformation;
+            case FlatGeodesicSegment line: 
+                if (curve is not FlatGeodesicSegment line2) throw new Exception("Geodesic expected");
+                deckTransformation = EuclideanPlane.Isometry(
+                    line.StartVelocity,
+                    line2.StartVelocity,
+                    modelSurface, modelSurface
+                );
+                deckTransformation.target = modelSurface.Copy(modelSurface.Name + labelAddition, deckTransformation, labelAddition);
+                return deckTransformation;
+            default:
+                throw new NotImplementedException(); // implement Klein model for hyperbolic space?
+        }
+        
+    }
+
 }

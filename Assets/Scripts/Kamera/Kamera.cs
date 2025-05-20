@@ -94,7 +94,7 @@ public class Kamera : MonoBehaviour
         {
             var delta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
             Move(delta * 5);
-            // todo: clamp position
+            // todo: UX. Clamp position
         }
         if (Input.touchCount == 1 && !pinching) {
             Touch touchZero = Input.GetTouch(0);
