@@ -465,7 +465,12 @@ public class FibredSurface : IPatchedDrawnsformable
     {
         var vertexString = string.Join("\n", graph.Vertices.Select(vertex => vertex.ToColorfulString()));
         var edgeString = string.Join("\n", StripsOrdered.Select(edge => edge.ToColorfulString()));
-        return $"<line-indent=-20>{vertexString}\n{edgeString}";
+        var matrix = TransitionMatrix();
+        var matrixHeader = matrix.Keys.Select(strip => ((IDrawable)strip).ColorfulName).ToCommaSeparatedString();
+        var matrixString = matrix.Select(keyValuePair =>
+            $"{((IDrawable)keyValuePair.Key).ColorfulName}: {keyValuePair.Value.Values.ToCommaSeparatedString()}"
+        ).ToCommaSeparatedString("\n");
+        return $"<line-indent=-20>{vertexString}\n{edgeString}\n{matrixHeader}\n{matrixString}</line-indent>";;
     }
 
     public static IEnumerable<Strip> Star(Junction junction)
@@ -1893,19 +1898,19 @@ public class FibredSurface : IPatchedDrawnsformable
     /// The surface homeomorphism described by this FibredSurface is reducible if the transition matrix of H is reducible, as this means that there is a non-trivial subgraph of G that does not only consist of pre-periphery. The boundary of the induced subgraph is preserved by an isotoped version of the homeomorphism and consists at least in part of essential edges, thus determining a reduction in the sense of the Thurston-Nielsen classification.
     /// </summary>
     /// <returns></returns>
-    public Dictionary<(UnorientedStrip, UnorientedStrip), int> TransitionMatrix(
+    public Dictionary<UnorientedStrip, Dictionary<UnorientedStrip, int>> TransitionMatrix(
         IEnumerable<UnorientedStrip> strips = null)
     {
         var stripArray = (strips ?? Strips).ToArray();
-        var n = graph.EdgeCount;
-        var matrix = new Dictionary<(UnorientedStrip, UnorientedStrip), int>();
-        foreach (var edge in stripArray)
-        foreach (var edgeToCross in stripArray)
-            matrix[(edgeToCross, edge)] = edge.EdgePath.Count(e => e.UnderlyingEdge == edgeToCross);
-        return matrix;
+        return stripArray.ToDictionary(
+            edgeToCross => edgeToCross,
+            edgeToCross => stripArray.ToDictionary(
+                edge => edge, 
+                edge => edge.EdgePath.Count(e => e.UnderlyingEdge == edgeToCross))
+        );
     }
 
-    public Dictionary<(UnorientedStrip, UnorientedStrip), int> TransitionMatrixEssential() =>
+    public Dictionary<UnorientedStrip, Dictionary<UnorientedStrip, int>> TransitionMatrixEssential() =>
         TransitionMatrix(EssentialSubgraph());
 
     /// <summary>
@@ -1936,14 +1941,13 @@ public class FibredSurface : IPatchedDrawnsformable
     /// <summary>
     /// Finds the left and right eigenvectors of the essential transition matrix M_H associated to the Frobenius-Perron eigenvalue (growth) λ.
     /// </summary>
-    /// <returns></returns>
     public void FrobeniusPerron(out double λ, out Dictionary<UnorientedStrip, double> widths,
         out Dictionary<UnorientedStrip, double> lengths)
     {
         var matrix = TransitionMatrixEssential();
-        var strips = matrix.Keys.Select(pair => pair.Item1).Distinct().ToArray();
+        var strips = matrix.Keys.ToArray();
         Matrix<double> M = Matrix<double>.Build.Dense(strips.Length, strips.Length,
-            (i, j) => matrix[(strips[i], strips[j])]
+            (i, j) => matrix[strips[i]][strips[j]]
         );
         var eigenvalueDecomposition = M.Evd();
         int
