@@ -190,6 +190,13 @@ public static class Helpers
         second = enumerator.MoveNext() ? enumerator.Current : default;
     }
     
+    public static IEnumerable<(int i, T t)> Enumerate<T>(this IEnumerable<T> item)
+    {
+        int i = 0;
+        foreach (var t in item)
+            yield return (i++, t);
+    }
+    
     public static bool ContainsDuplicates<T>(this IEnumerable<T> list)
         => !list.All(new HashSet<T>().Add); // this is some weird way of writing this. From 
     // the function is not x => new HashSet<T>().Add(x) but rather x => y.Add(x) where y = new HashSet<T>() is only created once.
@@ -371,6 +378,15 @@ public static class Helpers
     }
 
     public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, string comma = ", ") => string.Join(comma, list);
+
+    public static string ToShortString(this int i)
+    {
+        if (i < 0) return "-" + ToShortString(-i);
+        if (i < 1000) return i.ToString();
+        if (i < 1000000) return (i / 1000f).ToString("F1") + "k";
+        if (i < 1000000000) return (i / 1000000f).ToString("F1") + "M";
+        return (i / 1000000000f).ToString("F1") + "G";
+    }
     
 }
 

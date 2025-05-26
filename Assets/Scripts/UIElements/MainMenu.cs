@@ -38,28 +38,28 @@ public class MainMenu: MonoBehaviour
                     side.DeckTransformation(),
                     drawTargetInSameWindowAsSource: true
                 );
-            var modelChange = modelSurface.SwitchHyperbolicModel();
-            if (modelChange != null)
-            {
-                surface.AddHomeomorphism(modelChange);
-                if (modelChange.target is ModelSurface modelChangeTarget)
-                    foreach (var side in modelChangeTarget.AllSideCurves) 
-                        surface.AddHomeomorphism(
-                            side.DeckTransformation(),
-                            drawTargetInSameWindowAsSource: true
-                        );
-            }
-            var toKleinModel = modelSurface.ToKleinModel();
-            if (toKleinModel != null)
-            {
-                surface.AddHomeomorphism(toKleinModel);
-                // if (ToKleinModel.target is ModelSurface modelChangeTarget)
-                //     foreach (var side in modelChangeTarget.AllSideCurves) 
-                //         surface.AddHomeomorphism(
-                //             side.DeckTransformation(), // not implemented for Klein model. It would act as if it is a euclidean plane
-                //             drawTargetInSameWindowAsSource: true
-                //         );
-            }
+            // var modelChange = modelSurface.SwitchHyperbolicModel();
+            // if (modelChange != null)
+            // {
+            //     surface.AddHomeomorphism(modelChange);
+            //     if (modelChange.target is ModelSurface modelChangeTarget)
+            //         foreach (var side in modelChangeTarget.AllSideCurves) 
+            //             surface.AddHomeomorphism(
+            //                 side.DeckTransformation(),
+            //                 drawTargetInSameWindowAsSource: true
+            //             );
+            // }
+            // var toKleinModel = modelSurface.ToKleinModel();
+            // if (toKleinModel != null)
+            // {
+            //     surface.AddHomeomorphism(toKleinModel);
+            //     // if (ToKleinModel.target is ModelSurface modelChangeTarget)
+            //     //     foreach (var side in modelChangeTarget.AllSideCurves) 
+            //     //         surface.AddHomeomorphism(
+            //     //             side.DeckTransformation(), // not implemented for Klein model. It would act as if it is a euclidean plane
+            //     //             drawTargetInSameWindowAsSource: true
+            //     //         );
+            // }
         }
         Initialize(surface);
     }
@@ -204,6 +204,18 @@ public class MainMenu: MonoBehaviour
         fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
         fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
         fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
+
+        var p = "d C b A B a D c";
+        var P = reverse(p); 
+        string reverse(string c) => new((from ch in c.Reverse() select char.IsUpper(ch) ? char.ToLower(ch) : char.ToUpper(ch)).ToArray()); 
+        string conjugate(string e, string c) => c + " " + e + " " + reverse(c); // c e c^{-1}
+        fibredSurfaceMenu.UpdateGraphMap($"d \u21a6 {P} d\n" +
+                                         $"b \u21a6 {conjugate(P, "a d")} b\n" +
+                                         $"c \u21a6 c {conjugate(P,  P + " d C a d")}\n" +
+                                         $"a \u21a6 a {conjugate(P,$"D {p} c {P} d {conjugate(P, "c a d")} {P} d C a d")}",
+            mode: GraphMapUpdateMode.Replace); 
+        
+        
         
         // fibredSurfaceMenu.StartAlgorithm();
     }

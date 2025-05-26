@@ -464,11 +464,18 @@ public class FibredSurface : IPatchedDrawnsformable
     public string GraphString()
     {
         var vertexString = string.Join("\n", graph.Vertices.Select(vertex => vertex.ToColorfulString()));
-        var edgeString = string.Join("\n", StripsOrdered.Select(edge => edge.ToColorfulString()));
+        var stripsOrdered = StripsOrdered.ToArray();
+        var edgeString = string.Join("\n", stripsOrdered.Select(edge => edge.ToColorfulString()));
         var matrix = TransitionMatrix();
-        var matrixHeader = matrix.Keys.Select(strip => ((IDrawable)strip).ColorfulName).ToCommaSeparatedString();
-        var matrixString = matrix.Select(keyValuePair =>
-            $"{((IDrawable)keyValuePair.Key).ColorfulName}: {keyValuePair.Value.Values.ToCommaSeparatedString()}"
+        var scale = 100f / (stripsOrdered.Length + 1);
+        var matrixHeader = stripsOrdered.Select(
+            (edge, index) => $"<pos={scale * (index + 1):00}%>{((IDrawable) edge).ColorfulName}"
+        ).ToCommaSeparatedString("");
+        var matrixString = stripsOrdered.Select(edge =>
+            ((IDrawable)edge).ColorfulName + ": " + 
+            stripsOrdered.Select(
+                (strip, index) => $"<pos={scale * (index + 1):00}%>{matrix[edge][strip].ToShortString()}"     
+            ).ToCommaSeparatedString("")
         ).ToCommaSeparatedString("\n");
         return $"<line-indent=-20>{vertexString}\n{edgeString}\n{matrixHeader}\n{matrixString}</line-indent>";;
     }
@@ -678,6 +685,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 graph,
                 component.Edges.Select(e => e.Curve).Concat<IDrawnsformable>(component.Vertices),
                 // yes this is component.Patches but component is a FibredGraph, not FibredSurface... 
+                // TODO: Move the vertices so that there is only one point as drawable.
                 name: NextVertexName(),
                 color: NextVertexColor()
             );
@@ -690,7 +698,13 @@ public class FibredSurface : IPatchedDrawnsformable
             {
                 strip.Source = newVertex;
                 strip.OrderIndexStart = orderIndex++;
-                strip.EdgePath = strip.EdgePath.Where(edge => !subforestEdges.Contains(edge.UnderlyingEdge)).ToList();
+            }
+
+            foreach (var strip in Strips)
+            {
+                strip.EdgePath = strip.EdgePath.Where(edge =>
+                    !subforestEdges.Contains(edge.UnderlyingEdge)
+                ).ToList();
             }
 
             foreach (var junction in component.Vertices)
