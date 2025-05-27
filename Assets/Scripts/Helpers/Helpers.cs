@@ -108,6 +108,19 @@ public static class Helpers
     public static bool AtMost(this Vector3 a, Vector3 b, bool ignoreZ = false) =>
         a.x <= b.x && a.y <= b.y && (ignoreZ || a.z <= b.z);
     
+    public static Vector3 Average(this IEnumerable<Vector3> enumerable)
+    {
+        var sum = Vector3.zero;
+        var count = 0;
+        foreach (var v in enumerable)
+        {
+            sum += v;
+            count++;
+        }
+
+        return count > 0 ? sum / count : Vector3.zero;
+    }
+    
     public static (T, float) ArgMin<T>(this IEnumerable<T> enumerable, System.Func<T, float> selector)
     {
         var min = float.MaxValue;
@@ -387,7 +400,20 @@ public static class Helpers
         if (i < 1000000000) return (i / 1000000f).ToString("F1") + "M";
         return (i / 1000000000f).ToString("F1") + "G";
     }
-    
+
+    public static double GeometricMean(this IEnumerable<double> list) 
+    {
+        var product = 1.0;
+        var count = 0;
+        foreach (var value in list)
+        {
+            if (value <= 0) 
+                product *= - value; // if the value is negative, we take its absolute value
+            product *= value;
+            count++;
+        }
+        return count > 0 ? Math.Pow(product, 1.0 / count) : 0.0;
+    }
 }
 
 

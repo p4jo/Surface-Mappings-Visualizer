@@ -133,6 +133,20 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     }
 
     public abstract Curve Copy();
+
+    public Curve AdjustStartVector(TangentVector newStartVector, float cutoff)
+    {
+        var newCurve = Restrict(cutoff);
+        var end = newCurve.StartVelocity;
+        var interpolatingSegment = new SplineSegment(
+            newStartVector, 
+            end,
+            cutoff, 
+            Surface, 
+            Name + " adjusted start vector"
+        );
+        return interpolatingSegment.Concatenate(newCurve);
+    }
 }
 
 public partial class TransformedCurve : Curve
@@ -387,12 +401,12 @@ public partial class ConcatenatedCurve : Curve
             // if (!curve.EndPosition.Equals(nextCurve.StartPosition))
             bool angleJump = !curve.EndVelocity.VectorAtPositionIndex(herePosIndex).ApproximatelyEquals(
                 nextCurve.StartVelocity.VectorAtPositionIndex(therePosIndex));
-            bool actualJump = distanceSquared > 1e-6;
+            bool actualJump = distanceSquared > 1e-3f;
             // if distance is too large, this means, these points are actually different; even considering multiple positions.
             // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might be far apart (converging to the different positions).
             bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
-            if (visualJump && curve.EndPosition is not ModelSurfaceBoundaryPoint || 
-                nextCurve.StartPosition is not ModelSurfaceBoundaryPoint)
+            if (visualJump && (curve.EndPosition is not ModelSurfaceBoundaryPoint || 
+                nextCurve.StartPosition is not ModelSurfaceBoundaryPoint))
             {
                 Debug.LogWarning($"Visual jump between {curve.Name} and {nextCurve.Name} but these are not saved with boundary points as endpoints.");
             }

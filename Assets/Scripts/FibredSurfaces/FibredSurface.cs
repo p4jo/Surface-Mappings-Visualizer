@@ -26,7 +26,7 @@ public class FibredSurface : IPatchedDrawnsformable
     /// </summary>
     public readonly FibredGraph peripheralSubgraph;
 
-    public GeodesicSurface surface;
+    public readonly GeodesicSurface surface;
 
     public IEnumerable<IDrawnsformable> Patches =>
         graph.Vertices.Concat<IDrawnsformable>(from edge in Strips select edge.Curve);
@@ -429,7 +429,7 @@ public class FibredSurface : IPatchedDrawnsformable
         }
         var brokenJumpPoints = Strips.FirstOrDefault(e => e.Curve.VisualJumpPoints.Count() != e.Curve.VisualJumpTimes.Count());
         if (brokenJumpPoints != null)
-            HandleInconsistentBehavior($"The edge {brokenJumpPoints} has a broken jump point.");
+            Debug.LogWarning($"The edge {brokenJumpPoints} has a broken jump point.");
     }
 
     private Strip BrokenVertexMapEdge() => OrientedEdges.FirstOrDefault(e => e.Dg != null && e.Source.image != e.Dg.Source);
@@ -466,23 +466,35 @@ public class FibredSurface : IPatchedDrawnsformable
         var vertexString = string.Join("\n", graph.Vertices.Select(vertex => vertex.ToColorfulString()));
         var stripsOrdered = StripsOrdered.ToArray();
         var edgeString = string.Join("\n", stripsOrdered.Select(edge => edge.ToColorfulString()));
-        var matrix = TransitionMatrix();
-        var scale = 100f / (stripsOrdered.Length + 1);
-        var matrixHeader = stripsOrdered.Select(
-            (edge, index) => $"<pos={scale * (index + 1):00}%>{((IDrawable) edge).ColorfulName}"
+        FrobeniusPerron(out var growthRate, out var widths, out var lengths, out var matrix);
+        // var matrix = TransitionMatrix();
+        var scale = 100f / (stripsOrdered.Length + 2);
+        var matrixHeader = stripsOrdered.Select((edge, index) => 
+            $"<pos={scale * (index + 1):00}%>{((IDrawable) edge).ColorfulName}"
+        ).Append(
+            $"<pos={scale * (stripsOrdered.Length + 1):00}%>width"
         ).ToCommaSeparatedString("");
-        var matrixString = stripsOrdered.Select(edge =>
-            ((IDrawable)edge).ColorfulName + ": " + 
-            stripsOrdered.Select(
-                (strip, index) => $"<pos={scale * (index + 1):00}%>{matrix[edge][strip].ToShortString()}"     
+        var matrixString = stripsOrdered.Append(null).Select(edge =>
+            (edge == null ? "length" : ((IDrawable)edge).ColorfulName)
+            + ": " + 
+            stripsOrdered.Append(null).Select((strip, index) =>
+                $"<pos={scale * (index + 1):00}%>{ToShortString(edge, strip)}"     
             ).ToCommaSeparatedString("")
         ).ToCommaSeparatedString("\n");
-        return $"<line-indent=-20>{vertexString}\n{edgeString}\n{matrixHeader}\n{matrixString}</line-indent>";;
+        return $"<line-indent=-20>{vertexString}\n{edgeString}\n{matrixHeader}\n{matrixString}\nGrowth rate: {growthRate:g3}";
+
+        string ToShortString(UnorientedStrip edge, UnorientedStrip strip) // edge is counted downwards, strip towards the right
+        {
+            if (edge == null && strip == null) return "";
+            if (edge == null) return $"{lengths[strip]:g2}";
+            if (strip == null) return $"{widths[edge]:g2}";
+            return matrix[edge][strip].ToShortString();
+        }
     }
 
-    public static IEnumerable<Strip> Star(Junction junction)
+    public static IEnumerable<Strip> Star(Junction junction, FibredGraph graph = null)
     {
-        return junction.graph.AdjacentEdges(junction).SelectMany(strip =>
+        return (graph ?? junction.graph).AdjacentEdges(junction).SelectMany(strip =>
             strip.IsSelfEdge() ? new[] { strip, strip.Reversed() } :
             strip.Source != junction ? new[] { strip.Reversed() } :
             new[] { strip });
@@ -491,10 +503,14 @@ public class FibredSurface : IPatchedDrawnsformable
     /// This is the cyclic order of the star of the given junction.
     /// If firstEdge is not null, the order is shifted to start with firstEdge.
     /// </summary>
-    public static IEnumerable<Strip> StarOrdered(Junction junction, Strip firstEdge = null)
+    public static IEnumerable<Strip> StarOrdered(Junction junction, Strip firstEdge = null, FibredGraph graph = null, bool removeFirstEdgeIfProvided = false)
     {
-        var orderedStar = Star(junction).OrderBy(strip => strip.OrderIndexStart);
-        return firstEdge != null ? orderedStar.CyclicShift(firstEdge) : orderedStar;
+        IEnumerable<Strip> orderedStar = Star(junction, graph).OrderBy(strip => strip.OrderIndexStart);
+        if (firstEdge == null) 
+            return orderedStar;
+
+        orderedStar = orderedStar.CyclicShift(firstEdge);
+        return removeFirstEdgeIfProvided ? orderedStar.Skip(1) : orderedStar;
     }
 
     public IEnumerable<Strip> SubgraphStar(FibredGraph subgraph) =>
@@ -681,36 +697,92 @@ public class FibredSurface : IPatchedDrawnsformable
         var newVertices = new List<Junction>();
         foreach (var component in componentList)
         {
-            var newVertex = new Junction(
-                graph,
-                component.Edges.Select(e => e.Curve).Concat<IDrawnsformable>(component.Vertices),
-                // yes this is component.Patches but component is a FibredGraph, not FibredSurface... 
-                // TODO: Move the vertices so that there is only one point as drawable.
-                name: NextVertexName(),
-                color: NextVertexColor()
-            );
+            // Direct Union of the edges and vertices of the component to a vertex that is large (using the "drawables")
+            // var newVertex = new Junction(
+            //     graph,
+            //     drawables: component.Edges.Select(e => e.Curve).Concat<IDrawnsformable>(component.Vertices),
+            //     // yes this is component.Patches but component is a FibredGraph, not FibredSurface... 
+            //     name: NextVertexName(),
+            //     color: NextVertexColor()
+            // );
+            var (newVertex, _) = component.Vertices.ArgMax(v => component.AdjacentDegree(v));
             newVertices.Add(newVertex);
             
             // ReplaceVertices(SubgraphStarOrdered(component), newVertex);
+
+            if (!component.IsUndirectedAcyclicGraph())
+                // would probably give a terrible infinite loop in PullTowardsCenter
+                throw new InvalidOperationException(
+                    "The component is not a subforest. This should not happen as we only call this on invariant subforests.");
+
+            PullTowardsCenter(newVertex, null, 1f);
+
+            // Moves the source of the strip along the strip (removing it) and returns the cyclic order. This is done recursively, edge for edge, so that the strips are parallel but not at the same place.
+            IEnumerable<Strip> PullTowardsCenter(Junction junction, Strip stripToCenter, float orderIndexWidth)
+            {
+                junction ??= stripToCenter.Source;
+                var star = StarOrdered(junction, stripToCenter, removeFirstEdgeIfProvided: true).ToList();
+                var newStar = new List<Strip>(4 * star.Count);
+                
+                for (int i = 0; i < star.Count; i++)
+                {
+                    var edgeToChild = star[i];
+                    if (component.ContainsEdge(edgeToChild.UnderlyingEdge))
+                    {
+                        var orderIndexWidthChild = star[(i + 1) % star.Count].OrderIndexStart - edgeToChild.OrderIndexStart;
+                        if (orderIndexWidthChild < 0) // edgeToChild has the highest OrderIndexStart
+                            orderIndexWidthChild = 2f;
+                        newStar.AddRange(PullTowardsCenter(null, edgeToChild.Reversed(), orderIndexWidthChild));
+                    }
+                    else
+                        newStar.Add(edgeToChild);
+                }
+                
+                if (!newStar.SequenceEqual(StarOrdered(junction, stripToCenter, removeFirstEdgeIfProvided: true)))
+                    throw new Exception("The cyclic order or origin map weren't set correctly in PullTowardsCenter. " +
+                                        $"The new star {string.Join(", ", StarOrdered(junction, stripToCenter, removeFirstEdgeIfProvided: true).Select(e => e.Name))} is not equal to the expected list of edges {string.Join(", ", newStar.Select(e => e.Name))}.");
+
+                if (stripToCenter == null)
+                    return newStar;
+                
+                MoveJunction(stripToCenter); 
+                // this changes all the curves in newStar = StarOrdered(junction, stripToCenter).Skip(1).ToList(),
+                // prolonging them at the start by stripToCenter.Reversed().Curve
+                // the cyclic order needs to be correct
+                // we then have to set the source and order index:
+
+                var scale = orderIndexWidth / newStar.Count;
+                foreach (var (index, edge) in newStar.Enumerate())
+                {
+                    edge.Source = stripToCenter.Target;
+                    edge.OrderIndexStart = stripToCenter.OrderIndexEnd + scale * index; 
+                    // we needed the orderIndexWidth, so that the edge.OrderIndexStart is in [stripFromCenter.OrderIndexStart, stripFromCenter.NextInCyclicOrder.OrderIndexStart).
+                }
+                graph.RemoveEdge(stripToCenter.UnderlyingEdge);
+                return newStar;
+            }
             
-            var orderIndex = 0;
-            foreach (var strip in SubgraphStarOrdered(component).ToList())
-            {
-                strip.Source = newVertex;
-                strip.OrderIndexStart = orderIndex++;
-            }
-
-            foreach (var strip in Strips)
-            {
-                strip.EdgePath = strip.EdgePath.Where(edge =>
-                    !subforestEdges.Contains(edge.UnderlyingEdge)
-                ).ToList();
-            }
-
+            // var orderIndex = 0;
+            // foreach (var strip in SubgraphStarOrdered(component).ToList())
+            // {
+            //     strip.Source = newVertex;
+            //     strip.OrderIndexStart = orderIndex++;
+            // }
+            
             foreach (var junction in component.Vertices)
             {
-                graph.RemoveVertex(junction);
+                if (junction != newVertex)
+                    graph.RemoveVertex(junction); 
+                // this also removes the edges of component (because they have both ends in component.Vertices, and not both are newVertex) 
             }
+
+        }
+
+        foreach (var strip in Strips)
+        {
+            strip.EdgePath = strip.EdgePath.Where(edge =>
+                !subforestEdges.Contains(edge.UnderlyingEdge)
+            ).ToList();
         }
 
         foreach (var junction in graph.Vertices)
@@ -779,7 +851,7 @@ public class FibredSurface : IPatchedDrawnsformable
             else if (prePeriphery.Contains(star[1].UnderlyingEdge)) removeStrip = star[1];
             else
             {
-                FrobeniusPerron(out var λ, out var widths, out var lengths);
+                FrobeniusPerron(out var λ, out var widths, out var lengths, out var matrix);
                 removeStrip = widths[star[0].UnderlyingEdge] > widths[star[1].UnderlyingEdge] ? star[0] : star[1];
             }
         }
@@ -1114,7 +1186,7 @@ public class FibredSurface : IPatchedDrawnsformable
         }
     }
 
-    public void MoveJunction(Strip e, float length) => MoveJunction(e.Source, e.Curve, length, e);
+    public void MoveJunction(Strip e, float? length = null) => MoveJunction(e.Source, e.Curve, length ?? e.Curve.Length, e);
 
     
     const float baseShiftStrength = 0.07f;
@@ -1123,10 +1195,9 @@ public class FibredSurface : IPatchedDrawnsformable
         v.Patches = new []{ curve[length] };
         
         var precompositionCurve = curve.Restrict(0, length).Reversed();
-        var star = StarOrdered(v, e).ToList();
+        var star = StarOrdered(v, e, removeFirstEdgeIfProvided: true).ToList();
         if (e != null)
         {
-            star.RemoveAt(0);
             var name = e.Name;
             e.Curve = e.Curve.Restrict(length);
             e.Name = name;
@@ -1501,7 +1572,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #region (Essential) Inefficiencies
 
-    private static IEnumerable<(Strip, Strip)> InefficientConcatenations<T>(List<Gate<T>> gates)
+    private static IEnumerable<(Strip, Strip)> InefficientConcatenations<T>(IEnumerable<Gate<T>> gates)
     {
         foreach (var gate in gates)
         {
@@ -1956,9 +2027,9 @@ public class FibredSurface : IPatchedDrawnsformable
     /// Finds the left and right eigenvectors of the essential transition matrix M_H associated to the Frobenius-Perron eigenvalue (growth) λ.
     /// </summary>
     public void FrobeniusPerron(out double λ, out Dictionary<UnorientedStrip, double> widths,
-        out Dictionary<UnorientedStrip, double> lengths)
+        out Dictionary<UnorientedStrip, double> lengths, out Dictionary<UnorientedStrip,Dictionary<UnorientedStrip,int>> transitionMatrix)
     {
-        var matrix = TransitionMatrixEssential();
+        var matrix = transitionMatrix = TransitionMatrixEssential();
         var strips = matrix.Keys.ToArray();
         Matrix<double> M = Matrix<double>.Build.Dense(strips.Length, strips.Length,
             (i, j) => matrix[strips[i]][strips[j]]
@@ -1972,6 +2043,9 @@ public class FibredSurface : IPatchedDrawnsformable
         var rightEigenvector = eigenvalueDecomposition.EigenVectors.Inverse().Row(columnIndex);
         if (rightEigenvector[0] < 0) rightEigenvector = rightEigenvector.Negate();
 
+        eigenvector *= 1 / eigenvector.GeometricMean();
+        rightEigenvector *= 1 / rightEigenvector.GeometricMean();
+
         widths = new Dictionary<UnorientedStrip, double>(from i in Enumerable.Range(0, strips.Length)
             select new KeyValuePair<UnorientedStrip, double>(strips[i], eigenvector[i]));
         lengths = new Dictionary<UnorientedStrip, double>(from i in Enumerable.Range(0, strips.Length)
@@ -1982,6 +2056,118 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #endregion
 
+    #region Train Tracks
+
+    private const double tau = Math.PI * 2;
+    public void ConvertToTrainTrack()
+    {
+        var gates = Gate.FindGates(graph);
+        var edgeGates = new Dictionary<Strip, Gate<Junction>>(gates.SelectMany(gate =>
+            from edge in gate.Edges select new KeyValuePair<Strip, Gate<Junction>>(edge, gate)));
+        var gateVectors = new Dictionary<Gate<Junction>, TangentVector>(gates.Count);
+        var gateJunctions = new Dictionary<Gate<Junction>, Junction>(gates.Count);
+        var gateImages = new Dictionary<Gate<Junction>, Gate<Junction>>(gates.Count);
+        var edgeTimes = new Dictionary<Strip, float>(edgeGates.Count);
+        var edgeTimes2 = new Dictionary<Strip, float>(edgeGates.Count);
+        
+        
+        foreach (var junction in graph.Vertices)
+        {
+            var gatesHere = gates.Where(gate => gate.junctionIdentifier == junction).ToList();
+            const float distance = 0.2f;
+            foreach (var (index, gate) in gatesHere.Enumerate())
+            {
+                foreach (var strip in gate.Edges)
+                {
+                    var timeFromArclength = GeodesicSurface.TimeFromArclength(strip.Curve.Restrict(0, 10f));
+                    edgeTimes[strip] = timeFromArclength(distance);
+                    edgeTimes2[strip] = timeFromArclength(2 * distance);
+                }
+                var gatePosition = (
+                    from edge in gate.Edges
+                    select edge.Curve[edgeTimes[edge]].Position 
+                ).Average();
+                Point gatePoint = gatePosition;
+                var gateVector = new TangentVector(gatePosition, gatePosition - gate.junctionIdentifier.Position.Position);
+                gateVectors[gate] = gateVector;
+                foreach (var edge in gate.Edges) 
+                    edge.Curve = edge.Curve.AdjustStartVector(gateVector, edgeTimes2[edge]);
+                // todo: feature. Implement this. Cut off the first segment corresponding to the distance and replace a further segment of similar length by a InterpolatedSegment that starts with the gate vector.
+
+                var gateJunction = new Junction(graph, gatePoint,
+                    $"gate {{{gate.Edges.Select(e => e.Name).ToCommaSeparatedString()}}} @ {junction.Name}", color: gate.junctionIdentifier.Color);
+                gateJunctions[gate] = gateJunction;
+                foreach (var strip in gate.Edges) 
+                    strip.Source = gateJunction; // this adds the new junctions to the graph
+                // the order indices can be kept
+            }
+        }
+
+        foreach (var gate in gates)
+        {
+            var gateJunction = gateJunctions[gate];
+            gateImages[gate] = edgeGates[gate.Edges.First().Dg!];
+            gateJunction.image = gateJunctions[gateImages[gate]]; 
+            // the gate of the edge e.Dg is independent of the choice of e in gate.Edges, by construction of the gates
+        }
+
+        var infinitesimalEdges = new Dictionary<(Gate<Junction>, Gate<Junction>), Strip>();
+        
+        foreach (var strip in Strips)
+        {
+            var newEdgePath = new List<Strip>();
+            newEdgePath.Add(strip.EdgePath.First());
+            for (int i = 0; i < strip.EdgePath.Count - 1; i++)
+            {
+                var edge = strip.EdgePath[i];
+                var nextEdge = strip.EdgePath[i + 1];
+                var incomingGate = edgeGates[edge.Reversed()];
+                var outgoingGate = edgeGates[nextEdge];
+                if (incomingGate == outgoingGate) 
+                    throw new ArgumentException("The fibred surface is not efficient and cannot be converted to a train track.");
+                if (infinitesimalEdges.TryGetValue((incomingGate, outgoingGate), out var infinitesimalEdge))
+                    newEdgePath.Add(infinitesimalEdge);
+                else
+                {
+                    var newInfinitesimalEdge = new UnorientedStrip(
+                        new SplineSegment(
+                            -gateVectors[incomingGate],
+                        gateVectors[outgoingGate],
+                            1,
+                            surface,
+                            NextEdgeName()
+                        ),
+                        source: gateJunctions[incomingGate],
+                        target: gateJunctions[outgoingGate],
+                        edgePath: new Strip[] { }, // we can only add these once we created them all
+                        graph: graph, // this is the edge path of the infinitesimal edge
+                        orderIndexStart: incomingGate.Edges.Max(e => e.OrderIndexStart) + 1f,
+                        orderIndexEnd: outgoingGate.Edges.Max(e => e.OrderIndexStart) + 1f
+                    );
+                    infinitesimalEdges[(incomingGate, outgoingGate)] = newInfinitesimalEdge;
+                    infinitesimalEdges[(outgoingGate, incomingGate)] = newInfinitesimalEdge.Reversed();
+                    newEdgePath.Add(newInfinitesimalEdge);
+                }
+                newEdgePath.Add(nextEdge);
+            }
+        }
+        
+        foreach (var ((sourceGate, targetGate), infinitesimalEdge) in infinitesimalEdges)
+        {
+            if (graph.ContainsEdge(infinitesimalEdge.UnderlyingEdge)) 
+                continue;
+            
+            graph.AddVerticesAndEdge(infinitesimalEdge.UnderlyingEdge);
+            // and set the edge path of the infinitesimal edges
+            infinitesimalEdge.EdgePath = new List<Strip>
+            {
+                infinitesimalEdges[(gateImages[sourceGate], gateImages[targetGate])]
+            };
+        }
+    }
+
+
+    #endregion
     public Curve GetBasicGeodesic(Point start, Point end, string name)
     {
         var surface = this.surface;

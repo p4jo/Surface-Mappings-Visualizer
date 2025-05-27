@@ -29,7 +29,9 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
     public Junction(FibredGraph graph, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : 
         this(graph, new[] {drawable}, name, image, color)
     { }
-    
+
+    public Point Position => Patches.FirstOrDefault(v => v is Point) as Point;
+
     public Junction Copy(FibredGraph graph = null, string name = null, Junction image = null, Color? color = null, IEnumerable<IDrawnsformable> patches = null) =>
         new(
             graph ?? this.graph,

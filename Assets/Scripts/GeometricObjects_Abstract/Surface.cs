@@ -333,8 +333,8 @@ public class ShiftedCurve : Curve
         return new (localCurve.EndPosition, basis.basis.a); // this is not really correct, but for small shifts it is good enough. It is unfeasible to calculate this correctly (derivative of exponential map...)
     }
 
-    public override Curve Reversed() => 
-        new ShiftedCurve(curve.Reversed(), t => -shift(t), Name + "'") {Color = Color};
+    public override Curve Reversed() => reverseCurve ??=
+        new ShiftedCurve(curve.Reversed(), t => -shift(t), Name + "'") { Color = Color };
 
     public override Curve Restrict(float start, float? end = null) => new ShiftedCurve(curve.Restrict(start, end), t => shift(t + start), Name + $"[{start:g2}, {end:g2}]") {Color = Color};
 }
