@@ -58,6 +58,8 @@ public abstract class GeodesicSurface: Surface
         // done: shouldn't smooth at the visual jump points, only at the actual concatenation points above. This could be done with "ignoreSubConcatenatedCurves", as we do, but only if we reintroduce nested concatenated curves. Currently, there is no distinction between the kinds of concatenations; Apart from the "angle jump" property of singular points, if it works
     }
 
+    public virtual float Distance(Point startPoint, Point endPoint) => MathF.Sqrt(DistanceSquared(startPoint, endPoint));
+
     public abstract float DistanceSquared(Point startPoint, Point endPoint);
 
     public virtual float CurveLength(Curve curve)
@@ -262,30 +264,51 @@ public class ShiftedCurve : Curve
 
             var res = 0.04f;
             const float goalRes = 0.0001f;
-            foreach (var t in curve.VisualJumpTimes)
+            foreach (var (t, sidePoint) in curve.VisualJumpPoints)
             {
-                var time = t;
-                float localCurveJump = 0f;
+                var lastJump = (_visualJumpTimes.Count == 0 ? 0 : _visualJumpTimes[^1]);
+                
+                var crossedVector = sidePoint.side.DerivativeAt(sidePoint.t).vector;
+                var thisVector = curve.DerivativeAt( Mathf.Max(t - res, (lastJump + 2f * t) / 3f )).vector;
+                var angle = Vector3.Angle(crossedVector, thisVector) * Mathf.Deg2Rad;
+                
+                var guess = t + shift(t) / Mathf.Tan(angle); 
+                var time = guess;
+                var lastGuess = guess;
+
                 while (goalRes < res)
                 {
-                    while (time >= t - 3 * res && time > (_visualJumpTimes.Count == 0 ? 0 : _visualJumpTimes.LastOrDefault()))
+                    bool haveHit = false;
+                    float localCurveJump;
+                    while (time >= lastGuess - 3 * res && time > lastJump)
                     {
                         localCurveJump = LocalCurveJump(time);
+                        haveHit = haveHit || localCurveJump > -1;
                         if (localCurveJump >= MathF.Abs(shift(time)))
                             break;
                         time -= res;
                     }
 
                     res /= 2;
+                    if (haveHit)
+                        lastGuess = time;
+                    else
+                        time = lastGuess;
+                    haveHit = false;
 
-                    while (time <= t + 3 * res && time < curve.Length)
+                    while (time <= lastGuess + 3 * res && time < curve.Length)
                     {
                         localCurveJump = LocalCurveJump(time);
+                        haveHit = haveHit || localCurveJump > -1;
                         if (localCurveJump <= MathF.Abs(shift(time)))
                             break;
                         time += res;
                     } 
                     res /= 4;
+                    if (haveHit)
+                        lastGuess = time;
+                    else
+                        time = lastGuess;
                 }
                 if (time < 0f || time > curve.Length)
                     continue;
@@ -334,7 +357,7 @@ public class ShiftedCurve : Curve
     }
 
     public override Curve Reversed() => reverseCurve ??=
-        new ShiftedCurve(curve.Reversed(), t => -shift(t), Name + "'") { Color = Color };
+        new ShiftedCurve(curve.Reversed(), t => - shift(Length - t), Name.EndsWith("'") ? Name : Name + "'") { Color = Color, reverseCurve =  this, _visualJumpTimes = (from jumpTime in VisualJumpTimes select Length - jumpTime).ToList() };
 
     public override Curve Restrict(float start, float? end = null) => new ShiftedCurve(curve.Restrict(start, end), t => shift(t + start), Name + $"[{start:g2}, {end:g2}]") {Color = Color};
 }

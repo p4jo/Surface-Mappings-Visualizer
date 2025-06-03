@@ -391,15 +391,40 @@ public static class Helpers
     }
 
     public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, string comma = ", ") => string.Join(comma, list);
+    
+    public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, Func<T, string> selector, string comma = ", ") =>
+        string.Join(comma, list.Select(selector));
+    
+    public static string ToLineSeparatedString<T>(this IEnumerable<T> list, string newline = "\n") => 
+        string.Join(newline, list);
+    
+    public static string ToLineSeparatedString<T>(this IEnumerable<T> list, Func<T, string> selector, string newline = "\n") =>
+        string.Join(newline, list.Select(selector));
 
-    public static string ToShortString(this int i)
-    {
-        if (i < 0) return "-" + ToShortString(-i);
-        if (i < 1000) return i.ToString();
-        if (i < 1000000) return (i / 1000f).ToString("F1") + "k";
-        if (i < 1000000000) return (i / 1000000f).ToString("F1") + "M";
-        return (i / 1000000000f).ToString("F1") + "G";
-    }
+    public static string ToShortString(this int i) =>
+        i switch
+        {
+            < 0 => "-" + ToShortString(-i),
+            < 1000 => i.ToString(),
+            < 1000000 => (i * 1e-3).ToString("G3") + "k",
+            < 1000000000 => (i * 1e-6).ToString("G3") + "M",
+            _ => (i * 1e-9).ToString("G3") + "G"
+        };
+    public static string ToShortString(this double d) =>
+        d switch
+        {
+            < 0 => "-" + ToShortString(-d),
+            0 => "0",
+            < 1e-9 => (d * 1e12).ToString("G3") + "p",
+            < 1e-6 => (d * 1e9).ToString("G3") + "n",
+            < 1e-3 => (d * 1e6).ToString("G3") + "μ",
+            < 1 => (d * 1e3).ToString("G3") + "m",
+            < 1e3 => d.ToString("G3"),
+            < 1e6 => (d * 1e-3).ToString("G3") + "k",
+            < 1e9 => (d * 1e-6).ToString("G3") + "M",
+            < 1e12 => (d * 1e-9).ToString("G3") + "G",
+            _ => d.ToString("G3")
+        };
 
     public static double GeometricMean(this IEnumerable<double> list) 
     {

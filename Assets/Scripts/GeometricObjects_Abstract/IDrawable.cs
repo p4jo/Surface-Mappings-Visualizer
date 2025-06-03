@@ -17,6 +17,8 @@ public interface IDrawable
     IDrawable Copy();
     
     public virtual string ColorfulName => $"<color=#{ColorUtility.ToHtmlStringRGBA(Color)}>{Name}</color>";
+    public virtual string ColorfulName2() => $"<color=#{ColorUtility.ToHtmlStringRGBA(Color)}>{Name}</color>";
+    
 }
 
 public interface IDrawnsformable: IDrawable, ITransformable

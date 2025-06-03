@@ -21,6 +21,7 @@
         [SerializeField] protected float scale = 1f;
         [SerializeField] protected Vector3 imageOffset;
         [SerializeField] public new Camera camera;
+        [SerializeField] protected float resolution = 0.2f;
 
         protected SurfaceVisualizer()
         {
@@ -61,8 +62,8 @@
         protected virtual void AddCurve(Curve curve)
         {
             if (curve is ModelSurfaceSide side) 
-                AddCurveVisualizer(curve.Name + "*").Initialize(side.other, 0.2f, camera, scale, imageOffset);
-            AddCurveVisualizer(curve.Name).Initialize(curve, 0.2f, camera, scale, imageOffset);
+                AddCurveVisualizer(curve.Name + "*").Initialize(side.other, resolution, camera, scale, imageOffset);
+            AddCurveVisualizer(curve.Name).Initialize(curve, resolution, camera, scale, imageOffset);
         }
 
         public void RemoveCurve(string name)

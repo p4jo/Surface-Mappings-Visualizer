@@ -16,7 +16,7 @@ public static class FibredSurfaceFactory
     /// </param>
     public static FibredSurface RoseSpine(
         ModelSurface surface,
-        IDictionary<string, string[]> map,
+        IDictionary<string, string> map,
         IDictionary<string, string> names = null,
         IDictionary<string, bool> reverse = null
     ) {
@@ -30,7 +30,7 @@ public static class FibredSurfaceFactory
 
         // todo: map on the punctures and adding peripheral strips around them. 
         var junction = new BasicPoint(Vector3.zero);
-        var edges = new List<(Curve, string, string, string[])>();
+        var edges = new List<(Curve, string, string, string)>();
         if (!map.Keys.ToHashSet().IsSupersetOf(surface.sides.Select(s => nameMap(s.Name))))
             throw new("Provide g(e) for all of the edges of the rose spine. Their names come from the sides of the surface (and are constructed to pass through this side). These names are " + string.Join(", ", surface.sides.Select(s => nameMap(s.Name))));
         
@@ -55,23 +55,6 @@ public static class FibredSurfaceFactory
         return new FibredSurface(edges, surface);
     }
     
-    /// <summary>
-    /// The rose spine of the surface with the given map. Use spaces for separation and uppercase for inverse
-    /// Example: map["a"] = "a B A b D C A" 
-    /// </summary>
-    public static FibredSurface RoseSpine(
-        ModelSurface surface, 
-        IDictionary<string, string> map,
-        IDictionary<string, string> names = null,
-        IDictionary<string, bool> reverse = null
-    ) =>
-        RoseSpine(surface,
-            map.ToDictionary(kv => kv.Key, 
-                kv => kv.Value.Split(' ')
-            ),
-            names,
-            reverse);
-
     /// <summary>
     /// The rose spine of the surface with the identity map. 
     /// </summary>

@@ -265,7 +265,7 @@ public class HyperbolicGeodesicSegment : Curve
         return new TangentVector(value.ToVector3(), derivative.ToVector3());
     }
 
-    public override Curve Reversed() => reverseCurve ??= new HyperbolicGeodesicSegment(EndPosition, StartPosition, Surface, Name + "'", diskModel) {Color = Color};
+    public override Curve Reversed() => reverseCurve ??= new HyperbolicGeodesicSegment(EndPosition, StartPosition, Surface, Name.EndsWith("'") ? Name : Name + "'", diskModel) { Color = Color, reverseCurve = this };
     public override Curve Copy() => new HyperbolicGeodesicSegment(StartPosition, EndPosition, Surface, Name, diskModel) {Color = Color};
 }
 

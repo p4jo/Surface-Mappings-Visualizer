@@ -191,7 +191,9 @@ public class Inefficiency: EdgePoint
          throw new Exception("Bug: Two edges in the same gate didn't eventually get mapped to the same edge under Dg.");
 
      }
-     
+
+     public bool FullFold => edgesToFold.Any(e => e.EdgePath.Count == initialSegmentToFold);
+
      public bool SameEdgesToFold(Inefficiency other) => edgesToFold.SequenceEqual(other.edgesToFold);
 
      public override string ToString()

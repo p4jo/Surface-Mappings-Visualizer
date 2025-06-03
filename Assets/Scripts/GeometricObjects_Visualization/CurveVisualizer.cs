@@ -82,6 +82,13 @@ public class CurveVisualizer : MonoBehaviour
             splineComputer.SetPoints(points.ToArray(), SplineComputer.Space.Local);
 
             splineComputer.GetComponent<Renderer>().material.color = curve.Color;
+            var sizeModifier = splineComputer.GetComponent<MeshGenerator>().sizeModifier;
+            foreach (var sizeKey in sizeModifier.keys)
+            {
+                sizeKey.start = 1d - (1d - sizeKey.start) / curve.Length;
+                sizeKey.end = 1d - (1d - sizeKey.end) / curve.Length;
+            }
+            
             splineComputer.Rebuild();
         }
     }

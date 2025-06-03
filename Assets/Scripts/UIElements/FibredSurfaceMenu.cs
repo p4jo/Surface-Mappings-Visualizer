@@ -36,7 +36,8 @@ public class FibredSurfaceMenu : MonoBehaviour
     [SerializeField] private GameObject optionTogglePrefab;
     [SerializeField] private TMP_Text descriptionText;
     [SerializeField] private TMP_Text graphStatusText;
-    
+    [SerializeField] private ToggleGroup toggleGroup;
+
     private readonly AdjacencyGraph<MenuVertex, MenuEdge> fibredSurfaces = new();
     public FibredSurface FibredSurface => currentVertex?.fibredSurface;
     
@@ -64,12 +65,14 @@ public class FibredSurfaceMenu : MonoBehaviour
 
     private void ClearUI()
     {
+        foreach (var toggle in toggleGroup.ActiveToggles().ToList())
+            toggleGroup.UnregisterToggle(toggle);
         foreach (Transform child in forwardButtonList.transform.Cast<Transform>().ToList()) 
-            DestroyImmediate(child.gameObject);
+            Destroy(child.gameObject);
         foreach (Transform child in suggestionButtonList.transform.Cast<Transform>().ToList())
-            DestroyImmediate(child.gameObject);
+            Destroy(child.gameObject);
         foreach (Transform child in optionList.transform.Cast<Transform>().ToList())
-            DestroyImmediate(child.gameObject);
+            Destroy(child.gameObject);
         surfaceMenu.Display(FibredSurface, remove: true);
     }
 
@@ -117,16 +120,24 @@ public class FibredSurfaceMenu : MonoBehaviour
         yield return new WaitForEndOfFrame();
         
         descriptionText.text = suggestion.description;
-        if (suggestion == FibredSurface.AlgorithmSuggestion.Finished) yield break;
             
         var optionToggles = new Dictionary<Toggle, (object, string)>();
+        bool first = true;
         foreach (var option in suggestion.options)
         {
             var toggleGameObject = Instantiate(optionTogglePrefab, optionList.transform);
             toggleGameObject.GetComponentInChildren<TextMeshProUGUI>().text = option.Item2;
             var toggle = toggleGameObject.GetComponent<Toggle>();
             optionToggles[toggle] = option;
+            if (!suggestion.allowMultipleSelection)
+                // toggleGroup.RegisterToggle(toggle);
+                toggle.group = toggleGroup; 
+            if (first)
+                toggle.isOn = true; // select the first option by default
+            first = false;
         }
+        // if (first) // suggestion.IsFinished, but without multiple enumeration
+        //     yield break;
 
         foreach (var buttonText in suggestion.buttons)
         {
@@ -137,7 +148,8 @@ public class FibredSurfaceMenu : MonoBehaviour
                 var selection = (from toggleOptionPair in optionToggles
                     where toggleOptionPair.Key.isOn
                     select toggleOptionPair.Value).ToList();
-                if (selection.Count == 0) selection = new () { optionToggles.First().Value };
+                if (selection.Count == 0)
+                    selection = new (optionToggles.Values.Take(1));
                 DoSuggestion(buttonText, selection);
             });
         }
@@ -163,8 +175,11 @@ public class FibredSurfaceMenu : MonoBehaviour
     public bool DoNextSuggestion()
     {
         var suggestion = currentVertex.suggestion ?? (currentVertex.suggestion = FibredSurface.NextSuggestion());
-        if (suggestion == FibredSurface.AlgorithmSuggestion.Finished) return false;
+        var selection = suggestion.options.FirstOrDefault();
+        if (selection == default) // suggestion.IsFinished, but without multiple enumeration
+            return false;
         // todo: Performance. Also wait for a frame here?
+        
         DoSuggestion(suggestion.buttons.First(), new []{ suggestion.options.First() });
         return true;
     }
@@ -210,13 +225,13 @@ public class FibredSurfaceMenu : MonoBehaviour
             UpdateSelectedSurface(parent);
     }
 
-    public void UpdateGraphMap(IDictionary<string, string[]> map, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
+    public void UpdateGraphMap(IDictionary<string, string> map, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
     {
         var edgeNames = (from strip in FibredSurface.Strips select strip.Name).ToHashSet();
         edgeNames.ExceptWith(map.Keys);
         foreach (var missingKey in edgeNames)
         {
-            map[missingKey] = new[] { missingKey }; // identity on the other edges
+            map[missingKey] = missingKey; // identity on the other edges
         }
         var newFibredSurface = FibredSurface.Copy();
         newFibredSurface.SetMap(map, mode);
@@ -242,7 +257,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
     {
         string[] lines = text.Split(',', '\n');
-        var graphMap = new Dictionary<string, string[]>();
+        var graphMap = new Dictionary<string, string>();
         foreach (string line in lines)
         {
             string trim = line.Trim();
@@ -256,7 +271,7 @@ public class FibredSurfaceMenu : MonoBehaviour
             if (!match.Success)
                 throw new ArgumentException("The input should be in the form \"g(a) = a B A, g(b) = ...\" or \" a -> a B A, b -> ...\"");
 
-            string[] parts = match.Groups[2].Value.Split(' ').Select(s => s.Trim()).Where(t => t != "").ToArray();
+            string parts = match.Groups[2].Value;
             graphMap[match.Groups[1].Value.Trim()] = parts;
         }
         UpdateGraphMap(graphMap, reset, mode);

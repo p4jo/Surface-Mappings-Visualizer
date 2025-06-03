@@ -145,7 +145,10 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
             Surface, 
             Name + " adjusted start vector"
         );
-        return interpolatingSegment.Concatenate(newCurve);
+        var result = interpolatingSegment.Concatenate(newCurve);
+        result.Color = Color;
+        result.Name = Name;
+        return result;
     }
 }
 
@@ -189,7 +192,7 @@ public partial class TransformedCurve : Curve
     public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
     public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism) { Name = Name, Color = Color } ;
 
-    public override Curve Reversed() => reverseCurve ??= new TransformedCurve(curve.Reversed(), homeomorphism);
+    public override Curve Reversed() => reverseCurve ??= new TransformedCurve(curve.Reversed(), homeomorphism) { Color = Color, reverseCurve = this };
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) =>
         new TransformedCurve(curve, homeomorphism * this.homeomorphism);
@@ -365,7 +368,7 @@ public partial class ConcatenatedCurve : Curve
         throw new Exception("What the heck");
     }
 
-    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name + "'") { Color = Color };
+    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name.EndsWith("'") ? Name : Name + "'") { Color = Color, reverseCurve = this };
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
     {
@@ -462,7 +465,9 @@ public partial class ConcatenatedCurve : Curve
         }
         if (startSegmentIndex == endSegmentIndex)
             return segments[startSegmentIndex].Restrict(movedStartTime, movedEndTime);
-        
+
+        if (startSegmentIndex == -1) // start - sum(segmentsLength) > 0, i.e. start > Length - (calculation error from movedStartTime), so probably start == Length
+            return segments[^1].Restrict(segments[^1].Length); // will do the same and return the standing path.
         var firstSegment = segments[startSegmentIndex].Restrict(movedStartTime, segments[startSegmentIndex].Length);
         var curves = segments[(startSegmentIndex + 1)..endSegmentIndex].Prepend(firstSegment);
         
@@ -557,7 +562,7 @@ public class RestrictedCurve : Curve
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);
 
     public override Curve Reversed() => reverseCurve ??=
-        new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start) { Name = Name + "'", Color = Color };
+        new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start) { Name = Name.EndsWith("'") ? Name : Name + "'", Color = Color, reverseCurve = this };
 
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
@@ -624,8 +629,16 @@ public class ParametrizedCurve : Curve
 
 public class SplineSegment : InterpolatingCurve
 {
+    private Vector3 a, b, c, d;
     public SplineSegment(TangentVector startVelocity, TangentVector endVelocity, float length, Surface surface, string name) : base(startVelocity, endVelocity, length, surface, name)
     {
+        var (start, vStart) = length * startVelocity;
+        var (end, vEnd) = length * endVelocity;
+        c = vStart;
+        d = start.Position;
+        var δ = end.Position - d;
+        a = vEnd + c - 2 * δ;
+        b = - vEnd - 2 * c + 3 * δ; 
     }
 
     public override Point ValueAt(float t)
@@ -633,14 +646,6 @@ public class SplineSegment : InterpolatingCurve
         float s = t / Length;
         float s2 = s * s;
         float s3 = s2 * s;
-        var (start, vStart) = Length * StartVelocity;
-        var (end, vEnd) = Length * EndVelocity;
-        var d = start.Position;
-        var δ = end.Position - d;
-        var c = vStart;
-        var b = 3 * δ - vEnd;
-        var a = vEnd - vStart - 2 * δ;
-        
         return a * s3 + b * s2 + c * s + d;
     }
 
@@ -649,13 +654,6 @@ public class SplineSegment : InterpolatingCurve
         float s = t / Length;
         float s2 = s * s;
         float s3 = s2 * s;
-        var (start, vStart) = Length * StartVelocity;
-        var (end, vEnd) = Length * EndVelocity;
-        var d = start.Position;
-        var δ = end.Position - d;
-        var c = vStart;
-        var b = 3 * δ - vEnd;
-        var a = vEnd - vStart - 2 * δ;
 
         var pos = a * s3 + b * s2 + c * s + d;
         var velocity = a * (3 * s2) + b * (2 * s) + c;
