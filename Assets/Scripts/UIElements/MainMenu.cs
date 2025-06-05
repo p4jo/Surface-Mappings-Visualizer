@@ -218,13 +218,9 @@ public class MainMenu: MonoBehaviour
         var PointPush = new PushingPath(EdgePath.FromString("C d A b a d' c d d c' a D", fibredSurface.Strips));
 
 
-        var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
+        // var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
 
-        var correctPointPush = new PushingPath(new List<PushingPath.Entry>
-        {
-            new PushingPath.EdgeFollowing(edges["C"], 1, 2, 1, edges["d"], edges["d"])
-        });
-        Debug.Log(fibredSurface.Strips.ToLineSeparatedString(strip => PointPush.Image(strip).ToString()));
+        Debug.Log(fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { PointPush.Image(strip)}"));
         
         
         // fibredSurfaceMenu.StartAlgorithm();

@@ -339,9 +339,9 @@ public class ShiftedCurve : Curve
         return LocalCurve(t, s).EndPosition;
     }
 
-    private Curve LocalCurve(float t, float s) => CurveToRight(t, s, curve);
+    private Curve LocalCurve(float t, float s) => CurveToRight(curve, t, s);
 
-    public static Curve CurveToRight(float t, float s, Curve curve)
+    public static Curve CurveToRight(Curve curve, float t, float s)
     {
         if (curve.Surface is not GeodesicSurface geodesicSurface)
             return null;
