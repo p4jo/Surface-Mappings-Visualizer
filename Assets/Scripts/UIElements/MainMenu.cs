@@ -208,13 +208,23 @@ public class MainMenu: MonoBehaviour
         var p = "d C b A B a D c";
         var P = reverse(p); 
         string reverse(string c) => new((from ch in c.Reverse() select char.IsUpper(ch) ? char.ToLower(ch) : char.ToUpper(ch)).ToArray()); 
-        string conjugate(string e, string c) => c + " " + e + " " + reverse(c); // c e c^{-1}
+        string conjugate(string e, string c) => $"({c})°({e})"; // c e c^{-1}
         fibredSurfaceMenu.UpdateGraphMap($"d \u21a6 {P} d\n" +
                                          $"b \u21a6 {conjugate(P, "a d")} b\n" +
                                          $"c \u21a6 c {conjugate(P,  P + " d C a d")}\n" +
-                                         $"a \u21a6 a {conjugate(P,$"D {p} c {P} d {conjugate(P, "c a d")} {P} d C a d")}",
-            mode: GraphMapUpdateMode.Replace); 
-        
+                                         $"a \u21a6 a {conjugate(P,$"D {p} c {P} d {conjugate(P, "c a d")} {P} d C a D")}",
+            mode: GraphMapUpdateMode.Replace);
+
+        var PointPush = new PushingPath(EdgePath.FromString("C d A b a d' c d d c' a D", fibredSurface.Strips));
+
+
+        var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
+
+        var correctPointPush = new PushingPath(new List<PushingPath.Entry>
+        {
+            new PushingPath.EdgeFollowing(edges["C"], 1, 2, 1, edges["d"], edges["d"])
+        });
+        Debug.Log(fibredSurface.Strips.ToLineSeparatedString(strip => PointPush.Image(strip).ToString()));
         
         
         // fibredSurfaceMenu.StartAlgorithm();

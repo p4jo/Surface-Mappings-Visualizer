@@ -339,8 +339,12 @@ public class ShiftedCurve : Curve
         return LocalCurve(t, s).EndPosition;
     }
 
-    private Curve LocalCurve(float t, float s)
+    private Curve LocalCurve(float t, float s) => CurveToRight(t, s, curve);
+
+    public static Curve CurveToRight(float t, float s, Curve curve)
     {
+        if (curve.Surface is not GeodesicSurface geodesicSurface)
+            return null;
         var basis = curve.BasisAt(t);
         var localCurve = geodesicSurface.GetGeodesic(basis.B.Normalized, s, $"shift geodesic for {curve.Name} at time {t}");
         return localCurve;

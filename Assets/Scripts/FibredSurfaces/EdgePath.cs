@@ -4,163 +4,76 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using JetBrains.Annotations;
 
-public class EdgePath : IReadOnlyList<Strip>
+public abstract class EdgePath : IReadOnlyList<Strip>
 {
-    /// <summary>
-    /// This is a normal edge path as before. Every EdgePath is built like a tree consisting of EdgePaths, and the leaves are EdgePaths where normalEdgePath is not null
-    /// </summary>
-    private readonly Strip[] normalEdgePath;
-    /// <summary>
-    /// This is the tree-like structure of EdgePaths. internalEdgePath is not null iff normalEdgePath is not null.
-    /// </summary>
-    private readonly EdgePath[] internalEdgePath;
+    public static readonly EdgePath Empty = new NormalEdgePath();
 
-    private string toString = null;
-
-    public EdgePath()
-    {
-        normalEdgePath = Array.Empty<Strip>();
-    }
+    // public static implicit operator EdgePath(List<Strip> list) => new NormalEdgePath(list.ToArray());
+    public static implicit operator EdgePath(Strip[] list) => new NormalEdgePath(list);
     
-    public EdgePath(params Strip[] strips)
+    public virtual EdgePath Conjugate(EdgePath c, bool left)
     {
-        normalEdgePath = strips;
+        if (IsEmpty) return Empty;
+        if (c.IsEmpty) return this;
+        return new ConjugateEdgePath(this, c, left);
     }
 
-    public EdgePath(params EdgePath[] internalEdgePath)
-    {
-        this.internalEdgePath = internalEdgePath;
-    }
-    public EdgePath(IEnumerable<Strip> strips) : this(strips.ToArray())
-    {   }
-    
-    public EdgePath(IEnumerable<EdgePath> strips) : this(strips.ToArray())
-    {   }
+    public abstract EdgePath Inverse();
 
-    public static implicit operator EdgePath(List<Strip> list) => new(list.ToArray());
-    public static implicit operator EdgePath(Strip[] list) => new(list);
-    public static implicit operator EdgePath(Strip strip) => new(strip);
-
-    public EdgePath ConjugateLeft(EdgePath c) => new(c, this, c.Inverse()) { toString = $"({c})°({this})" };
-    
-    public EdgePath ConjugateRight(EdgePath c) => new(c.Inverse(), this, c) { toString = $"({this})^({c})" };
-
-    public EdgePath Inverse()
-    {
-        if (normalEdgePath != null)
-        {
-            Strip[] reversedNormalEdgePath = new Strip[normalEdgePath.Length];
-            for (int i = 0; i < normalEdgePath.Length; i++) 
-                reversedNormalEdgePath[i] = normalEdgePath[^(i + 1)].Reversed();
-            return new EdgePath(reversedNormalEdgePath);
-        }
-
-        return new EdgePath(internalEdgePath.Reverse().Select(path => path.Inverse()));
-    }
-
-    public IEnumerator<Strip> GetEnumerator()
-    {
-        return (normalEdgePath as IEnumerable<Strip>)?.GetEnumerator() ??
-            internalEdgePath.SelectMany(edgePath => edgePath).GetEnumerator();
-    }
+    public abstract IEnumerator<Strip> GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    
+    public EdgePath Replace(Func<UnorientedStrip, Strip> newEdges) => 
+        Replace(
+            strip => strip is OrderedStrip { reverse: true }
+                ? newEdges(strip.UnderlyingEdge).Reversed()
+                : newEdges(strip.UnderlyingEdge)
+        );
 
-    public EdgePath Replace(IReadOnlyDictionary<UnorientedStrip,Strip> newEdges)
+    public abstract EdgePath Replace(Func<Strip, Strip> newEdges);
+    
+    public EdgePath Replace(Func<UnorientedStrip, EdgePath> newEdges) => 
+        Replace(
+            strip => strip is OrderedStrip { reverse: true }
+                ? newEdges(strip.UnderlyingEdge).Inverse()
+                : newEdges(strip.UnderlyingEdge)
+        );
+    
+    public abstract EdgePath Replace(Func<Strip, EdgePath> newEdgePaths);
+
+    public abstract EdgePath Concat(EdgePath other);
+
+    public abstract EdgePath Skip(int i);
+
+    public abstract EdgePath Take(int i);
+
+    public abstract int Count { get; }
+
+    public abstract bool IsEmpty { get; }
+
+    public virtual Strip this[int index]
     {
-        if (normalEdgePath != null)
+        get
         {
-            return new EdgePath(normalEdgePath.Select(
-                strip => strip is OrderedStrip { reverse: true }
-                    ? newEdges[strip.UnderlyingEdge].Reversed()
-                    : newEdges[strip.UnderlyingEdge]
-            ));
+            if (TryGetElementAt(ref index, out var result))
+                return result;
+            throw new IndexOutOfRangeException();
         }
-
-        return new EdgePath(internalEdgePath.Select(
-            path => path.Replace(newEdges)
-        ));
-    }
-    public EdgePath Replace(IReadOnlyDictionary<UnorientedStrip,UnorientedStrip> newEdges)
-    { // this is copied from the above Replace
-        if (normalEdgePath != null)
-        {
-            return new EdgePath(normalEdgePath.Select(
-                strip => strip is OrderedStrip { reverse: true }
-                    ? newEdges[strip.UnderlyingEdge].Reversed()
-                    : newEdges[strip.UnderlyingEdge]
-            ));
-        }
-
-        return new EdgePath(internalEdgePath.Select(
-            path => path.Replace(newEdges)
-        ));
     }
 
-    public EdgePath Replace(IReadOnlyDictionary<UnorientedStrip, EdgePath> newEdgePaths)
-    {
-        if (normalEdgePath != null)
-        {
-            return new EdgePath(normalEdgePath.Select(
-                strip => strip is OrderedStrip { reverse: true }
-                    ? newEdgePaths[strip.UnderlyingEdge].Inverse()
-                    : newEdgePaths[strip.UnderlyingEdge]
-            ));
-        }
-        
-        return new EdgePath(internalEdgePath.Select(
-            path => path.Replace(newEdgePaths)
-        ));
-    }
-
-    public EdgePath Concat(EdgePath other)
-    {
-        if (normalEdgePath != null && other.normalEdgePath != null)
-            return new(normalEdgePath.Concat(other.normalEdgePath));
-        if (normalEdgePath != null)
-            return new(other.internalEdgePath.Prepend(this));
-        if (other.normalEdgePath != null)
-            return new(internalEdgePath.Append(other));
-        return new(internalEdgePath.Concat(other.internalEdgePath));
-    }
-
-    public int Count => normalEdgePath?.Length ?? internalEdgePath.Sum(path => path.Count);
-
-    public Strip this[int index] => TryGetElementAt(ref index, out var result) ? result : null;
-
-    private bool TryGetElementAt(ref int i, out Strip result)
-    {
-        var c = Count;
-        if (i >= c)
-        {
-            i -= c;
-            result = null;
-            return false;
-        }
-
-        if (normalEdgePath != null)
-        { 
-            result = normalEdgePath[i];
-            return true;
-        }
-
-        foreach (var edgePath in internalEdgePath)
-        {
-            if (edgePath.TryGetElementAt(ref i, out result))
-                return true;
-        }
-
-        throw new ArithmeticException(
-            "EdgePath.Count must have been calculated incorrectly, as trying to access edgePath[i] didn't work.");
-    }
+    public abstract bool TryGetElementAt(ref int i, out Strip result);
 
     public static EdgePath FromString(string text, IEnumerable<UnorientedStrip> strips) =>
-        FromString(text, strips.Concat(
-            strips.Select(edge => edge.Reversed())
-        ).ToDictionary(
-            strip => strip.Name
-        ));
+        FromString(text, 
+            strips.Concat(
+                strips.Select(edge => edge.Reversed())
+            ).ToDictionary(
+                strip => strip.Name
+            )
+        );
 
     public static EdgePath FromString(string text, IReadOnlyDictionary<string, Strip> stripDict)
     {
@@ -200,13 +113,13 @@ public class EdgePath : IReadOnlyList<Strip>
                         break;
                     }
                     throw new ArgumentException($"Misplaced ' in your input at location {i}");
-
+                case '^':
                 case '°':
                     CloseLastVariable();
                     PromoteLastVariableToLastThing();
                     PushLastNormalEdgePath(); // the edge path before the last variable
                     var nextThing = ReadNextThing();
-                    lastThing = nextThing.ConjugateLeft(lastThing);
+                    lastThing = nextThing.Conjugate(lastThing, c == '°');
                     break;
                 case '(':
                     PushLastThing();
@@ -218,13 +131,6 @@ public class EdgePath : IReadOnlyList<Strip>
                 case ')':
                     throw new ArgumentException(
                         $"There is an unmatched closing parenthesis in your input at location {i}");
-                case '^':
-                    CloseLastVariable();
-                    PromoteLastVariableToLastThing();
-                    PushLastNormalEdgePath();
-                    nextThing = ReadNextThing();
-                    lastThing = lastThing.ConjugateRight(nextThing);
-                    break;
                 default:
                     PushLastThing();
                     PushLastVariable();
@@ -240,7 +146,7 @@ public class EdgePath : IReadOnlyList<Strip>
         }
         if (currentlyReadNormalEdgePath.Count > 0)
             PushLastNormalEdgePath();
-        return result.Count == 1 ? result[0] : new EdgePath(result);
+        return result.Count == 1 ? result[0] : new NestedEdgePath(result);
 
         void CloseLastVariable()
         {
@@ -262,7 +168,7 @@ public class EdgePath : IReadOnlyList<Strip>
         void PushLastNormalEdgePath()
         {
             if (currentlyReadNormalEdgePath.Count > 0) 
-                result.Add(new(currentlyReadNormalEdgePath));
+                result.Add(new NormalEdgePath(currentlyReadNormalEdgePath.ToArray()));
             currentlyReadNormalEdgePath.Clear();
         }
 
@@ -276,14 +182,27 @@ public class EdgePath : IReadOnlyList<Strip>
         void PromoteLastVariableToLastThing()
         {
             if (lastStrip != null)
-                lastThing = lastStrip;
+                lastThing = new NormalEdgePath(lastStrip);
             lastStrip = null;
         }
 
         EdgePath ReadParentheses()
         {
             var startIndex = i + 1;
-            i = text.IndexOf(')', startIndex); // will be increased after the call to this
+            int nestingLevel = 1;
+            while (nestingLevel > 0)
+            {
+                i++;
+                switch (text[i])
+                {
+                    case '(':
+                        nestingLevel++;
+                        break;
+                    case ')':
+                        nestingLevel--;
+                        break;
+                }
+            }
             return FromString(text.Substring(startIndex, i - startIndex), stripDict);
         }
 
@@ -299,13 +218,13 @@ public class EdgePath : IReadOnlyList<Strip>
                     case '·':
                     case ' ':
                         if (CloseAndReturnLastVariable(out var readStrip))
-                            return readStrip;
+                            return new NormalEdgePath(readStrip);
                         break;
                     case '\'':
                         if (CloseAndReturnLastVariable(out readStrip))
                         {
                             var stripReversed = readStrip?.Reversed();
-                            return stripReversed;
+                            return new NormalEdgePath(stripReversed);
                         }
                         throw new ArgumentException($"Misplaced ' in your input at location {i}");
                     case '°':
@@ -313,7 +232,7 @@ public class EdgePath : IReadOnlyList<Strip>
                         if (CloseAndReturnLastVariable(out readStrip))
                         {
                             i--; // read the ° or ^ again. (left-grouping)
-                            return readStrip;
+                            return new NormalEdgePath(readStrip);
                         }
                         throw new ArgumentException(
                             $"There are consecutive ° and ^ symbols in your input at location {i}");
@@ -321,7 +240,7 @@ public class EdgePath : IReadOnlyList<Strip>
                         if (CloseAndReturnLastVariable(out readStrip))
                         {
                             i--; // read the ( again.
-                            return readStrip;
+                            return new NormalEdgePath(readStrip);
                         }
                         return ReadParentheses();
                     case ')':
@@ -334,7 +253,7 @@ public class EdgePath : IReadOnlyList<Strip>
             }
 
             if (CloseAndReturnLastVariable(out var strip))
-                return strip;
+                return new NormalEdgePath(strip);
             throw new ArgumentException("Your input ended unexpectedly.");
 
             bool CloseAndReturnLastVariable(out Strip edgePath)
@@ -355,25 +274,269 @@ public class EdgePath : IReadOnlyList<Strip>
     public override string ToString() => ToString(150, 10);
 
     public string ToString(int maxLength, int tail) => 
-        ToColoredString(maxLength, tail, obj => obj.ToString());
+        ToColoredString(maxLength, tail, obj => obj.Name); // do not call strip.ToString() here (facepalm), this is self-referential
 
     public string ToColorfulString(int maxLength, int tail) =>
         ToColoredString(maxLength, tail, obj => ((IDrawable)obj).ColorfulName);
 
-    private string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName)
+    protected internal abstract string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName);
+
+    protected internal abstract int ExpectedStringLength();
+
+    public static EdgePath Concatenate(IEnumerable<EdgePath> paths)
     {
-        if (normalEdgePath != null)
-        {
-
-            if (normalEdgePath.Length <= maxLength)
-                return normalEdgePath.ToCommaSeparatedString(colorfulName, " ");
-                
-            var initialCount = maxLength - tail;
-            var initialEdges = normalEdgePath[0..initialCount].ToCommaSeparatedString(colorfulName, " ");;
-            var terminalEdges = normalEdgePath[^tail..].ToCommaSeparatedString(colorfulName, " ");
-            return $"{initialEdges} ... {terminalEdges}";
-        }
-
-        throw new NotImplementedException();
+        return paths.Aggregate((res, current) => res.Concat(current));
     }
 }
+
+public class ConjugateEdgePath : NestedEdgePath
+{
+    private readonly EdgePath inner;
+    private readonly EdgePath outer;
+    private readonly bool leftConjugation;
+
+    public ConjugateEdgePath(EdgePath inner, EdgePath outer, bool leftConjugation): base(
+        leftConjugation ?
+            new []{ outer, inner, outer.Inverse() } :
+            new []{ outer.Inverse(), inner, outer }
+    )
+    {
+        this.inner = inner;
+        this.outer = outer;
+        this.leftConjugation = leftConjugation;
+    }
+    
+    
+
+    public override EdgePath Inverse() => new ConjugateEdgePath(inner.Inverse(), outer, leftConjugation);
+
+    public override EdgePath Replace(Func<Strip, Strip> newEdges) => 
+        inner.Replace(newEdges).Conjugate(
+            outer.Replace(newEdges),
+            leftConjugation
+        );
+
+    public override EdgePath Replace(Func<Strip, EdgePath> newEdgePaths) => 
+        inner.Replace(newEdgePaths).Conjugate(
+            outer.Replace(newEdgePaths),
+            leftConjugation
+        );
+
+    public override EdgePath Concat(EdgePath other) => 
+        other switch
+        {
+            EdgePath { IsEmpty: true } => this,
+            NestedEdgePath nestedEdgePath and not ConjugateEdgePath => new NestedEdgePath(nestedEdgePath.subPaths.Prepend(this)),
+            _ => new NestedEdgePath(this, other)
+        };
+
+    public override int Count => inner.Count * 2 + outer.Count;
+
+    protected internal override string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName)
+    {
+        int innerExpectedLength = inner.ExpectedStringLength();
+        int outerExpectedLength = outer.ExpectedStringLength();
+        int smallerLength = Math.Min(innerExpectedLength, outerExpectedLength);
+        int average = maxLength / 2;
+        if (smallerLength < average)
+            average += average - smallerLength;
+        var innerString = inner.ToColoredString(average, average / 4, colorfulName);
+        var outerString = outer.ToColoredString(average, average / 4, colorfulName);
+        var innerWithParentheses = innerExpectedLength > 2 ? $"({innerString})" : innerString;
+        var outerWithParentheses = outerExpectedLength > 2 ? $"({outerString})" : outerString;
+        return leftConjugation
+            ? $"{outerWithParentheses}°{innerWithParentheses}"
+            : $"{innerWithParentheses}^{outerWithParentheses}";
+    }
+
+    protected internal override int ExpectedStringLength() => inner.ExpectedStringLength() + outer.ExpectedStringLength() + 3;
+}
+
+/// <summary>
+/// This is the tree-like structure of EdgePaths
+/// </summary>
+public class NestedEdgePath : EdgePath
+{
+    [NotNull] protected internal readonly EdgePath[] subPaths;
+
+    public NestedEdgePath(params EdgePath[] subPaths)
+    {
+        this.subPaths = subPaths;
+    }
+
+    public NestedEdgePath(IEnumerable<EdgePath> subPaths) : this(subPaths.SelectMany(e => e is NestedEdgePath nestedEdgePath ? nestedEdgePath.subPaths : new []{ e }).ToArray())
+    {   }
+
+    private EdgePath inverse;
+    public override EdgePath Inverse() => inverse ??= new NestedEdgePath(subPaths.Reverse().Select(path => path.Inverse()));
+
+    public override IEnumerator<Strip> GetEnumerator() => subPaths.SelectMany(edgePath => edgePath).GetEnumerator();
+
+
+    public override EdgePath Replace(Func<Strip, Strip> newEdges) =>
+        EdgePath.Concatenate(subPaths.Select(
+            path => path.Replace(newEdges)
+        ));
+
+    public override EdgePath Replace(Func<Strip, EdgePath> newEdgePaths) =>
+        EdgePath.Concatenate(subPaths.Select(
+            path => path.Replace(newEdgePaths)
+        ));
+
+    public override EdgePath Concat(EdgePath other) =>
+        other switch
+        {
+            NestedEdgePath nestedEdgePath and not ConjugateEdgePath => 
+                new NestedEdgePath(subPaths.Concat(nestedEdgePath.subPaths)),
+            NormalEdgePath normalEdgePath when subPaths[^1] is NormalEdgePath rightmostNormalEdgePath =>
+                new NestedEdgePath(subPaths[..^1].Append(rightmostNormalEdgePath.Concat(normalEdgePath))), 
+            _ =>
+                new NestedEdgePath(subPaths.Append(other))
+        };
+
+    public override EdgePath Skip(int i)
+    {
+        int j = 0;
+        for (; j < subPaths.Length; j++)
+        {
+            var count = subPaths[j].Count;
+            if (i < count) break;      
+            i -= count;
+        }
+
+        if (j == subPaths.Length)
+            return Empty;
+
+        return EdgePath.Concatenate(subPaths[(j + 1)..].Prepend(subPaths[j].Skip(i)));
+    }
+
+    public override EdgePath Take(int i)
+    {
+        int j = 0;
+        for (; j < subPaths.Length; j++)
+        {
+            var count = subPaths[j].Count;
+            if (i < count) break;
+            i -= count;
+        }
+
+        if (j == subPaths.Length)
+            return this;
+
+        return Concatenate(subPaths[..j].Append(subPaths[j].Take(i)));
+    }
+
+    private int? count;
+    public override int Count => count ??= subPaths.Sum(path => path.Count);
+
+    public override bool IsEmpty => subPaths.Length == 0;
+
+    public override bool TryGetElementAt(ref int i, out Strip result)
+    {
+        foreach (var edgePath in subPaths)
+        {
+            if (edgePath.TryGetElementAt(ref i, out result))
+                return true;
+        }
+
+        result = null;
+        return false;
+    }
+
+    protected internal override string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName)
+    {
+        if (IsEmpty) return "";
+        var lengths = (from path in subPaths select path.ExpectedStringLength()).ToArray();
+        
+        int internalMaxLength = maxLength;
+        int internalTail = tail;
+        if (lengths.Sum() > maxLength) {
+            var average1 = maxLength / subPaths.Length;
+            var lengthLeftOver = lengths.Where(l => average1 > l).Sum(l => average1 - l);
+            var tooLongSubPaths = lengths.Count(l => average1 < l);
+            internalMaxLength = tooLongSubPaths > 0 ? average1 + lengthLeftOver / tooLongSubPaths : maxLength;
+            internalTail = Math.Min(internalMaxLength / 3, tail);
+        }
+
+        return "(" + subPaths.ToCommaSeparatedString(path => path.ToColoredString(internalMaxLength, internalTail, colorfulName), " ") + ")";
+    }
+
+    protected internal override int ExpectedStringLength() => subPaths.Sum(path => path.ExpectedStringLength());
+}
+
+class NormalEdgePath : EdgePath
+{
+    /// <summary>
+    /// This is a normal edge path as before. Every EdgePath is built like a tree consisting of EdgePaths, and the leaves are EdgePaths where normalEdgePath is not null
+    /// </summary>
+    private readonly Strip[] edges;
+
+    public NormalEdgePath(params Strip[] strips)
+    {
+        edges = strips;
+    }
+
+    public NormalEdgePath(IEnumerable<Strip> strips) : this(strips.ToArray())
+    {   }
+
+    public override EdgePath Inverse()
+    {
+        Strip[] reversedNormalEdgePath = new Strip[edges.Length];
+        for (int i = 0; i < edges.Length; i++) 
+            reversedNormalEdgePath[i] = edges[^(i + 1)].Reversed();
+        return new NormalEdgePath(reversedNormalEdgePath);
+    }
+
+    public override IEnumerator<Strip> GetEnumerator() => ((IEnumerable<Strip>)edges).GetEnumerator();
+
+    public override EdgePath Replace(Func<Strip,Strip> newEdges) =>
+        new NormalEdgePath(edges.Select(newEdges).Where(e => e != null));
+
+    public override EdgePath Replace(Func<Strip, EdgePath> newEdgePaths) =>
+        EdgePath.Concatenate(edges.Select(newEdgePaths).Where(e => e != null));
+
+    public override EdgePath Concat(EdgePath other) =>
+        other switch
+        {
+            NormalEdgePath normalEdgePath => new NormalEdgePath(edges.Concat(normalEdgePath.edges)),
+            NestedEdgePath nestedEdgePath => new NestedEdgePath(nestedEdgePath.subPaths.Prepend(this)),
+            _ => throw new NotImplementedException()
+        };
+
+    public override EdgePath Skip(int i) => i >= Count ? Empty : new NormalEdgePath(edges[i..]);
+
+    public override EdgePath Take(int i) => i >= Count ? this : new NormalEdgePath(edges[..i]);
+
+    public override int Count => edges.Length;
+
+    public override bool IsEmpty => edges.Length == 0;
+
+    public override bool TryGetElementAt(ref int i, out Strip result)
+    {
+        var c = Count;
+        if (i >= c)
+        {
+            i -= c;
+            result = null;
+            return false;
+        }
+        result = edges[i];
+        return true;
+    }
+
+    protected internal override string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName)
+    {
+        if (ExpectedStringLength() <= maxLength)
+            return edges.ToCommaSeparatedString(colorfulName, " ");
+        if (tail > maxLength)
+            tail = maxLength;
+        var initialCount = (maxLength - tail) / 2;
+        var terminalCount = tail / 2;
+        var initialEdges = edges[0..initialCount].ToCommaSeparatedString(colorfulName, " ");
+        var terminalEdges = edges[^terminalCount..].ToCommaSeparatedString(colorfulName, " ");
+        return $"{initialEdges} ... {terminalEdges}";
+    }
+
+    protected internal override int ExpectedStringLength() => Count * 2;
+}
+

@@ -59,7 +59,7 @@ public abstract class Strip: IEdge<Junction>, IDrawable
     
     public string ToColorfulString()
     {
-        var res = $"{ColorfulName(this)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(this)}) = {EdgePath.ToColorfulString(300, 15)}";
+        return $"{ColorfulName(this)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(this)}) = {EdgePath.ToColorfulString(300, 15)}";
         
         string ColorfulName(IDrawable obj) => obj.ColorfulName; 
         // Yep, we cannot call Curve.ColorfulName because, why? It implements IDrawnsformable, thus IDrawable, but interface members can only be called if the variable type is that interface.
@@ -223,7 +223,7 @@ public class OrderedStrip: Strip
         }
     }
 
-    public override EdgePath EdgePath // it is always an actual list, but editing it would lead to errors here!
+    public override EdgePath EdgePath
     {
         get => reverse ? UnderlyingEdge.EdgePath.Inverse() : UnderlyingEdge.EdgePath;
         set => UnderlyingEdge.EdgePath = reverse ? value.Inverse() : value;

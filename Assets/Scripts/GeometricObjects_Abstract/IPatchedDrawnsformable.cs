@@ -63,7 +63,6 @@ public class PatchedDrawnsformable : IPatchedDrawnsformable
         this.patches = patches.ToList();
     }
     
-    
     public Color Color // "virtual"
     {
         get => Patches.First().Color;
