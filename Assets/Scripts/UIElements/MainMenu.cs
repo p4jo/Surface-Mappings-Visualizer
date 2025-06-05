@@ -220,6 +220,7 @@ public class MainMenu: MonoBehaviour
 
         // var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
 
+        Debug.Log(PointPush.ToString());
         Debug.Log(fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { PointPush.Image(strip)}"));
         
         

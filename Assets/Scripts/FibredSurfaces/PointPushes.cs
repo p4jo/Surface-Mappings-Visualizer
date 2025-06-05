@@ -7,7 +7,6 @@ using JetBrains.Annotations;
 using MathNet.Numerics.LinearAlgebra;
 using QuikGraph;
 using QuikGraph.Algorithms;
-using Unity.VisualScripting;
 using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 using Object = UnityEngine.Object;
@@ -31,6 +30,8 @@ public class PushingPath : IPatchedDrawnsformable
         }
 
         public override EdgePath AssociatedPath(PushingPath pushingPath) => new NormalEdgePath( strip );
+
+        public override string ToString() => strip.Name + (followingLeft ? "L" : "R");
     }
 
     private class EdgeCrossing : Entry
@@ -57,6 +58,7 @@ public class PushingPath : IPatchedDrawnsformable
             this.positionAlongEdge = positionAlongEdge;
         }
 
+        public override string ToString() => $"({crossedEdge.Name}" + (rightToLeft ? "<-" : "->") + ")";
     }
 
     private class SelfIntersection : Entry
@@ -75,10 +77,21 @@ public class PushingPath : IPatchedDrawnsformable
             pushingPath.ConjugationPath(pushingPath.path.IndexOf(secondTime)),
             true
         );
+
+        public override string ToString() => $"[{secondTime.name}]";
     }
 
     private class SelfIntersectionSecondTime : Entry
-    { }
+    {
+        internal readonly string name;
+
+        public SelfIntersectionSecondTime(string name)
+        {
+            this.name = name;
+        }
+
+        public override string ToString() => $"{{{name}}}";
+    }
 
     public class Variable
     {
@@ -327,6 +340,8 @@ public class PushingPath : IPatchedDrawnsformable
 
                 edgesToCross.Insert(0, currentlyFollowedStrip.Reversed());
                 // the crossing loop will cross this edge at distance currentEdgeCrossingPosition
+
+                followingLeft = !followingLeft;
             }
             else
             {
@@ -391,7 +406,7 @@ public class PushingPath : IPatchedDrawnsformable
                 var edgeCrossed = edgesToCross[i];
                 // this loop body starts right before the crossing of the edgeCrossed 
 
-                var edgeCrossing = new EdgeCrossing(edgeCrossed, !followingLeft, currentEdgeCrossingPosition);
+                var edgeCrossing = new EdgeCrossing(edgeCrossed, !turnAroundClockwise, currentEdgeCrossingPosition);
 
                 path.Add(edgeCrossing);
 
@@ -536,13 +551,11 @@ public class PushingPath : IPatchedDrawnsformable
                 .Where(tuple =>
                     tuple.t is EdgeCrossing crossing && Equals(crossing.crossedEdge, edge)
                 ).OrderBy(
-                    tuple => ((EdgeCrossing)tuple.t).positionAlongEdge.Value * (reverse ? -1 : 1))
+                    tuple => ((EdgeCrossing) tuple.t).positionAlongEdge.Value * (reverse ? -1 : 1))
                 .Select(tuple => 
-                    new ConjugateEdgePath(
-                        ((EdgeCrossing) tuple.t).rightToLeft ? punctureWord : punctureWord.Inverse(),
-                        ConjugationPath(tuple.i),
-                        true
-                    ));
+                        (((EdgeCrossing) tuple.t).rightToLeft ? punctureWord : punctureWord.Inverse())
+                        .Conjugate(ConjugationPath(tuple.i), true)
+                    );
     }
 
     public string Name { get; set; }
@@ -560,4 +573,6 @@ public class PushingPath : IPatchedDrawnsformable
     public IPatchedDrawnsformable Copy() => new PushingPath(path, edgePath, cornerList, variables) { Name = Name, Color = Color } ; // todo: create new variables and new lists, this is not a deep copy!
 
     public IEnumerable<IDrawnsformable> Patches => from cornerSegment in cornerList select cornerSegment.ToDrawnsformable();
+
+    public override string ToString() => path.ToCommaSeparatedString(" ");
 }

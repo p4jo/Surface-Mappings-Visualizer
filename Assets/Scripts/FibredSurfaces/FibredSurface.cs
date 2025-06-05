@@ -163,38 +163,27 @@ public class FibredSurface : IPatchedDrawnsformable
 
     public void SetMap(IDictionary<string, string> map, GraphMapUpdateMode mode)
     {
-        if (mode == GraphMapUpdateMode.Postcompose)
-        {
-            var oldMap = Strips.ToDictionary(
-                e => e.Name, 
-                e => e.EdgePath.ToString()
-            );
-            SetMap(map, GraphMapUpdateMode.Replace);
-            SetMap(oldMap, GraphMapUpdateMode.Precompose);
-            return;
-        }
-            
         if (!map.Keys.Select(k => k.ToLower()).ToHashSet().SetEquals(Strips.Select(s => s.Name)))
             throw new ArgumentException($"The map must be given for each of the edges of the surface, which are {Strips.ToCommaSeparatedString(s => s.Name)}");
 
         var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
+        var enteredMap = map.Keys.ToDictionary(name => edgeDict[name], name => EdgePath.FromString(map[name], edgeDict));
+        var oldMap = OrientedEdges.ToDictionary(e => e, e => e.EdgePath);
         switch (mode)
         {
-            case GraphMapUpdateMode.Precompose:
-                Dictionary<Strip, EdgePath> previousMap = OrientedEdges.ToDictionary(e => e,
-                    e => e.EdgePath); 
-                foreach (var (name, edgePathText) in map)
-                {
-                    var edge = edgeDict[name];
-                    edge.EdgePath = EdgePath.FromString(edgePathText, Strips).Replace(e => previousMap[e]);
-                }
-                break;
             case GraphMapUpdateMode.Replace:
-                foreach (var (name, edgePathText) in map)
-                {
-                    var edge = edgeDict[name];
-                    edge.EdgePath = EdgePath.FromString(edgePathText, Strips);
-                }
+                foreach (var edge in enteredMap.Keys)
+                    edge.EdgePath = enteredMap[edge];
+                break;
+            case GraphMapUpdateMode.Precompose:
+                foreach (var edge in enteredMap.Keys) 
+                    edge.EdgePath = enteredMap[edge].Replace(e => oldMap[e]);
+                break;
+            case GraphMapUpdateMode.Postcompose:
+                foreach (var edge in enteredMap.Keys.ToArray()) 
+                    enteredMap[edge.Reversed()] = enteredMap[edge].Inverse();
+                foreach (var edge in Strips) 
+                    edge.EdgePath = oldMap[edge].Replace(e => enteredMap[e]);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(mode), mode, null);

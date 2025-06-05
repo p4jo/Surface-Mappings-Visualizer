@@ -285,7 +285,39 @@ public abstract class EdgePath : IReadOnlyList<Strip>
 
     public static EdgePath Concatenate(IEnumerable<EdgePath> paths)
     {
-        return paths.Aggregate((res, current) => res.Concat(current));
+        var subPaths = new List<EdgePath>();
+        var currentlyReadNormalEdgePath = new List<Strip>();
+        foreach (var path in paths)
+        {
+            switch (path)
+            {
+                case ConjugateEdgePath conjugateEdgePath:
+                    PushNormalEdgePath();
+                    subPaths.Add(conjugateEdgePath);
+                    break;
+                case NestedEdgePath nestedEdgePath:
+                    PushNormalEdgePath();
+                    subPaths.AddRange(nestedEdgePath.subPaths);
+                    break;
+                case NormalEdgePath normalEdgePath:
+                    currentlyReadNormalEdgePath.AddRange(normalEdgePath);
+                    break;
+                default:
+                    throw new NotImplementedException($"The EdgePath type {path.GetType().Name} is not supported in Concatenate.");
+            }
+        }
+        PushNormalEdgePath();
+        
+        if (subPaths.Count >= 2)
+            return new NestedEdgePath(subPaths);
+        return subPaths.Count == 1 ? subPaths[0] : Empty;
+        
+        void PushNormalEdgePath()
+        {
+            if (currentlyReadNormalEdgePath.Count <= 0) return;
+            subPaths.Add(new NormalEdgePath(currentlyReadNormalEdgePath.ToArray()));
+            currentlyReadNormalEdgePath.Clear();
+        }
     }
 }
 
@@ -326,11 +358,12 @@ public class ConjugateEdgePath : NestedEdgePath
         other switch
         {
             EdgePath { IsEmpty: true } => this,
+            ConjugateEdgePath otherConjugate when otherConjugate.outer.Equals(outer) && otherConjugate.leftConjugation == leftConjugation || otherConjugate.outer.Equals(outer.Inverse()) && otherConjugate.leftConjugation != leftConjugation => new ConjugateEdgePath(inner.Concat(otherConjugate.inner), outer,  leftConjugation),
             NestedEdgePath nestedEdgePath and not ConjugateEdgePath => new NestedEdgePath(nestedEdgePath.subPaths.Prepend(this)),
             _ => new NestedEdgePath(this, other)
         };
 
-    public override int Count => inner.Count * 2 + outer.Count;
+    public override int Count => inner.Count + outer.Count * 2;
 
     protected internal override string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName)
     {
@@ -364,7 +397,7 @@ public class NestedEdgePath : EdgePath
         this.subPaths = subPaths;
     }
 
-    public NestedEdgePath(IEnumerable<EdgePath> subPaths) : this(subPaths.SelectMany(e => e is NestedEdgePath nestedEdgePath ? nestedEdgePath.subPaths : new []{ e }).ToArray())
+    public NestedEdgePath(IEnumerable<EdgePath> subPaths) : this(subPaths.ToArray())
     {   }
 
     private EdgePath inverse;
@@ -499,6 +532,7 @@ class NormalEdgePath : EdgePath
         other switch
         {
             NormalEdgePath normalEdgePath => new NormalEdgePath(edges.Concat(normalEdgePath.edges)),
+            ConjugateEdgePath => new NestedEdgePath(this, other),
             NestedEdgePath nestedEdgePath => new NestedEdgePath(nestedEdgePath.subPaths.Prepend(this)),
             _ => throw new NotImplementedException()
         };
