@@ -381,6 +381,15 @@ public static class Helpers
         if (s.Length <= maxLength) return s;
         return s[..(maxLength - 3)] + "...";
     }
+
+    public static string ReverseUpper(this string s)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return s;
+        if (char.IsUpper(s.First(char.IsSymbol)))
+            return s.ToLowerInvariant();
+        return s.ToUpperInvariant();
+    }
     
     public static string AddDotsMiddle(this string s, int maxLength, int? tail = null)
     {

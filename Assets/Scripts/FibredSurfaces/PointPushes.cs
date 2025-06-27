@@ -553,7 +553,7 @@ public class PushingPath : IPatchedDrawnsformable
                 ).OrderBy(
                     tuple => ((EdgeCrossing) tuple.t).positionAlongEdge.Value * (reverse ? -1 : 1))
                 .Select(tuple => 
-                        (((EdgeCrossing) tuple.t).rightToLeft ? punctureWord : punctureWord.Inverse())
+                        (((EdgeCrossing) tuple.t).rightToLeft != reverse ? punctureWord : punctureWord.Inverse())
                         .Conjugate(ConjugationPath(tuple.i), true)
                     );
     }

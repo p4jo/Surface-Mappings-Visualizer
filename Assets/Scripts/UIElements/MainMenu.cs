@@ -31,7 +31,7 @@ public class MainMenu: MonoBehaviour
         // var surface = new AbstractSurface(testSurface);
         var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
         var surface = SurfaceGenerator.CreateSurface(parameters);
-        if (surface.drawingSurfaces.Values.FirstOrDefault() is ModelSurface modelSurface)
+        if (surface.drawingSurfaces.Values.FirstOrDefault() is ModelSurface { geometryType: GeometryType.HyperbolicDisk or GeometryType.HyperbolicPlane } modelSurface)
         {
             foreach (var side in modelSurface.AllSideCurves) 
                 surface.AddHomeomorphism(
@@ -149,7 +149,9 @@ public class MainMenu: MonoBehaviour
         
         var surfaceMenu = surfaceMenus[0]; 
         fibredSurfaceMenu.gameObject.SetActive(true);
-        var surface = surfaceMenu.geodesicSurface as ModelSurface;
+
+        if (surfaceMenu.geodesicSurface is not ModelSurface { geometryType: GeometryType.HyperbolicDisk or GeometryType.HyperbolicPlane } hyperbolicSurface )
+            return;
 
         // FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, // [BH] example 6.1.
         //     map: new Dictionary<string, string>
@@ -174,7 +176,7 @@ public class MainMenu: MonoBehaviour
         //         ["d"] = true
         //     }
         // );
-        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, 
+        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(hyperbolicSurface, 
             map: new Dictionary<string, string> 
             {
                 ["a"] = "a",

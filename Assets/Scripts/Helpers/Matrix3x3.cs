@@ -20,6 +20,9 @@ public class Matrix3x3
 
     public static Vector3 operator *(Matrix3x3 A, Vector3 v)
         => A.a * v.x + A.b * v.y + A.c * v.z;
+    
+    public static Vector3 operator *(Matrix3x3 A, Vector2 v)
+        => A.a * v.x + A.b * v.y;
 
     public static Matrix3x3 operator *(float scalar, Matrix3x3 A) => 
         new(scalar * A.a, scalar * A.b, scalar * A.c);

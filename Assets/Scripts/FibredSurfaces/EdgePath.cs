@@ -64,7 +64,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
         }
     }
 
-    public abstract bool TryGetElementAt(ref int i, out Strip result);
+    protected internal abstract bool TryGetElementAt(ref int i, out Strip result);
 
     public static EdgePath FromString(string text, IEnumerable<UnorientedStrip> strips) =>
         FromString(text, 
@@ -291,9 +291,10 @@ public abstract class EdgePath : IReadOnlyList<Strip>
         {
             switch (path)
             {
-                case ConjugateEdgePath conjugateEdgePath:
+                case NamedEdgePath:
+                case ConjugateEdgePath:
                     PushNormalEdgePath();
-                    subPaths.Add(conjugateEdgePath);
+                    subPaths.Add(path);
                     break;
                 case NestedEdgePath nestedEdgePath:
                     PushNormalEdgePath();
@@ -319,6 +320,46 @@ public abstract class EdgePath : IReadOnlyList<Strip>
             currentlyReadNormalEdgePath.Clear();
         }
     }
+}
+
+public class NamedEdgePath : EdgePath
+{
+    private EdgePath value;
+    private string name;
+
+    public NamedEdgePath(EdgePath value, string name)
+    {
+        this.value = value;
+        this.name = name;
+    }
+
+    public override EdgePath Inverse() => new NamedEdgePath(value.Inverse(), name.ReverseUpper());
+
+    public override IEnumerator<Strip> GetEnumerator() => value.GetEnumerator();
+
+    public override EdgePath Replace(Func<Strip, Strip> newEdges) => value.Replace(newEdges);
+
+    public override EdgePath Replace(Func<Strip, EdgePath> newEdgePaths) => value.Replace(newEdgePaths);
+
+    public override EdgePath Concat(EdgePath other) => other switch
+    {
+        NestedEdgePath n and not ConjugateEdgePath => new NestedEdgePath(n.subPaths.Prepend(this)),
+        _ => new NestedEdgePath(this, other)
+    };
+
+    public override EdgePath Skip(int i) => i <= 0 ? this : value.Skip(i);
+
+    public override EdgePath Take(int i) => i >= Count ? this : value.Take(i);
+
+    public override int Count => value.Count;
+
+    public override bool IsEmpty => value.IsEmpty;
+
+    protected internal override bool TryGetElementAt(ref int i, out Strip result) => value.TryGetElementAt(ref i, out result);
+
+    protected internal override string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName) => name;
+
+    protected internal override int ExpectedStringLength() => name.Length;
 }
 
 public class ConjugateEdgePath : NestedEdgePath
@@ -464,7 +505,7 @@ public class NestedEdgePath : EdgePath
 
     public override bool IsEmpty => subPaths.Length == 0;
 
-    public override bool TryGetElementAt(ref int i, out Strip result)
+    protected internal override bool TryGetElementAt(ref int i, out Strip result)
     {
         foreach (var edgePath in subPaths)
         {
@@ -545,7 +586,7 @@ class NormalEdgePath : EdgePath
 
     public override bool IsEmpty => edges.Length == 0;
 
-    public override bool TryGetElementAt(ref int i, out Strip result)
+    protected internal override bool TryGetElementAt(ref int i, out Strip result)
     {
         var c = Count;
         if (i >= c)

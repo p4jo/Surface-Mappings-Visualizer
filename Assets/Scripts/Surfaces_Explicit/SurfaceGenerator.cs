@@ -232,6 +232,10 @@ public static class SurfaceGenerator
         Debug.Log($"newChartRects: {string.Join(", ", (from rect in newChartRects select rect.ToString()).ToArray())}");
 
 
+        var puffered = 1 + pufferZone;
+        var totalFactorX = puffered / imageHalfWidth;
+        var totalFactorY = puffered / imageHalfHeight;
+        
         var embedding = new Homeomorphism(newBaseSurface,
             null,
             NewEmbedding,
@@ -245,14 +249,14 @@ public static class SurfaceGenerator
         
         float size = largeRadius + smallRadius;
         var torusSize = new Vector3(size, size, smallRadius);
-        var newTargetSurface = new ParametricSurface($"{targetSurface.Name}#T",
+
+            
+        return new ParametricSurface($"{targetSurface.Name}#T",
             embedding,
             newChartRects,
             Helpers.Max(targetSurface.MinimalPosition, center - torusSize), 
             Helpers.Min(targetSurface.MaximalPosition, center + torusSize)
         );
-        
-        return newTargetSurface;
 
         Vector3 NewTorus(Vector2 p) => FlatTorusEmbedding(new Vector2(2 * cutoutCenter.x - p.x, p.y), largeRadius, smallRadius) + center;
 
@@ -300,11 +304,7 @@ public static class SurfaceGenerator
 
         Vector3 NewEmbedding(Vector3 pt)
         {
-            Vector2 p = pt;
-            var centered = p - imageCenter;
-            var puffered = 1 + pufferZone;
-            var totalFactorX = puffered / imageHalfWidth;
-            var totalFactorY = puffered / imageHalfHeight;
+            var centered = (Vector2)pt - imageCenter;
             var (x, y) = (centered.x * totalFactorX, centered.y * totalFactorY);
             var r = Mathf.Max(Mathf.Abs(x), Mathf.Abs(y));
             if (r > puffered)
@@ -318,18 +318,7 @@ public static class SurfaceGenerator
             var t = (r - 1) / pufferZone;
             var dir = new Vector2(x, y) / r;
             
-            var closestPointOnOriginal = imageCenter + new Vector2(imageHalfWidth * dir.x, imageHalfHeight * dir.y);
-            var end = original(closestPointOnOriginal);
-            var endVector = Doriginal(closestPointOnOriginal) * new Vector3(dir.x / totalFactorX, dir.y / totalFactorY);
-            
-            var (closestPointOnNew, dInvX) = TInv(dir.x, dir.y, 1);
-            var start = NewTorus(closestPointOnNew);
-            var startVector = DNewTorus(closestPointOnNew) * dInvX * dir;
-            
-            var A = endVector - startVector - 2 * (end - start);
-            var B = 3 * (end - start) - endVector;
-            var C = startVector;
-            var D = start;
+            var (A, B, C, D) = InterpolationVariables(dir);
             return A * (t * t * t) + B * (t * t) + C * t + D;
         }
        
@@ -344,11 +333,7 @@ public static class SurfaceGenerator
         
         Matrix3x3 NewEmbeddingDerivative(Vector3 pt)
         {
-            Vector2 p = pt;
-            var centered = p - imageCenter;
-            var puffered = 1 + pufferZone;
-            var totalFactorX = puffered / imageHalfWidth;
-            var totalFactorY = puffered / imageHalfHeight;
+            var centered = (Vector2)pt - imageCenter;
             var (x, y) = (centered.x * totalFactorX, centered.y * totalFactorY);
             var r = Mathf.Max(Mathf.Abs(x), Mathf.Abs(y));
             if (r > puffered)
@@ -373,6 +358,24 @@ public static class SurfaceGenerator
             return new Matrix3x3(v * drdx, v * drdy, Vector3.forward); // this is wrong
             // todo: Feature. Do the interpolation
             // todo: Clean Code. Make the derivative function entangled with the normal function for less redundancy
+        }
+
+        // todo: cache
+        (Vector3 A, Vector3 B, Vector3 C, Vector3 D) InterpolationVariables(Vector2 dir)
+        {
+            var closestPointOnOriginal = imageCenter + new Vector2(imageHalfWidth * dir.x, imageHalfHeight * dir.y);
+            var end = original(closestPointOnOriginal);
+            var endVector = Doriginal(closestPointOnOriginal) * new Vector3(dir.x / totalFactorX, dir.y / totalFactorY);
+            
+            var (closestPointOnNew, dInvX) = TInv(dir.x, dir.y, 1);
+            var start = NewTorus(closestPointOnNew);
+            var startVector = DNewTorus(closestPointOnNew) * dInvX * dir;
+            
+            var A = endVector + startVector - 2 * (end - start);
+            var B = 3 * (end - start) - endVector - 2 * startVector;
+            var C = startVector;
+            var D = start;
+            return (A, B, C, D);
         }
     }
 
