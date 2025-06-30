@@ -23,7 +23,7 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
         this.graph = graph;
         this.image = image;
         if (color.HasValue) Color = color.Value;
-        Name = name ?? "v" + id;
+        Name = name ?? FibredSurface.NextVertexNameStatic(graph);
     }
     
     public Junction(FibredGraph graph, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : 

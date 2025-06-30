@@ -133,10 +133,8 @@ public partial class ModelSurfaceVertex : Point
     
     public ModelSurfaceVertex(){  }
 
-    public ModelSurfaceVertex(Vector3[] positions, List<float> angles, List<ModelSurfaceSide> boundaryCurves)
+    private ModelSurfaceVertex(List<ModelSurfaceSide> boundaryCurves)
     {
-        this.positions = positions;
-        this.angles = angles;
         this.boundaryCurves = boundaryCurves;
     }
 
@@ -171,6 +169,35 @@ public partial class ModelSurfaceVertex : Point
         var leftAngleAfter = boundaryCurves[2 * toPositionIndex].angle;
         startDir *= Complex.FromPolarCoordinates(1, leftAngleAfter - leftAngleBefore);
         return new Vector3((float) startDir.Real, (float) startDir.Imaginary, direction.z); 
+    }
+    
+    public Curve GeodesicCircleAround(float radius = 1f, bool startBetweenEdges = true)
+    {
+        if (boundaryCurves[0].Surface is not ModelSurface surface)
+            throw new InvalidOperationException("This method is only defined for geodesic surfaces");
+
+        var segments = Segments().ToList();
+        if (!startBetweenEdges)
+            return new ConcatenatedCurve(segments,
+                $"puncture circle starting at {boundaryCurves[0].curve.Name}"
+            );
+        var firstSegment = segments[0];
+        segments[0] = firstSegment.Restrict(firstSegment.Length / 2);
+        segments.Add(firstSegment.Restrict(0, firstSegment.Length / 2));
+        return new ConcatenatedCurve(segments,
+            $"puncture circle starting between {boundaryCurves[0].curve.Name} and {boundaryCurves[1].curve.Name}",
+            smoothed: true
+        );
+        
+        IEnumerable<Curve> Segments()
+        {
+            for (int i = 0; i < boundaryCurves.Count / 2; i++)
+            {
+                var a = boundaryCurves[2 * i];
+                var b = boundaryCurves[2 * i + 1];
+                yield return surface.GetBasicGeodesic(a[radius], b[radius], $"puncture circle segment between {a.Name} and {b.Name}");
+            }
+        }
     }
 }
 

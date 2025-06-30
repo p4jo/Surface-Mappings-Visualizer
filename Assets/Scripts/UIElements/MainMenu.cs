@@ -30,7 +30,7 @@ public class MainMenu: MonoBehaviour
         //     );
         // var surface = new AbstractSurface(testSurface);
         var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
-        var surface = SurfaceGenerator.CreateSurface(parameters);
+        var (surface, fibredSurface) = SurfaceGenerator.CreateSurface(parameters);
         if (surface.drawingSurfaces.Values.FirstOrDefault() is ModelSurface { geometryType: GeometryType.HyperbolicDisk or GeometryType.HyperbolicPlane } modelSurface)
         {
             foreach (var side in modelSurface.AllSideCurves) 
@@ -62,6 +62,57 @@ public class MainMenu: MonoBehaviour
             // }
         }
         Initialize(surface);
+        
+        
+        if (fibredSurfaceMenu.FibredSurface is not null) return;
+        
+        var surfaceMenu = surfaceMenus[0]; 
+        fibredSurfaceMenu.gameObject.SetActive(true);
+        fibredSurfaceMenu.Initialize(fibredSurface, surfaceMenu);
+
+        // [BH] example 6.1. :
+        // var c = fibredSurface.Strips.First(strip => strip.Name == "c");
+        // var d = fibredSurface.Strips.First(strip => strip.Name == "d");
+        // c.Curve = c.Curve.Reversed();
+        // c.Name = "d";
+        // d.Curve = d.Curve.Reversed();
+        // d.Name = "c"; 
+        // fibredSurfaceMenu.UpdateGraphMap(new Dictionary<string, string>
+        // {
+        //     ["a"] = "a B A b D C A",
+        //     ["b"] = "a c d B a b c d B",
+        //     ["c"] = "c c d B",
+        //     ["d"] = "b c d B"
+        // });
+        
+        if (fibredSurface.surface is not ModelSurface { Genus: 2 }) return;
+        
+        fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
+        fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
+        fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
+        fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
+
+        var p = "d C b A B a D c";
+        var P = reverse(p); 
+        string reverse(string c) => new((from ch in c.Reverse() select char.IsUpper(ch) ? char.ToLower(ch) : char.ToUpper(ch)).ToArray());
+        string c1 = P + " d C a d";
+        string c2 = $"D {p} c {P} d (c a d)°({P}) {P} d C a D";
+        fibredSurfaceMenu.UpdateGraphMap($"d \u21a6 {P} d\n" +
+                                         $"b \u21a6 (a d)°({P}) b\n" +
+                                         $"c \u21a6 c ({c1})°({P})\n" +
+                                         $"a \u21a6 a ({c2})°({P})",
+            mode: GraphMapUpdateMode.Replace);
+
+        var PointPush = new PushingPath(EdgePath.FromString("C d A b a d' c d d c' a D", fibredSurface.Strips));
+
+
+        // var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
+
+        Debug.Log(PointPush.ToString());
+        Debug.Log(fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { PointPush.Image(strip)}"));
+        
+        
+        // fibredSurfaceMenu.StartAlgorithm();
     }
 
 
@@ -83,8 +134,6 @@ public class MainMenu: MonoBehaviour
                 // surfaceMenu.Display(side.other, surfaceName, preview: false);
             }
         }
-        
-        InitializeFibredSurface();
     }
 
     private void OnStuffShown(IDrawnsformable stuff, string surface)
@@ -141,91 +190,5 @@ public class MainMenu: MonoBehaviour
         var menu = gameObject.GetComponent<SurfaceMenu>();
         menu.Initialize(surfaceMenu, automorphisms);
         surfaceMenus.Add(menu);
-    }
-
-    public void InitializeFibredSurface() // todo: Feature. Let the user draw / select own graph?
-    {
-        if (fibredSurfaceMenu.FibredSurface is not null) return;
-        
-        var surfaceMenu = surfaceMenus[0]; 
-        fibredSurfaceMenu.gameObject.SetActive(true);
-
-        if (surfaceMenu.geodesicSurface is not ModelSurface { geometryType: GeometryType.HyperbolicDisk or GeometryType.HyperbolicPlane } hyperbolicSurface )
-            return;
-
-        // FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(surface, // [BH] example 6.1.
-        //     map: new Dictionary<string, string>
-        //     {
-        //         ["a"] = "a B A b D C A",
-        //         ["b"] = "a c d B a b c d B",
-        //         ["c"] = "c c d B",
-        //         ["d"] = "b c d B"
-        //     },
-        //     names: new Dictionary<string, string>
-        //     {
-        //         ["side a"] = "a",
-        //         ["side b"] = "b",
-        //         ["side c"] = "d",
-        //         ["side d"] = "c"
-        //     },
-        //     reverse: new Dictionary<string, bool>
-        //     {
-        //         ["a"] = false,
-        //         ["b"] = false,
-        //         ["c"] = true,
-        //         ["d"] = true
-        //     }
-        // );
-        FibredSurface fibredSurface = FibredSurfaceFactory.RoseSpine(hyperbolicSurface, 
-            map: new Dictionary<string, string> 
-            {
-                ["a"] = "a",
-                ["b"] = "b",
-                ["c"] = "c",
-                ["d"] = "d"
-            }, 
-            names: new Dictionary<string, string>
-            {
-                ["side a"] = "a",
-                ["side b"] = "b",
-                ["side c"] = "c",
-                ["side d"] = "d"
-            },
-            reverse: new Dictionary<string, bool>
-            {
-                ["a"] = true,
-                ["b"] = true,
-                ["c"] = false,
-                ["d"] = false
-            }
-        );
-        
-        fibredSurfaceMenu.Initialize(fibredSurface, surfaceMenu);
-        
-        fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
-        fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
-        fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
-        fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
-
-        var p = "d C b A B a D c";
-        var P = reverse(p); 
-        string reverse(string c) => new((from ch in c.Reverse() select char.IsUpper(ch) ? char.ToLower(ch) : char.ToUpper(ch)).ToArray()); 
-        string conjugate(string e, string c) => $"({c})°({e})"; // c e c^{-1}
-        fibredSurfaceMenu.UpdateGraphMap($"d \u21a6 {P} d\n" +
-                                         $"b \u21a6 {conjugate(P, "a d")} b\n" +
-                                         $"c \u21a6 c {conjugate(P,  P + " d C a d")}\n" +
-                                         $"a \u21a6 a {conjugate(P,$"D {p} c {P} d {conjugate(P, "c a d")} {P} d C a D")}",
-            mode: GraphMapUpdateMode.Replace);
-
-        var PointPush = new PushingPath(EdgePath.FromString("C d A b a d' c d d c' a D", fibredSurface.Strips));
-
-
-        // var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
-
-        Debug.Log(PointPush.ToString());
-        Debug.Log(fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { PointPush.Image(strip)}"));
-        
-        
-        // fibredSurfaceMenu.StartAlgorithm();
     }
 }

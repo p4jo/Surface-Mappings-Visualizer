@@ -81,19 +81,17 @@ public class FibredSurface : IPatchedDrawnsformable
             let target = tuple.Item3
             let startVector = curve.StartVelocity.Coordinates(surface)
             let endVector = -curve.EndVelocity.Coordinates(surface)
-            let startAngle = startVector.ToComplex().Phase
-            let endAngle = endVector.ToComplex().Phase
             select new UnorientedStrip(
                 curve,
                 junctions[source],
                 junctions[target],
                 EdgePath.Empty,
                 graph,
-                (float)startAngle,
-                (float)endAngle
+                startVector.Angle(),
+                endVector.Angle(),
+                addToGraph: true
             )
         ).ToList();
-        graph.AddVerticesAndEdgeRange(strips);
         SetMap(edgeDescriptions.ToDictionary(tuple => tuple.Item1.Name, tuple => tuple.Item4), GraphMapUpdateMode.Replace);
         // fix vertex targets
         foreach (var strip in OrientedEdges)
@@ -145,7 +143,8 @@ public class FibredSurface : IPatchedDrawnsformable
         );
 
         foreach (var (oldJunction, newJunction) in newVertices) 
-            newJunction.image = newVertices[oldJunction.image];
+            if (oldJunction.image != null)
+                newJunction.image = newVertices[oldJunction.image];
 
         Strip newEdgesFunc(UnorientedStrip strip) => newEdges[strip]; 
         foreach (var (edge, newEdge) in newEdges)
@@ -498,16 +497,21 @@ public class FibredSurface : IPatchedDrawnsformable
         var vertexString = graph.Vertices.ToLineSeparatedString(vertex => vertex.ToColorfulString());
         var stripsOrdered = StripsOrdered.ToList();
         var edgeString = stripsOrdered.ToLineSeparatedString(edge => edge.ToColorfulString());
-        var boundaryWords = BoundaryWords().ToCommaSeparatedString(w =>
-            w.ToCommaSeparatedString(edge => ((IDrawable)edge).ColorfulName, " ") + 
-            (w.All(edge => peripheralSubgraph.ContainsEdge(edge.UnderlyingEdge)) ? " ∈ P" : "")
-        );
+        var boundaryWords = BoundaryWords().ToHashSet();
+        var peripheralBoundaryWords = boundaryWords.Where(w => 
+            w.All(e => peripheralSubgraph.ContainsEdge(e.UnderlyingEdge))
+        ).ToHashSet();
+        boundaryWords.ExceptWith(peripheralBoundaryWords);
+        var boundaryWordsText = new List<string> {
+            boundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10)),
+            peripheralBoundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10))
+        }.ToCommaSeparatedString("\nPeripheral: ");
         FrobeniusPerron(false, out var growthRate, out var widths, out var lengths, out var matrix);
         // var matrix = TransitionMatrix();
 
         stripsOrdered.Add(null); // for the "width" column and "length" row
         
-        string graphString = $"<line-indent=-20>{vertexString}\n{edgeString}\nBoundary / puncture words (following to the right):\n{boundaryWords}\n{MatrixStrings().ToCommaSeparatedString("\n")}\nGrowth rate: {growthRate:g3}";
+        string graphString = $"<line-indent=-20>{vertexString}\n{edgeString}\nBoundary / puncture words (following to the right):\n{boundaryWordsText}\n{MatrixStrings().ToCommaSeparatedString("\n")}\nGrowth rate: {growthRate:g3}";
 
         if (ignoreBeingReducible)
             graphString += "\nType: Reducible";
@@ -673,7 +677,7 @@ public class FibredSurface : IPatchedDrawnsformable
         return orbit;
     }
     
-    public IEnumerable<List<Strip>> BoundaryWords()
+    public IEnumerable<EdgePath> BoundaryWords()
     {
         var visited = new HashSet<Strip>();
         var stars = new Dictionary<Junction, List<Strip>>(
@@ -687,7 +691,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
             var boundaryWord = BoundaryWord(strip, stars);
             visited.UnionWith(boundaryWord);
-            yield return boundaryWord;
+            yield return new NormalEdgePath(boundaryWord);
         }
     }
 
@@ -1235,7 +1239,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
             var stringWidths = (
                 from edge in edges 
-                select baseShiftStrength * Mathf.Sqrt(Star(edge.Target).Count()) * Mathf.Clamp(edge.Curve.Length, 0.01f, 1f)
+                select baseShiftStrength * MathF.Sqrt(Star(edge.Target).Count()) * Mathf.Clamp(edge.Curve.Length, 0.01f, 1f)
             ).ToArray();
             var preferredEdgeIndex = edges.IndexOf(preferredEdge);
             var edgeIndex = -1;
@@ -1344,7 +1348,7 @@ public class FibredSurface : IPatchedDrawnsformable
             e.Name = name;
         }
  
-        float shift = baseShiftStrength / Mathf.Sqrt(star.Count) * Mathf.Clamp(precompositionCurve.Length, 0.01f, 1f);
+        float shift = baseShiftStrength / MathF.Sqrt(star.Count) * Mathf.Clamp(precompositionCurve.Length, 0.01f, 1f);
         
         for (var i = 0; i < star.Count; i++)
         {
@@ -1402,7 +1406,7 @@ public class FibredSurface : IPatchedDrawnsformable
         
         var (movement, badness) = movements.ArgMin(m =>
             m.Badness +
-            Mathf.Abs(edges.IndexOf(m.preferredEdge) - edges.Count / 2f) / edges.Count + // prefer the middle edges
+            MathF.Abs(edges.IndexOf(m.preferredEdge) - edges.Count / 2f) / edges.Count + // prefer the middle edges
             graph.AdjacentDegree(m.preferredEdge.Target) / (edges.Count + 1f) + // prefer the edges with fewer crossings
             (!char.IsLetter(m.preferredEdge.Name[^1]) ? 1f / edges.Count : 0) 
         );
@@ -1922,7 +1926,6 @@ public class FibredSurface : IPatchedDrawnsformable
                 newJunctionsInOrder[0]) // this happens if the iteration above started in the middle of a gate.
                 newJunctionsInOrder.Add(newJunctionsInOrder[0]);
 
-            var name = NextEdgeName();
             for (var index = 0; index < newJunctionsInOrder.Count - 1; index++)
             {
                 var junction = newJunctionsInOrder[index];
@@ -1933,17 +1936,18 @@ public class FibredSurface : IPatchedDrawnsformable
                 var newEdge = new UnorientedStrip(
                     curve: surface.GetGeodesic(
                         start: junctionEndPosition,
-                        end: nextJunctionStartPosition,
-                        name: name + index),
+                        end: nextJunctionStartPosition, ""),
                     source: junction,
                     target: nextJunction,
                     edgePath: EdgePath.Empty, // we can only add these once we created them all
                     graph: graph,
                     orderIndexStart: Star(junction).Max(e => e.OrderIndexStart) + 0.5f,
-                    orderIndexEnd: Star(nextJunction).Min(e => e.OrderIndexStart) - 0.5f // still > -1!
+                    orderIndexEnd: Star(nextJunction).Min(e => e.OrderIndexStart) - 0.5f, // still > -1!
+                    newColor: true,
+                    newName: true,
+                    addToGraph: true
                 );
                 newEdges.Add(newEdge);
-                graph.AddVerticesAndEdge(newEdge);
             }
         }
 
@@ -2039,20 +2043,20 @@ public class FibredSurface : IPatchedDrawnsformable
 
     #region Names and Colors
 
-    readonly List<string> edgeNames = new()
+    static readonly List<string> edgeNames = new()
     {
         "a", "b", "c", "d", /*"e", "f", "g",*/ "x", "y", "z", "u", "h", "i", "j", "k", "l", "m", "n", "o",
         "α", "β", "γ", "δ", "ε", "ζ", "θ", "κ", "λ", "μ", "ξ", "π", "ρ", "σ", "τ", "φ", "ψ", "ω",
     };
 
-    readonly List<string> vertexNames = new()
+    static readonly List<string> vertexNames = new()
     {
         "v", "w", "p", "q", "r", "s", "t",
     };
     
-    readonly List<Color> edgeColors = Curve.colors;
+    static readonly List<Color> edgeColors = Curve.colors;
 
-    readonly List<Color> vertexColors = new()
+    static readonly List<Color> vertexColors = new()
     {
         Color.black, new Color32(26, 105, 58, 255), new Color32(122, 36, 0, 255),
         new Color(0.3f, 0.3f, 0.3f), 
@@ -2061,44 +2065,50 @@ public class FibredSurface : IPatchedDrawnsformable
 
     void DeferNames()
     {
-        foreach (var strip in Strips)
-        {
-            if (edgeNames.Remove(strip.Name))
-                edgeNames.Add(strip.Name);
-        }
+        // foreach (var strip in Strips)
+        // {
+        //     if (edgeNames.Remove(strip.Name))
+        //         edgeNames.Add(strip.Name);
+        // }
     }
 
-    string NextEdgeName()
+    string NextEdgeNameStatic() => NextEdgeNameStatic(graph);
+    public static string NextEdgeNameStatic(FibredGraph graph)
     {
-        return edgeNames.Except(Strips.Select(edge => edge.Name)).Concat(
+        return edgeNames.Except(graph.Edges.Select(edge => edge.Name)).Concat(
             from i in Enumerable.Range(1, 1000) select $"e{i}"
         ).FirstOrDefault();
     }
 
-    string NextEdgeNameGreek()
+    string NextEdgeNameGreek() => NextEdgeNameGreek(graph);
+    public static string NextEdgeNameGreek(FibredGraph graph)
     {
-        return edgeNames.CyclicShift("α").Except(Strips.Select(edge => edge.Name)).Concat(
+        return edgeNames.CyclicShift("α").Except(graph.Edges.Select(edge => edge.Name)).Concat(
             from i in Enumerable.Range(1, 1000) select $"ε{i}"
         ).FirstOrDefault();
     }
 
-    string NextVertexName()
+    string NextVertexName() => NextVertexNameStatic(graph);
+    
+    public static string NextVertexNameStatic(FibredGraph graph)
     {
         return vertexNames.Except(graph.Vertices.Select(vertex => vertex.Name)).Concat(
             from i in Enumerable.Range(1, 1000) select $"v{i}"
         ).FirstOrDefault();
     }
 
-    Color NextEdgeColor()
+    Color NextEdgeColor() => NextEdgeColorStatic(graph);
+    public static Color NextEdgeColorStatic(FibredGraph graph)
     {
         var colorUsage = edgeColors.ToDictionary(c => c, c => 0);
-        foreach (var strip in Strips) 
+        foreach (var strip in graph.Edges) 
             colorUsage[strip.Color]++;
         var (leastUsedColor, _) = colorUsage.Keys.ArgMin(c => colorUsage[c]);
         return leastUsedColor;
     }
 
-    Color NextVertexColor()
+    Color NextVertexColor() => NextVertexColorStatic(graph);
+    public static Color NextVertexColorStatic(FibredGraph graph)
     {
         var colorUsage = vertexColors.ToDictionary(c => c, c => 0);
         foreach (var junction in graph.Vertices)
@@ -2238,9 +2248,9 @@ public class FibredSurface : IPatchedDrawnsformable
             {
                 foreach (var strip in gate.Edges)
                 {
-                    var timeFromArclength = GeodesicSurface.TimeFromArclength(strip.Curve.Restrict(0, Mathf.Min(strip.Curve.Length, 10f)));
-                    edgeTimes[strip] = Mathf.Min(strip.Curve.Length, timeFromArclength(distance));
-                    edgeTimes2[strip] = Mathf.Min(strip.Curve.Length,timeFromArclength(2 * distance));
+                    var timeFromArclength = GeodesicSurface.TimeFromArclength(strip.Curve.Restrict(0, MathF.Min(strip.Curve.Length, 10f)));
+                    edgeTimes[strip] = MathF.Min(strip.Curve.Length, timeFromArclength(distance));
+                    edgeTimes2[strip] = MathF.Min(strip.Curve.Length,timeFromArclength(2 * distance));
                 }
                 var gatePosition = (
                     from edge in gate.Edges
@@ -2344,11 +2354,12 @@ public class FibredSurface : IPatchedDrawnsformable
                 edgePath: EdgePath.Empty, // we can only add these once we created them all
                 graph: graph, // this is the edge path of the infinitesimal edge
                 orderIndexStart: incomingGateOrderIndexInStar,
-                orderIndexEnd: outgoingGateOrderIndexInStar
+                orderIndexEnd: outgoingGateOrderIndexInStar,
+                addToGraph: true
             );
             infinitesimalEdges[(incomingGate, outgoingGate)] = newInfinitesimalEdge;
             infinitesimalEdges[(outgoingGate, incomingGate)] = newInfinitesimalEdge.Reversed();
-            graph.AddVerticesAndEdge(newInfinitesimalEdge);
+            
             return newInfinitesimalEdge;
         }
     }

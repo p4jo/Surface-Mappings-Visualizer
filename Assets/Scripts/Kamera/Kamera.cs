@@ -163,9 +163,9 @@ public class Kamera : MonoBehaviour
     {
         this.minimalPosition = minimalPosition;
         this.maximalPosition = maximalPosition;
-        minOrthographicSize = Mathf.Min(maximalPosition.x - minimalPosition.x, 
+        minOrthographicSize = MathF.Min(maximalPosition.x - minimalPosition.x, 
             maximalPosition.y - minimalPosition.y) / 30;
-        maxOrthographicSize = Mathf.Max(maximalPosition.x - minimalPosition.x,
+        maxOrthographicSize = MathF.Max(maximalPosition.x - minimalPosition.x,
             maximalPosition.y - minimalPosition.y) * 0.6f;
         Cam.orthographicSize = maxOrthographicSize * 0.6f;
     }

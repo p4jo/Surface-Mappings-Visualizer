@@ -100,7 +100,7 @@ public class UnorientedStrip : Strip
     public override float OrderIndexStart { get; set; }
 
     public UnorientedStrip(Curve curve, Junction source, Junction target, EdgePath edgePath,
-        FibredGraph graph, float orderIndexStart, float orderIndexEnd) : base(graph)
+        FibredGraph graph, float orderIndexStart, float orderIndexEnd, bool newColor = false, bool newName = false, bool addToGraph = false) : base(graph)
     {
         Curve = curve;
         this.source = source;
@@ -108,6 +108,12 @@ public class UnorientedStrip : Strip
         EdgePath = edgePath;
         this.OrderIndexEnd = orderIndexEnd;
         this.OrderIndexStart = orderIndexStart;
+        if (newColor)
+            Color = FibredSurface.NextEdgeColorStatic(graph);
+        if (newName)
+            Name = FibredSurface.NextEdgeNameStatic(graph);
+        if (addToGraph)
+            graph.AddVerticesAndEdge(this);
     }
 
     private Junction target;

@@ -44,14 +44,16 @@ public abstract class Plane : GeodesicSurface
     public override Vector3 MinimalPosition { get; } = new(float.NegativeInfinity, float.NegativeInfinity);
     public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);
 
-    protected Plane(string name, int genus, bool is2D) : base(name, genus, is2D) { }
+    protected Plane(string name, int genus, bool is2D, IEnumerable<Point> punctures = null) :
+        base(name, genus, is2D, punctures) { }
 
 }
 
 public class HyperbolicPlane : Plane
 {
     public readonly bool diskModel;
-    public HyperbolicPlane(bool diskModel, string name = "Hyperbolic Plane") : base(name, 0, true)
+    public HyperbolicPlane(bool diskModel, string name = "Hyperbolic Plane", IEnumerable<Point> punctures = null) :
+        base(name, 0, true, punctures)
     {
         this.diskModel = diskModel;
     }
@@ -110,7 +112,7 @@ public class HyperbolicPlane : Plane
         new HyperbolicPlane(true, "Poincaré Disk"),
         new EuclideanPlane( "Klein Disk"), // todo? add the possibility to the class
         z => 2f / (1 + z.sqrMagnitude) * z, // we assume that z.z == 0
-        z => 1f / (1 + Mathf.Sqrt(1 - z.sqrMagnitude)) * z, // we assume that z.z == 0
+        z => 1f / (1 + MathF.Sqrt(1 - z.sqrMagnitude)) * z, // we assume that z.z == 0
         z =>
         {
             float scale = 1f / (1 + z.sqrMagnitude);
@@ -121,7 +123,7 @@ public class HyperbolicPlane : Plane
         },
         z =>
         {
-            float sqrt = Mathf.Sqrt(1 - z.sqrMagnitude);
+            float sqrt = MathF.Sqrt(1 - z.sqrMagnitude);
             float scale = 1 + sqrt;
             return (1 / scale / scale / sqrt) * new Matrix3x3(
                 scale - z.y * z.y, z.x * z.y,
@@ -133,7 +135,7 @@ public class HyperbolicPlane : Plane
 
 public class EuclideanPlane : Plane
 {
-    public EuclideanPlane(string name = "Euclidean Plane") : base(name, 0, true){}
+    public EuclideanPlane(string name = "Euclidean Plane", IEnumerable<Point> punctures = null) : base(name, 0, true, punctures){}
 
     public override Curve GetGeodesic(Point start, Point end, string name, GeodesicSurface surface = null)
         => new FlatGeodesicSegment(start, end, surface ?? this, name);
@@ -372,7 +374,7 @@ public class CurveStrip : ParametricSurface
         float t = curve.GetClosestPoint(point.Value);
         var pt = curve.ValueAt(t);
         
-        if ((point.Value - pt.Position).sqrMagnitude > Mathf.Pow(baseSurface.width, 2))
+        if ((point.Value - pt.Position).sqrMagnitude > MathF.Pow(baseSurface.width, 2))
             return null;
         var (_, basis) = curve.BasisAt(t);
         var b = basis.b.normalized;

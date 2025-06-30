@@ -306,7 +306,7 @@ public partial class ConcatenatedCurve : Curve
             var outVector = outgoingCurve.StartVelocity.VectorAtPositionIndex(singularPoint.outgoingPosIndex);
             var outAngle = outVector.Angle();
             var angle = (inAngle + outAngle) / 2;
-            var length = Mathf.Pow(inVector.sqrMagnitude * outVector.sqrMagnitude, 0.25f);
+            var length = MathF.Pow(inVector.sqrMagnitude * outVector.sqrMagnitude, 0.25f);
             
             var restrictedIncomingCurve = curves[index] = incomingCurve.Restrict(0, incomingCurve.Length * 0.9f);
             var restrictedOutgoingCurve = curves[index + 1] = outgoingCurve.Restrict(outgoingCurve.Length * 0.1f, outgoingCurve.Length);

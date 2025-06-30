@@ -10,11 +10,14 @@ public abstract class Surface
     public readonly List<Point> punctures = new();
     public readonly bool is2D;
 
-    protected Surface(string name, int genus, bool is2D)
+    protected Surface(string name, int genus, bool is2D, 
+        IEnumerable<Point> punctures = null)
     {
         this.Name = name;
         this.Genus = genus;
         this.is2D = is2D;
+        if (punctures != null)
+            this.punctures.AddRange(punctures);
     }
 
 
@@ -40,7 +43,7 @@ public abstract class Surface
 
 public abstract class GeodesicSurface: Surface
 {
-    protected GeodesicSurface(string name, int genus, bool is2D) : base(name, genus, is2D){}
+    protected GeodesicSurface(string name, int genus, bool is2D, IEnumerable<Point> punctures = null) : base(name, genus, is2D, punctures){}
 
     public abstract Curve GetGeodesic(Point start, Point end, string name, GeodesicSurface surface = null);
     public abstract Curve GetGeodesic(TangentVector startVelocity, float length, string name, GeodesicSurface surface = null);
@@ -269,10 +272,10 @@ public class ShiftedCurve : Curve
                 var lastJump = (_visualJumpTimes.Count == 0 ? 0 : _visualJumpTimes[^1]);
                 
                 var crossedVector = sidePoint.side.DerivativeAt(sidePoint.t).vector;
-                var thisVector = curve.DerivativeAt( Mathf.Max(t - res, (lastJump + 2f * t) / 3f )).vector;
+                var thisVector = curve.DerivativeAt( MathF.Max(t - res, (lastJump + 2f * t) / 3f )).vector;
                 var angle = Vector3.Angle(crossedVector, thisVector) * Mathf.Deg2Rad;
                 
-                var guess = t + shift(t) / Mathf.Tan(angle); 
+                var guess = t + shift(t) / MathF.Tan(angle); 
                 var time = guess;
                 var lastGuess = guess;
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -132,8 +133,8 @@ public class UIKamera : Kamera {
 
 
     bool FixRenderTexture() {
-        var width = Mathf.RoundToInt(Mathf.Max(100, renderRect.width * canvasToScreenScale.x));
-        var height = Mathf.RoundToInt(Mathf.Max(100, renderRect.height * canvasToScreenScale.y));
+        var width = Mathf.RoundToInt(MathF.Max(100, renderRect.width * canvasToScreenScale.x));
+        var height = Mathf.RoundToInt(MathF.Max(100, renderRect.height * canvasToScreenScale.y));
         if (renderTexture != null && !renderTexture.ToString().Equals("null") && renderTexture.height == height && renderTexture.width == width)
             return false;
         

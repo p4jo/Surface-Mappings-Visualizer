@@ -273,11 +273,22 @@ public abstract class EdgePath : IReadOnlyList<Strip>
 
     public override string ToString() => ToString(150, 10);
 
-    public string ToString(int maxLength, int tail) => 
-        ToColoredString(maxLength, tail, obj => obj.Name); // do not call strip.ToString() here (facepalm), this is self-referential
+    public string ToString(int maxLength, int tail)
+    {
+        var result = ToColoredString(maxLength, tail, strip => strip.Name);
+        if (result.StartsWith('(') && result.EndsWith(')'))
+            result = result[1..^1]; 
+        return result;
+        // do not call strip.ToString() here (facepalm), this is self-referential
+    }
 
-    public string ToColorfulString(int maxLength, int tail) =>
-        ToColoredString(maxLength, tail, obj => ((IDrawable)obj).ColorfulName);
+    public string ToColorfulString(int maxLength, int tail)
+    {
+        var result = ToColoredString(maxLength, tail, strip => ((IDrawable)strip).ColorfulName);
+        if (result.StartsWith('(') && result.EndsWith(')'))
+            result = result[1..^1]; 
+        return result;
+    }
 
     protected internal abstract string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName);
 

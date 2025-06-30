@@ -16,10 +16,10 @@ public static class Helpers
         Horizontal
     }
     private static IEnumerable<Rect> Minus_internal (Rect A, Rect B, RectCutMode mode = RectCutMode.Corners) {
-        var bYMax = Mathf.Max( Mathf.Min(B.yMax, A.yMax), A.yMin);
-        var bYMin = Mathf.Min(Mathf.Max(B.yMin, A.yMin), A.yMax);
-        var bXMax = Mathf.Max( Mathf.Min(B.xMax, A.xMax), A.xMin);
-        var bXMin = Mathf.Min(Mathf.Max(B.xMin, A.xMin), A.xMax);
+        var bYMax = MathF.Max( MathF.Min(B.yMax, A.yMax), A.yMin);
+        var bYMin = MathF.Min(MathF.Max(B.yMin, A.yMin), A.yMax);
+        var bXMax = MathF.Max( MathF.Min(B.xMax, A.xMax), A.xMin);
+        var bXMin = MathF.Min(MathF.Max(B.xMin, A.xMin), A.xMax);
         
         var bWidth = bXMax - bXMin;
         var bHeight = bYMax - bYMin;
@@ -87,18 +87,18 @@ public static class Helpers
     public static Vector3 Max(Vector3 a, Vector3 b)
     {
         return new(
-            Mathf.Max(a.x, b.x),
-            Mathf.Max(a.y, b.y),
-            Mathf.Max(a.z, b.z)
+            MathF.Max(a.x, b.x),
+            MathF.Max(a.y, b.y),
+            MathF.Max(a.z, b.z)
         );
     }
     
     public static Vector3 Min(Vector3 a, Vector3 b)
     {
         return new(
-            Mathf.Min(a.x, b.x),
-            Mathf.Min(a.y, b.y),
-            Mathf.Min(a.z, b.z)
+            MathF.Min(a.x, b.x),
+            MathF.Min(a.y, b.y),
+            MathF.Min(a.z, b.z)
         );
     }
     
@@ -175,8 +175,8 @@ public static class Helpers
         return from t in enumerable from t2 in other select (t, t2);
     }
     
-    public static float Angle(this Vector2 v) => Mathf.Atan2(v.y, v.x);
-    public static float Angle(this Vector3 v) => Mathf.Atan2(v.y, v.x);
+    public static float Angle(this Vector2 v) => MathF.Atan2(v.y, v.x);
+    public static float Angle(this Vector3 v) => MathF.Atan2(v.y, v.x);
     
     public static Vector3 ToVector3(this Complex v) => new((float)v.Real, (float)v.Imaginary);
     

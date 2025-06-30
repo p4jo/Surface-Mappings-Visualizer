@@ -37,7 +37,7 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
         }
     }
 
-    private const float tau = Mathf.PI * 2;
+    private const float tau = MathF.PI * 2;
     
     
 }

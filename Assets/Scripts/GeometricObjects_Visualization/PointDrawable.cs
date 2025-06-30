@@ -66,8 +66,6 @@ public partial class ModelSurfaceBoundaryPoint
 public partial class ModelSurfaceVertex
 {
     public override Point Copy() => new ModelSurfaceVertex(
-        positions.ToArray(),
-        angles.ToList(),
         boundaryCurves.Select(side => side.Copy() as ModelSurfaceSide).ToList()
     );
 }

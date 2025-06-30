@@ -11,7 +11,7 @@ using Vector3 = UnityEngine.Vector3;
 
 public partial class ModelSurface: GeodesicSurface
 {
-    const float tau = 2 * Mathf.PI;
+    const float tau = 2 * MathF.PI;
 
     #region local types
     public record PolygonSide
@@ -241,10 +241,10 @@ public partial class ModelSurface: GeodesicSurface
         #endregion
         
         // todo: think about this ordering
-        var vert = vertices.OrderByDescending(vertex => Mathf.Abs(tau / vertex.angles.Sum() - 1));
+        var vert = vertices.OrderByDescending(vertex => MathF.Abs(tau / vertex.angles.Sum() - 1));
         this.punctures.AddRange((
                 from vertex in vert
-                select vertex.boundaryCurves.First().curve.StartPosition
+                select vertex //.boundaryCurves.First().curve.StartPosition
             ).Take(punctures));
         if (this.punctures.Count == punctures)
             return;
@@ -392,11 +392,11 @@ public partial class ModelSurface: GeodesicSurface
         var geodesic = baseGeometrySurface.GetGeodesic(startPoint, endPoint.ApplyHomeomorphism(optimalSide.DeckTransformation()), "DistanceMinimizer");
         var a = start.ClosestBoundaryPoints(optimalSide);
         var b = end.ClosestBoundaryPoints(optimalSide.other);
-        var t1 = Mathf.Sqrt( a.DistanceSquared(startPoint) );
-        var t2 = Mathf.Sqrt(  b.DistanceSquared(endPoint) );
+        var t1 = MathF.Sqrt( a.DistanceSquared(startPoint) );
+        var t2 = MathF.Sqrt(  b.DistanceSquared(endPoint) );
         var t = (t1 + (geodesic.Length - t2)) / 2;
         t = Mathf.Clamp(t, 0, geodesic.Length);
-        var intersectionPoint = ClampPoint(geodesic[t], Mathf.Max(t, geodesic.Length - t) / 5f, allowVertices: false);
+        var intersectionPoint = ClampPoint(geodesic[t], MathF.Max(t, geodesic.Length - t) / 5f, allowVertices: false);
         if (intersectionPoint is ModelSurfaceBoundaryPoint sidePoint)
             return sidePoint;
         Debug.LogError($"Intersection point {intersectionPoint} is not a ModelSurfaceBoundaryPoint, but {intersectionPoint.GetType()}");

@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using UnityEngine;
 using Math = System.Math;
@@ -241,7 +242,7 @@ public class HyperbolicGeodesicSegment : Curve
                 Debug.LogError("Calculation error: The Möbius transformation didn't send q to the preferred axis");
             if (φq.Imaginary >= 1)
             {
-                length = Mathf.Log((float) φq.Imaginary);
+                length = MathF.Log((float) φq.Imaginary);
                 return true;
             }
             return false;

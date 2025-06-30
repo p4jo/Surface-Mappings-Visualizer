@@ -20,7 +20,7 @@ public class ModelSurfaceVisualizer : SurfaceVisualizer
         this.scale = scale;
         imageOffset = offset; 
         // ?? (surface.MaximalPosition - surface.MinimalPosition) / 2;
-        // Mathf.Min(
+        // MathF.Min(
         //     drawingArea.rectTransform.rect.width / surface.width,
         //     drawingArea.rectTransform.rect.height / surface.height
         // );

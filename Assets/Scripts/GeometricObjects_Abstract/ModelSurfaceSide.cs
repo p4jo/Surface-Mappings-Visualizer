@@ -15,7 +15,7 @@ public partial class ModelSurfaceSide: Curve
     {
         this.curve = curve;
         this.rightIsInside = rightIsInside;
-        angle = Mathf.Atan2(curve.StartVelocity.vector.y, curve.StartVelocity.vector.x);
+        angle = MathF.Atan2(curve.StartVelocity.vector.y, curve.StartVelocity.vector.x);
         if (curve.Surface is not ModelSurface)
             Debug.LogWarning($"The surface of a curve that we promote to a ModelSurfaceSide is not a ModelSurface: {curve.Name} has surface {curve.Surface.Name}");
     }
