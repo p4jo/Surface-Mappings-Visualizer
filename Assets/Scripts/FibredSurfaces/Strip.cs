@@ -9,11 +9,12 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 public abstract class Strip: IEdge<Junction>, IDrawable
 {
-    public readonly FibredGraph graph;
+    public readonly FibredSurface fibredSurface;
+    public FibredGraph graph => fibredSurface.graph;
     
-    protected Strip(FibredGraph graph)
+    protected Strip(FibredSurface fibredSurface)
     {
-        this.graph = graph;
+        this.fibredSurface = fibredSurface;
     }
     
     public abstract Curve Curve { get; set; }
@@ -77,16 +78,16 @@ public abstract class Strip: IEdge<Junction>, IDrawable
 
     }
 
-    public virtual UnorientedStrip CopyUnoriented(FibredGraph graph = null, Curve curve = null, Junction source = null,
+    public virtual UnorientedStrip CopyUnoriented(FibredSurface fibredSurface = null, Curve curve = null, Junction source = null,
         Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null)
     {
         var res = new UnorientedStrip(curve ?? Curve.Copy(), source ?? Source, target ?? Target, edgePath ?? EdgePath,
-            graph ?? this.graph, orderIndexStart ?? this.OrderIndexStart, orderIndexEnd ?? this.OrderIndexEnd);
+            fibredSurface ?? this.fibredSurface, orderIndexStart ?? this.OrderIndexStart, orderIndexEnd ?? this.OrderIndexEnd);
         if (name != null) res.Name = name;
         return res;
     }
     
-    public abstract Strip Copy(FibredGraph graph = null, Curve curve = null, Junction source = null,
+    public abstract Strip Copy(FibredSurface fibredSurface = null, Curve curve = null, Junction source = null,
         Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null);
 }
 
@@ -100,7 +101,7 @@ public class UnorientedStrip : Strip
     public override float OrderIndexStart { get; set; }
 
     public UnorientedStrip(Curve curve, Junction source, Junction target, EdgePath edgePath,
-        FibredGraph graph, float orderIndexStart, float orderIndexEnd, bool newColor = false, bool newName = false, bool addToGraph = false) : base(graph)
+        FibredSurface fibredSurface, float orderIndexStart, float orderIndexEnd, bool newColor = false, bool newName = false, bool addToGraph = false) : base(fibredSurface)
     {
         Curve = curve;
         this.source = source;
@@ -109,11 +110,11 @@ public class UnorientedStrip : Strip
         this.OrderIndexEnd = orderIndexEnd;
         this.OrderIndexStart = orderIndexStart;
         if (newColor)
-            Color = FibredSurface.NextEdgeColorStatic(graph);
+            Color = fibredSurface.NextEdgeColor();
         if (newName)
-            Name = FibredSurface.NextEdgeNameStatic(graph);
+            Name = fibredSurface.NextEdgeName();
         if (addToGraph)
-            graph.AddVerticesAndEdge(this);
+            fibredSurface.graph.AddVerticesAndEdge(this);
     }
 
     private Junction target;
@@ -160,9 +161,22 @@ public class UnorientedStrip : Strip
     private OrderedStrip reversed;
     public override Strip Reversed() => reversed ??= new OrderedStrip(this, true);
 
-    public override Strip Copy(FibredGraph undirectedGraph = null, Curve curve = null, Junction source = null,
+    public override Strip Copy(FibredSurface fibredSurface = null, Curve curve = null, Junction source = null,
         Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null)
-        => CopyUnoriented(undirectedGraph, curve, source, target, edgePath, name, orderIndexStart, orderIndexEnd);
+        => CopyUnoriented(fibredSurface, curve, source, target, edgePath, name, orderIndexStart, orderIndexEnd);
+
+    /// <summary>
+    /// DO THIS ONLY BEFORE USING THE FIBRED SURFACE!
+    /// This does not update any edge paths!
+    /// </summary>
+    public void ReplaceWithInverseEdge()
+    {
+        var name = Name;
+        Curve = Curve.Reversed();
+        Name = name;
+        (source, target) = (target, source);
+        (OrderIndexStart, OrderIndexEnd) = (OrderIndexEnd, OrderIndexStart);
+    }
 }
 
 public class OrderedStrip: Strip
@@ -204,7 +218,7 @@ public class OrderedStrip: Strip
     /// </summary>
     public readonly bool reverse; 
 
-    public OrderedStrip(UnorientedStrip underlyingEdge, bool reverse): base(underlyingEdge.graph)
+    public OrderedStrip(UnorientedStrip underlyingEdge, bool reverse): base(underlyingEdge.fibredSurface)
     {
         this.UnderlyingEdge = underlyingEdge;
         this.reverse = reverse;
@@ -257,17 +271,17 @@ public class OrderedStrip: Strip
             _ => false
         };
 
-    public override Strip Copy(FibredGraph undirectedGraph = null, Curve curve = null,
+    public override Strip Copy(FibredSurface fibredSurface = null, Curve curve = null,
         Junction source = null, Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null)
     {
-        if (!reverse) return UnderlyingEdge.CopyUnoriented(undirectedGraph, curve, source, target, edgePath, name); 
+        if (!reverse) return UnderlyingEdge.CopyUnoriented(fibredSurface, curve, source, target, edgePath, name); 
         
         if (edgePath != null) edgePath = edgePath.Inverse();
         if (curve != null) curve = curve.Reversed();
         (source, target) = (target, source);
         (orderIndexStart, orderIndexEnd) = (orderIndexEnd, orderIndexStart);
         
-        var unorientedCopy = UnderlyingEdge.CopyUnoriented(undirectedGraph, curve, source, target, edgePath, name, orderIndexStart, orderIndexEnd);
+        var unorientedCopy = UnderlyingEdge.CopyUnoriented(fibredSurface, curve, source, target, edgePath, name, orderIndexStart, orderIndexEnd);
         return unorientedCopy.Reversed();
     }
 

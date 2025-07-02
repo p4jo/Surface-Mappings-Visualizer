@@ -7,7 +7,7 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
 {
-    public readonly FibredGraph graph;
+    public readonly FibredSurface fibredSurface;
     
     /// <summary>
     /// f maps this junction into the image junction, i.e. g(this) = image;
@@ -17,24 +17,24 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
     private static int _lastId = 0;
     private readonly int id = _lastId++;
     
-    public Junction(FibredGraph graph, IEnumerable<IDrawnsformable> drawables, string name = null, Junction image = null, Color? color = null) :
+    public Junction(FibredSurface fibredSurface, IEnumerable<IDrawnsformable> drawables, string name = null, Junction image = null, Color? color = null) :
         base(drawables)
     {
-        this.graph = graph;
+        this.fibredSurface = fibredSurface;
         this.image = image;
         if (color.HasValue) Color = color.Value;
-        Name = name ?? FibredSurface.NextVertexNameStatic(graph);
+        Name = name ?? fibredSurface.NextVertexName();
     }
     
-    public Junction(FibredGraph graph, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : 
-        this(graph, new[] {drawable}, name, image, color)
+    public Junction(FibredSurface fibredSurface, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : 
+        this(fibredSurface, new[] {drawable}, name, image, color)
     { }
 
     public Point Position => Patches.FirstOrDefault(v => v is Point) as Point;
 
-    public Junction Copy(FibredGraph graph = null, string name = null, Junction image = null, Color? color = null, IEnumerable<IDrawnsformable> patches = null) =>
+    public Junction Copy(FibredSurface fibredSurface = null, string name = null, Junction image = null, Color? color = null, IEnumerable<IDrawnsformable> patches = null) =>
         new(
-            graph ?? this.graph,
+            fibredSurface ?? this.fibredSurface,
             patches ?? from patch in Patches select patch.Copy(),
             name ?? Name,
             image ?? this.image,

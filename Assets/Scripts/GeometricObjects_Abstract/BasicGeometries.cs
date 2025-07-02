@@ -44,8 +44,15 @@ public abstract class Plane : GeodesicSurface
     public override Vector3 MinimalPosition { get; } = new(float.NegativeInfinity, float.NegativeInfinity);
     public override Vector3 MaximalPosition { get; } = new(float.PositiveInfinity, float.PositiveInfinity);
 
-    protected Plane(string name, int genus, bool is2D, IEnumerable<Point> punctures = null) :
-        base(name, genus, is2D, punctures) { }
+    protected Plane(string name, int genus, IEnumerable<Point> punctures = null,
+        Vector2? minimalPosition = null, Vector2? maximalPosition = null) :
+        base(name, genus, true, punctures)
+    {
+        if (minimalPosition.HasValue) 
+            MinimalPosition = minimalPosition.Value;
+        if (maximalPosition.HasValue)
+            MaximalPosition = maximalPosition.Value;
+    }
 
 }
 
@@ -53,7 +60,11 @@ public class HyperbolicPlane : Plane
 {
     public readonly bool diskModel;
     public HyperbolicPlane(bool diskModel, string name = "Hyperbolic Plane", IEnumerable<Point> punctures = null) :
-        base(name, 0, true, punctures)
+        base(
+            name, 0, punctures, 
+            minimalPosition: diskModel ? new Vector2(-1, -1) : new Vector2(-100f,0f),
+            maximalPosition: diskModel ? new Vector2(1, 1) : new Vector2(100f, 100f)
+        )
     {
         this.diskModel = diskModel;
     }
@@ -110,7 +121,7 @@ public class HyperbolicPlane : Plane
 
     public static readonly Homeomorphism ToKleinModel = new(
         new HyperbolicPlane(true, "Poincaré Disk"),
-        new EuclideanPlane( "Klein Disk"), // todo? add the possibility to the class
+        new EuclideanPlane( "Klein Disk", minimalPosition: new Vector2(-1, -1), maximalPosition: new Vector2(1, 1)), // todo? add the possibility to the class
         z => 2f / (1 + z.sqrMagnitude) * z, // we assume that z.z == 0
         z => 1f / (1 + MathF.Sqrt(1 - z.sqrMagnitude)) * z, // we assume that z.z == 0
         z =>
@@ -135,7 +146,7 @@ public class HyperbolicPlane : Plane
 
 public class EuclideanPlane : Plane
 {
-    public EuclideanPlane(string name = "Euclidean Plane", IEnumerable<Point> punctures = null) : base(name, 0, true, punctures){}
+    public EuclideanPlane(string name = "Euclidean Plane", IEnumerable<Point> punctures = null, Vector2? minimalPosition = null, Vector2? maximalPosition = null) : base(name, 0, punctures, minimalPosition, maximalPosition){}
 
     public override Curve GetGeodesic(Point start, Point end, string name, GeodesicSurface surface = null)
         => new FlatGeodesicSegment(start, end, surface ?? this, name);
@@ -169,18 +180,15 @@ public class EuclideanPlane : Plane
 public class Rectangle : EuclideanPlane
 {    
     public readonly float width, height;
-    public Rectangle(float width, float height, string name = null, Vector3 minimalPosition = default): base(name ??
-        $"Rectangle at ({minimalPosition.x:g2}, {minimalPosition.y:g2}) with width {width:g2} and height {height:g2})")
+    public Rectangle(float width, float height, string name = null, Vector2 minimalPosition = default): base(
+        name ?? $"Rectangle at ({minimalPosition.x:g2}, {minimalPosition.y:g2}) with width {width:g2} and height {height:g2})",
+        minimalPosition: minimalPosition,
+        maximalPosition: minimalPosition + new Vector2(width, height)
+    )
     {
-        MinimalPosition = minimalPosition;
-        MaximalPosition = minimalPosition + new Vector3(width, height);
-        
         this.width = width;
         this.height = height;
     }
-
-    public override Vector3 MinimalPosition { get; }
-    public override Vector3 MaximalPosition { get; }
 
     public override Point ClampPoint(Vector3? point, float closenessThreshold) => 
         point?.Clamp(MinimalPosition, MaximalPosition);

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using MathMesh;
 using UnityEngine.Serialization;
@@ -36,8 +35,4 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
             gameObject.GetComponent<TooltipTarget>().Initialize(this);
         }
     }
-
-    private const float tau = MathF.PI * 2;
-    
-    
 }

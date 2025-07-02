@@ -6,6 +6,7 @@ using QuikGraph;
 using UnityEngine;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
+using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 
 [Serializable]
@@ -14,12 +15,12 @@ public struct SurfaceParameter
     // todo: Feature. this should be split into two tpyes:
     // One being basically the input for the constructor of ModelSurface
     // One describing embedded surfaces, e.g. where the genera are. This affects only the embeddings (homeomorphisms)
-    public int genus, punctures;
+    public int genus, punctures, peripheralPunctures;
     public bool connectedSumEmbedding;
 
     public static SurfaceParameter FromString(string str)
     {
-        int genus = 1, punctures = 0;
+        int genus = 1, punctures = 0, peripheralPunctures = 0;
         bool connectedSumEmbedding = false;
         foreach (var s in str.Split(','))
         {
@@ -27,10 +28,12 @@ public struct SurfaceParameter
                 genus = g;
             if (s.StartsWith("p=") && int.TryParse(s[2..], out var p))
                 punctures = p;
+            if (s.StartsWith("P=") && int.TryParse(s[2..], out var P))
+                peripheralPunctures = P;
             if (s.EndsWith("#"))
                 connectedSumEmbedding = true;
         }
-        return new() { genus = genus, punctures = punctures, connectedSumEmbedding = connectedSumEmbedding };
+        return new() { genus = genus, punctures = punctures, peripheralPunctures = peripheralPunctures, connectedSumEmbedding = connectedSumEmbedding };
     }
 }
 
@@ -72,7 +75,7 @@ public static class SurfaceGenerator
     /// This decides if the drawn spine curve goes towards the "primary" side of the surface (saved in surface.sides), or the "other" side (side.other).
     /// </param>
     /// <param name="peripheralPunctures">This is the number of punctures around which to add a peripheral loop. For example, if you want to study a point push, this should be all punctures. Selects the cusps with the least amount of sides touching it first.</param>
-    public static FibredSurface SpineForSurface(int genus, int punctures, int peripheralPunctures, string name, IEnumerable<string> labels = null, IEnumerable<Color> colors = null, IDictionary<string, string> names = null,
+    public static FibredSurface SpineForSurface(int genus, int punctures, int peripheralPunctures, string name = null, IEnumerable<string> labels = null, IEnumerable<Color> colors = null, IDictionary<string, string> names = null,
         IDictionary<string, bool> reverse = null)
     {
         if (punctures < 0)
@@ -96,21 +99,22 @@ public static class SurfaceGenerator
 
         
         var surface = GenerateGeodesicSurface(genus, punctures, name, labels, colors);
+        var graph = new FibredGraph();
+        var peripheralSubgraph = new FibredGraph();
+        var fibredSurface = new FibredSurface(graph, surface, peripheralSubgraph);
 
         switch (genus, punctures)
         {
             case (0, 1):
             {
                 // var surface = new EuclideanPlane();
-                var graph = new UndirectedGraph<Junction, UnorientedStrip>();
-                graph.AddVertex(new Junction(graph, new BasicPoint(Vector3.zero)));
-                return new FibredSurface(graph, surface);
+                graph.AddVertex(new Junction(fibredSurface, new BasicPoint(Vector3.zero)));
+                break;
             }
             case (0, 2):
             {
                 // var surface = new EuclideanPlane("Punctured Plane", new[] { new BasicPoint(Vector3.zero) });
-                var graph = new UndirectedGraph<Junction, UnorientedStrip>();
-                var junction = new Junction(graph, new BasicPoint(Vector3.right));
+                var junction = new Junction(fibredSurface, new BasicPoint(Vector3.right));
                 var label = labels?.FirstOrDefault();
                 Color color = default;
                 bool assignNewColor = colors == null || (color = colors.FirstOrDefault()) == default;
@@ -122,9 +126,9 @@ public static class SurfaceGenerator
                     t => new Vector3(MathF.Cos(t), MathF.Sin(t), 0),
                     t => new Vector3(-MathF.Sin(t), MathF.Cos(t), 0)
                 ) { Color = color };
-                var edge = new UnorientedStrip(circle, junction, junction, EdgePath.Empty, graph, 0, 1, newColor: assignNewColor, newName: label is null, addToGraph: true);
-                graph.AddVerticesAndEdge(edge);
-                return new FibredSurface(graph, surface);
+                var edge = new UnorientedStrip(circle, junction, junction, EdgePath.Empty, fibredSurface, 0, 1, newColor: assignNewColor, newName: label is null, addToGraph: true);
+                edge.EdgePath = new NormalEdgePath(edge);
+                break;
             }
             default:
             {
@@ -133,34 +137,11 @@ public static class SurfaceGenerator
                 var cusps = modelSurface.vertices;
                 var peripheralCusps = cusps.OrderBy(v => v.boundaryCurves.Count).Take(peripheralPunctures).ToList();
                 
-                var graph = new UndirectedGraph<Junction, UnorientedStrip>();
-                var peripheralGraph = new UndirectedGraph<Junction, UnorientedStrip>();
-
                 var centerPoint = new BasicPoint(Vector3.zero); 
-                var centerJunction = new Junction(graph, centerPoint);
+                var centerJunction = new Junction(fibredSurface, centerPoint);
                 centerJunction.image = centerJunction; 
                 graph.AddVertex(centerJunction);
-                foreach (var cusp in peripheralCusps)
-                {
-                    var peripheralCurve = cusp.GeodesicCircleAround(0.33f * cusp.boundaryCurves.First().curve.Length, true);
-
-                    var junction = new Junction(graph, peripheralCurve.StartPosition);
-                    junction.image = junction;
-                    
-                    var curveToJunction = modelSurface.GetBasicGeodesic(centerPoint, peripheralCurve.StartPosition, $"{junction.Name}1");
-                    
-                    peripheralCurve.Name = $"{junction.Name}0";
-                    // junction.Name = $"{junction.Name}.";
-                    
-                    var edgeToJunction = new UnorientedStrip(curveToJunction, centerJunction, junction, EdgePath.Empty, graph, curveToJunction.StartVelocity.vector.Angle(), 0, newColor: true, addToGraph: true);
-                    edgeToJunction.EdgePath = new NormalEdgePath(edgeToJunction);
-                    
-                    var peripheralEdge = new UnorientedStrip(peripheralCurve, junction, junction, EdgePath.Empty, peripheralGraph, 1, 2, addToGraph: true, newColor: true);
-                    peripheralEdge.EdgePath = new NormalEdgePath(peripheralEdge);
-                    
-                    junction.Color = peripheralEdge.Color;
-                }
-
+                
                 foreach (var side in modelSurface.sides)
                 {
                     if (char.IsDigit(side.Name[^1]))
@@ -175,15 +156,38 @@ public static class SurfaceGenerator
                     // nvm, it is Clamp()ed anyway
                     var secondPart = modelSurface.GetBasicGeodesic(point2, centerPoint, nameOfEdge);
                     var curve = firstPart.Concatenate(secondPart);
-                    var edge = new UnorientedStrip(curve, centerJunction, centerJunction, EdgePath.Empty, graph, curve.StartVelocity.vector.Angle(), (- curve.EndVelocity.vector).Angle(), addToGraph: true);
+                    var edge = new UnorientedStrip(curve, centerJunction, centerJunction, EdgePath.Empty, fibredSurface, curve.StartVelocity.vector.Angle(), (- curve.EndVelocity.vector).Angle(), addToGraph: true);
                     edge.Name = nameOfEdge;
                     edge.Color = side.Color;
                     edge.EdgePath = new NormalEdgePath(edge);
                 }
                 
-                return new FibredSurface(graph, modelSurface, peripheralGraph);
+                foreach (var cusp in peripheralCusps)
+                {
+                    var peripheralCurve = cusp.GeodesicCircleAround(0.33f * cusp.boundaryCurves.First().curve.Length, true).Reversed();
+
+                    var junction = new Junction(fibredSurface, peripheralCurve.StartPosition);
+                    junction.image = junction;
+                    
+                    var curveToJunction = modelSurface.GetBasicGeodesic(centerPoint, peripheralCurve.StartPosition, $"{junction.Name}1");
+                    
+                    peripheralCurve.Name = $"{junction.Name}0";
+                    // junction.Name = $"{junction.Name}.";
+                    
+                    var edgeToJunction = new UnorientedStrip(curveToJunction, centerJunction, junction, EdgePath.Empty, fibredSurface, curveToJunction.StartVelocity.vector.Angle(), 0, newColor: true, addToGraph: true);
+                    edgeToJunction.EdgePath = new NormalEdgePath(edgeToJunction);
+                    
+                    var peripheralEdge = new UnorientedStrip(peripheralCurve, junction, junction, EdgePath.Empty, fibredSurface, 2, 1, addToGraph: true, newColor: true);
+                    peripheralEdge.EdgePath = new NormalEdgePath(peripheralEdge);
+                    peripheralSubgraph.AddVerticesAndEdge(peripheralEdge);
+                    
+                    junction.Color = peripheralEdge.Color;
+                }
+
+                break;
             }
         }
+        return fibredSurface;
     }
     
     
@@ -202,8 +206,8 @@ public static class SurfaceGenerator
         
         if (genus < 0)
             throw new ArgumentException("Can't have a negative genus.");
-        labels ??= Enumerable.Range(0, 2 * genus).Select(i => ("side " + (char)('a' + i)).ToString());
-        colors ??= Curve.colors.Loop(2 * genus);
+        labels ??= Enumerable.Range(0, 26).Select(i => ("side " + (char)('a' + i)).ToString());
+        colors ??= Curve.colors.Loop(26);
         
         using var labelEnumerator = labels.GetEnumerator();
         using var colorEnumerator = colors.GetEnumerator();
@@ -216,18 +220,18 @@ public static class SurfaceGenerator
         }
         
         switch (genus, punctures)
-        {
+        { // TODO: Feature. Embeddings!?
             case (0, 0):
                 // return new Sphere(name ?? "Sphere");
                 throw new NotImplementedException();
             case (0, 1):
-                return new EuclideanPlane(name ?? "Euclidean Plane");
+                return new EuclideanPlane(name ?? "Euclidean Plane", minimalPosition: new Vector2(-10, -10), maximalPosition: new Vector2(10, 10));
             case (0, 2):
-                return new EuclideanPlane(name ?? "Punctured Plane", new[] { new BasicPoint(Vector3.zero) });
+                return new EuclideanPlane(name ?? "Punctured Plane", new[] { new BasicPoint(Vector3.zero) }, minimalPosition: new Vector2(-10, -10), maximalPosition: new Vector2(10, 10));
             case (0, _):
             {
-                var sideParameters = CuspsSideParameters(punctures - 1, MathF.PI, baseAngle, baseAngle, 1f);
-                return new ModelSurface(name ?? "Torus", 0, punctures, GeometryType.HyperbolicDisk, sideParameters.ToList());
+                var sideParameters = CuspsSideParameters(punctures - 1, MathF.PI, baseAngle, baseAngle, 0.9f, sameNameAndColor: false); // actually radius 1, but atm infinite geodesics aren't implemented properly
+                return new ModelSurface(name ?? $"hyperbolic sphere with {punctures} punctures", 0, punctures, GeometryType.HyperbolicDisk, sideParameters.ToList());
             }
             case (1, 0):
             {
@@ -238,7 +242,7 @@ public static class SurfaceGenerator
             default:
             {
                 int n = 4 * genus + 2 * (punctures - 1);
-                float radius = punctures == 0 ? MathF.Sqrt(MathF.Cos(τ / n)) : 0.9f; 
+                float radius = punctures == 0 ? MathF.Sqrt(MathF.Cos(τ / n)) : 0.9f; // actually radius 1, but atm infinite geodesics aren't implemented properly
                 // chosen s.t. all interior angles are τ / n (and thus the vertex is a regular point for the metric) 
                 var angleStep = τ / n;
                 var sides = new List<ModelSurface.PolygonSide>();
@@ -605,7 +609,7 @@ public static class SurfaceGenerator
             return (new AbstractSurface(
                 GenusGSurfaceConnectedSumFlat(p.genus, p.punctures).embedding
             ), null);
-        var fibredSurface = SpineForSurface(p.genus, p.punctures, p.punctures, "Spine for " + p.genus + "g" + p.punctures + "p");
+        var fibredSurface = SpineForSurface(p.genus, p.punctures, p.peripheralPunctures);
         return (new AbstractSurface(fibredSurface.surface), fibredSurface);
         // todo: Feature: Make the parameters useful (or delete them)
         

@@ -10,6 +10,7 @@ using QuikGraph.Algorithms;
 using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 using Object = UnityEngine.Object;
+using Random = UnityEngine.Random;
 
 /// <summary>
 /// This implements the Bestvina-Handel algorithm.
@@ -41,6 +42,9 @@ public class FibredSurface : IPatchedDrawnsformable
 
     public IEnumerable<Strip> OrientedEdges => Strips.Concat<Strip>(Strips.Select(edge => edge.Reversed()));
 
+    public IEnumerable<NamedEdgePath> UsedNamedEdgePaths => Strips.SelectMany(e => e.EdgePath.NamedEdgePaths).Distinct().
+        OrderBy(v => v.name);
+
     #region Constructors
 
     public FibredSurface(FibredGraph graph, GeodesicSurface surface, FibredGraph peripheralSubgraph = null)
@@ -48,7 +52,7 @@ public class FibredSurface : IPatchedDrawnsformable
         this.graph = graph;
         this.surface = surface;
         this.peripheralSubgraph = peripheralSubgraph ?? new FibredGraph(true);
-        DeferNames();
+        Initialize(); // when the FibredSurface is created with empty graph and the graph is edited later, this has to be called afterwards 
     }
 
     public FibredSurface(IList<(Curve, string, string, string)> edgeDescriptions, GeodesicSurface surface,
@@ -65,7 +69,7 @@ public class FibredSurface : IPatchedDrawnsformable
         var junctions = new Dictionary<string, Junction>(
             from name in vertexNames
             select new KeyValuePair<string, Junction>(name,
-                new Junction(graph,
+                new Junction(this,
                     junctionDrawables.TryGetValue(name, out var displayable)
                         ? displayable
                         : edgeDescriptions.FirstOrDefault(tuple => tuple.Item2 == name).Item1?.StartPosition
@@ -86,7 +90,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 junctions[source],
                 junctions[target],
                 EdgePath.Empty,
-                graph,
+                this,
                 startVector.Angle(),
                 endVector.Angle(),
                 addToGraph: true
@@ -108,7 +112,7 @@ public class FibredSurface : IPatchedDrawnsformable
         peripheralSubgraph.AddVerticesAndEdgeRange(
             Strips.Where(e => peripheralEdgesSet.Contains(e.Name) )
         );
-        DeferNames();
+        Initialize();
     }
 
     public string Name { get; set; }
@@ -124,18 +128,20 @@ public class FibredSurface : IPatchedDrawnsformable
     public FibredSurface Copy()
     {
         var newGraph = new FibredGraph(true);
+        var newPeripheralSubgraph = new FibredGraph(true);
+        var newFibredSurface = new FibredSurface(newGraph, surface, newPeripheralSubgraph) { ignoreBeingReducible = ignoreBeingReducible };
 
         var newVertices = new Dictionary<Junction, Junction>(
             from oldJunction in graph.Vertices
             select new KeyValuePair<Junction, Junction>(oldJunction, 
-                oldJunction.Copy(newGraph)
+                oldJunction.Copy(newFibredSurface)
             )
         );
 
         var newEdges = new Dictionary<UnorientedStrip, UnorientedStrip>(
             from oldStrip in Strips
             select new KeyValuePair<UnorientedStrip, UnorientedStrip>(oldStrip, 
-                oldStrip.CopyUnoriented(graph: newGraph,
+                oldStrip.CopyUnoriented(newFibredSurface,
                     source: newVertices[oldStrip.Source],
                     target: newVertices[oldStrip.Target]
                 )
@@ -146,27 +152,41 @@ public class FibredSurface : IPatchedDrawnsformable
             if (oldJunction.image != null)
                 newJunction.image = newVertices[oldJunction.image];
 
-        Strip newEdgesFunc(UnorientedStrip strip) => newEdges[strip]; 
         foreach (var (edge, newEdge) in newEdges)
-            newEdge.EdgePath = edge.EdgePath.Replace(newEdgesFunc);
+            newEdge.EdgePath = edge.EdgePath.Replace(strip => newEdges[strip]);
 
         newGraph.AddVerticesAndEdgeRange(newEdges.Values);
 
-        var newPeripheralSubgraph = new FibredGraph(true);
         newPeripheralSubgraph.AddVerticesAndEdgeRange(
             from edge in peripheralSubgraph.Edges select newEdges[edge]
         );
 
-        return new FibredSurface(newGraph, surface, newPeripheralSubgraph) { ignoreBeingReducible = ignoreBeingReducible };
+        return newFibredSurface;
     }
 
+    
     public void SetMap(IDictionary<string, string> map, GraphMapUpdateMode mode)
     {
-        if (!map.Keys.Select(k => k.ToLower()).ToHashSet().SetEquals(Strips.Select(s => s.Name)))
-            throw new ArgumentException($"The map must be given for each of the edges of the surface, which are {Strips.ToCommaSeparatedString(s => s.Name)}");
-
+        var mapKeys = map.Keys.Select(k => k.ToLower()).ToHashSet();
+        var stripNames = Strips.Select(s => s.Name).ToHashSet();
+        if (!mapKeys.IsSupersetOf(stripNames))
+            throw new ArgumentException($"The map must be given for each of the edges of the surface, which are {stripNames.ToCommaSeparatedString()}");
+        mapKeys.ExceptWith(stripNames);
         var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
-        var enteredMap = map.Keys.ToDictionary(name => edgeDict[name], name => EdgePath.FromString(map[name], edgeDict));
+        var definitions = new List<NamedEdgePath>();
+        foreach (var definitionName in mapKeys)
+        {
+            definitions.Add(new NamedEdgePath(EdgePath.FromString(map[definitionName], Strips, definitions), definitionName));    
+        }
+
+        var enteredMap = stripNames.ToDictionary(name => edgeDict[name], name => EdgePath.FromString(map[name], Strips, definitions));
+        
+        SetMap(enteredMap, mode);
+    }
+    public void SetMap(IDictionary<Strip, EdgePath> enteredMap, GraphMapUpdateMode mode)
+    {
+        if (enteredMap.Keys.Any(e => e.graph != graph))
+            throw new ArgumentException("The edges in the map must be from the same graph as this fibred surface.");
         var oldMap = OrientedEdges.ToDictionary(e => e, e => e.EdgePath);
         switch (mode)
         {
@@ -432,13 +452,13 @@ public class FibredSurface : IPatchedDrawnsformable
         var weirdCurveName = Strips.FirstOrDefault(s => s.Reversed().Curve.Name != s.Name + "'");
         if (weirdCurveName != null)
             HandleInconsistentBehavior($"The curve {weirdCurveName} has a weird name.");
-        var brokenVertex = graph.Vertices.FirstOrDefault(v => v.graph != graph);
+        var brokenVertex = graph.Vertices.FirstOrDefault(v => v.fibredSurface != this);
         if (brokenVertex != null)
             HandleInconsistentBehavior($"The vertex {brokenVertex} doesn't refer to this graph.");
         var brokenVertexMapEdge = BrokenVertexMapEdge();
         if (brokenVertexMapEdge != null)
             HandleInconsistentBehavior($"The edge {brokenVertexMapEdge.Name} starts at {brokenVertexMapEdge.Source} with g({brokenVertexMapEdge.Source}) = {brokenVertexMapEdge.Source.image}, but g({brokenVertexMapEdge.Name}) starts at o(Dg({brokenVertexMapEdge.Name})) = o({brokenVertexMapEdge.Dg?.Name}) = {brokenVertexMapEdge.Dg?.Source}");
-        var brokenVertexGraphAssociation = graph.Vertices.FirstOrDefault(v => v.graph != graph);
+        var brokenVertexGraphAssociation = graph.Vertices.FirstOrDefault(v => v.fibredSurface != this);
         if (brokenVertexGraphAssociation != null)
             HandleInconsistentBehavior($"The vertex {brokenVertexGraphAssociation} doesn't refer to this graph.");
         var brokenEdgeGraphAssociation = Strips.FirstOrDefault(e => e.graph != graph);
@@ -509,9 +529,15 @@ public class FibredSurface : IPatchedDrawnsformable
         FrobeniusPerron(false, out var growthRate, out var widths, out var lengths, out var matrix);
         // var matrix = TransitionMatrix();
 
+        var VariableString = "";
+        var variables = UsedNamedEdgePaths.Where(v => char.IsLower(v.name.First(char.IsLetter))).ToList();
+        if (variables.Count > 0)
+        {
+            VariableString = "\nVariables: " + variables.ToCommaSeparatedString(v => v.name + " = " + v.value.ToColorfulString(180, 10), "\n");
+        }
         stripsOrdered.Add(null); // for the "width" column and "length" row
         
-        string graphString = $"<line-indent=-20>{vertexString}\n{edgeString}\nBoundary / puncture words (following to the right):\n{boundaryWordsText}\n{MatrixStrings().ToCommaSeparatedString("\n")}\nGrowth rate: {growthRate:g3}";
+        string graphString = $"<line-indent=-20>{vertexString}\n{edgeString}\nBoundary / puncture words (following to the right):\n{boundaryWordsText}{VariableString}\n{MatrixStrings().ToCommaSeparatedString("\n")}\nGrowth rate: {growthRate:g3}";
 
         if (ignoreBeingReducible)
             graphString += "\nType: Reducible";
@@ -574,7 +600,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
     public static IEnumerable<Strip> Star(Junction junction, FibredGraph graph = null)
     {
-        return (graph ?? junction.graph).AdjacentEdges(junction).SelectMany(strip =>
+        return (graph ?? junction.fibredSurface.graph).AdjacentEdges(junction).SelectMany(strip =>
             strip.IsSelfEdge() ? new[] { strip, strip.Reversed() } :
             strip.Source != junction ? new[] { strip.Reversed() } :
             new[] { strip });
@@ -691,11 +717,11 @@ public class FibredSurface : IPatchedDrawnsformable
 
             var boundaryWord = BoundaryWord(strip, stars);
             visited.UnionWith(boundaryWord);
-            yield return new NormalEdgePath(boundaryWord);
+            yield return boundaryWord;
         }
     }
 
-    public static List<Strip> BoundaryWord(Strip strip)
+    public static EdgePath BoundaryWord(Strip strip)
     {
         var stars = new Dictionary<Junction, List<Strip>>(
             from vertex in strip.graph.Vertices
@@ -705,7 +731,7 @@ public class FibredSurface : IPatchedDrawnsformable
     }
     
 
-    private static List<Strip> BoundaryWord(Strip strip, IReadOnlyDictionary<Junction, List<Strip>> stars)
+    private static NormalEdgePath BoundaryWord(Strip strip, IReadOnlyDictionary<Junction, List<Strip>> stars)
     {
         var boundaryWord = new List<Strip>();
         Strip edge = strip;
@@ -715,7 +741,7 @@ public class FibredSurface : IPatchedDrawnsformable
             edge = NextEdge(edge);
         } while (!Equals(strip, edge));
 
-        return boundaryWord;
+        return new NormalEdgePath(boundaryWord);
 
         Strip NextEdge(Strip edge)
         {
@@ -967,7 +993,10 @@ public class FibredSurface : IPatchedDrawnsformable
     }
 
     public IEnumerable<Junction> GetValenceTwoJunctions() =>
-        from vertex in graph.Vertices where Star(vertex).Count() == 2 select vertex;
+        from vertex in graph.Vertices 
+        let star = Star(vertex)
+        where star.Count() == 2 && !star.First().Equals(star.Last().Reversed()) // no self-edge
+        select vertex;
 
     /// <summary>
     /// Removes a valence two junction by keeping one of the two strips and make it replace the concatenation of the two strips.
@@ -979,6 +1008,8 @@ public class FibredSurface : IPatchedDrawnsformable
     {
         var star = Star(junction).ToArray();
         if (star.Length != 2) throw new($"Supposed valence-two junction has valence {star.Length}");
+        if (star[0].Equals(star[1].Reversed()))
+            throw new Exception("Cannot remove a valence-two junction that has a self-edge");
 
         if (removeStrip == null)
         {
@@ -1531,7 +1562,7 @@ public class FibredSurface : IPatchedDrawnsformable
         if (splitTime < 0)
             splitTime = splitPoint.GetCurveTimeInJunction();
 
-        var newVertex = new Junction(graph, splitEdge.Curve[splitTime], NextVertexName(), splitPoint.Image, NextVertexColor());
+        var newVertex = new Junction(this, splitEdge.Curve[splitTime], NextVertexName(), splitPoint.Image, NextVertexColor());
 
         var firstSegment = splitEdge.Copy(
             curve: splitEdge.Curve.Restrict(0, splitTime),
@@ -1893,7 +1924,7 @@ public class FibredSurface : IPatchedDrawnsformable
             // give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
             // todo: currently this does not follow the boundary of <Q>.
             string name = NextVertexName();
-            var newJunction = new Junction(graph, surface.GetPathFromWaypoints(positions, name), name, color: NextVertexColor()); // image set below
+            var newJunction = new Junction(this, surface.GetPathFromWaypoints(positions, name), name, color: NextVertexColor()); // image set below
             newJunctions.Add(newJunction);
             var orderIndex = 0;
             foreach (var edge in gateInOrder)
@@ -1940,7 +1971,7 @@ public class FibredSurface : IPatchedDrawnsformable
                     source: junction,
                     target: nextJunction,
                     edgePath: EdgePath.Empty, // we can only add these once we created them all
-                    graph: graph,
+                    fibredSurface: this,
                     orderIndexStart: Star(junction).Max(e => e.OrderIndexStart) + 0.5f,
                     orderIndexEnd: Star(nextJunction).Min(e => e.OrderIndexStart) - 0.5f, // still > -1!
                     newColor: true,
@@ -2063,52 +2094,59 @@ public class FibredSurface : IPatchedDrawnsformable
     };
 
 
-    void DeferNames()
+    private HashSet<string> usedEdgeNames;
+    public void Initialize()
     {
-        // foreach (var strip in Strips)
-        // {
-        //     if (edgeNames.Remove(strip.Name))
-        //         edgeNames.Add(strip.Name);
-        // }
+        UpdateUsedEdgeNames();
     }
 
-    string NextEdgeNameStatic() => NextEdgeNameStatic(graph);
-    public static string NextEdgeNameStatic(FibredGraph graph)
+    private void UpdateUsedEdgeNames()
     {
-        return edgeNames.Except(graph.Edges.Select(edge => edge.Name)).Concat(
-            from i in Enumerable.Range(1, 1000) select $"e{i}"
-        ).FirstOrDefault();
+        usedEdgeNames = graph.Edges.Select(edge => edge.Name).Concat(
+            UsedNamedEdgePaths.Select(edgePath => edgePath.name)).ToHashSet();
     }
 
-    string NextEdgeNameGreek() => NextEdgeNameGreek(graph);
-    public static string NextEdgeNameGreek(FibredGraph graph)
+    public string NextEdgeName()
     {
-        return edgeNames.CyclicShift("α").Except(graph.Edges.Select(edge => edge.Name)).Concat(
-            from i in Enumerable.Range(1, 1000) select $"ε{i}"
-        ).FirstOrDefault();
+        UpdateUsedEdgeNames();
+        return edgeNames.Concat(from i in Enumerable.Range(1, 1000) select $"e{i}").First(
+            name => !usedEdgeNames.Contains(name)
+        );
     }
 
-    string NextVertexName() => NextVertexNameStatic(graph);
-    
-    public static string NextVertexNameStatic(FibredGraph graph)
-    {
-        return vertexNames.Except(graph.Vertices.Select(vertex => vertex.Name)).Concat(
-            from i in Enumerable.Range(1, 1000) select $"v{i}"
-        ).FirstOrDefault();
+    public string NextEdgeNameGreek() {
+        UpdateUsedEdgeNames();
+        return edgeNames.Concat(from i in Enumerable.Range(1, 1000) select $"ε{i}").First(
+            name => !usedEdgeNames.Contains(name) && name[0] <= 'z'
+        );
     }
 
-    Color NextEdgeColor() => NextEdgeColorStatic(graph);
-    public static Color NextEdgeColorStatic(FibredGraph graph)
+    public string NextVertexName()
+    {
+        var usedVertexNames = graph.Vertices.Select(vertex => vertex.Name).ToHashSet();
+        return vertexNames.Concat(from i in Enumerable.Range(1, 1000) select $"v{i}").First(
+            name => !usedVertexNames.Contains(name)    
+        );
+    }
+
+    public Color NextEdgeColor()
     {
         var colorUsage = edgeColors.ToDictionary(c => c, c => 0);
-        foreach (var strip in graph.Edges) 
-            colorUsage[strip.Color]++;
+        foreach (var strip in graph.Edges)
+        {
+            if (colorUsage.ContainsKey(strip.Color))
+                colorUsage[strip.Color]++;
+            else
+            {
+                colorUsage[strip.Color] = 1;
+                Debug.LogWarning($"The color {strip.Color} of edge {strip} is not in the list of edge colors.");
+            }
+        }
         var (leastUsedColor, _) = colorUsage.Keys.ArgMin(c => colorUsage[c]);
         return leastUsedColor;
     }
 
-    Color NextVertexColor() => NextVertexColorStatic(graph);
-    public static Color NextVertexColorStatic(FibredGraph graph)
+    Color NextVertexColor()
     {
         var colorUsage = vertexColors.ToDictionary(c => c, c => 0);
         foreach (var junction in graph.Vertices)
@@ -2165,7 +2203,7 @@ public class FibredSurface : IPatchedDrawnsformable
         essentialSubgraph.ExceptWith(prePeriphery);
         var edgesKnownToHaveFullOrbit = new HashSet<UnorientedStrip>();
 
-        foreach (var edge in Strips)
+        foreach (var edge in essentialSubgraph)
         {
             if (!edgesKnownToHaveFullOrbit.Contains(edge))
             {
@@ -2190,6 +2228,13 @@ public class FibredSurface : IPatchedDrawnsformable
         Matrix<double> M = Matrix<double>.Build.Dense(strips.Length, strips.Length,
             (i, j) => matrix[strips[i]][strips[j]]
         );
+        if (strips.Length == 0)
+        { // M.Evd throws an exception if the matrix is empty
+            λ = 1;
+            widths = new Dictionary<UnorientedStrip, double>();
+            lengths = new Dictionary<UnorientedStrip, double>();
+            return;
+        }
         var eigenvalueDecomposition = M.Evd();
         int
             columnIndex; // the index of the largest eigenvalue - should be the last index, as the eigenvalues are sorted by magnitude (?)
@@ -2262,7 +2307,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 foreach (var edge in gate.Edges) 
                     edge.Curve = edge.Curve.AdjustStartVector(gateVector, edgeTimes2[edge]);
 
-                var gateJunction = new Junction(graph, gatePoint,
+                var gateJunction = new Junction(this, gatePoint,
                     $"gate {{{gate.Edges.Select(e => e.Name).ToCommaSeparatedString()}}} @ {junction.Name}", color: gate.junctionIdentifier.Color);
                 gateJunctions[gate] = gateJunction;
                 foreach (var (index, strip) in SortConnectedSetInStar(star, gate.Edges).Enumerate())
@@ -2352,7 +2397,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 source: gateJunctions[incomingGate],
                 target: gateJunctions[outgoingGate],
                 edgePath: EdgePath.Empty, // we can only add these once we created them all
-                graph: graph, // this is the edge path of the infinitesimal edge
+                fibredSurface: this, 
                 orderIndexStart: incomingGateOrderIndexInStar,
                 orderIndexEnd: outgoingGateOrderIndexInStar,
                 addToGraph: true

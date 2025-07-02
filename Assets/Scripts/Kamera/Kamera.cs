@@ -161,6 +161,16 @@ public class Kamera : MonoBehaviour
 
     protected void Initialize(Vector3 minimalPosition, Vector3 maximalPosition)
     {
+        if (!maximalPosition.AtLeast(minimalPosition))
+            throw new ArgumentException("Maximal position must be at least as large as minimal position.");
+        if (float.IsInfinity(minimalPosition.x))
+            minimalPosition.x = -10;
+        if (float.IsInfinity(minimalPosition.y))
+            minimalPosition.y = -10;
+        if (float.IsInfinity(maximalPosition.x))
+            maximalPosition.x = 10;
+        if (float.IsInfinity(maximalPosition.y))
+            maximalPosition.y = 10;
         this.minimalPosition = minimalPosition;
         this.maximalPosition = maximalPosition;
         minOrthographicSize = MathF.Min(maximalPosition.x - minimalPosition.x, 

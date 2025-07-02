@@ -49,6 +49,12 @@ public abstract class EdgePath : IReadOnlyList<Strip>
     public abstract EdgePath Skip(int i);
 
     public abstract EdgePath Take(int i);
+    
+    private IReadOnlyList<NamedEdgePath> namedEdgePaths;
+    public IReadOnlyList<NamedEdgePath> NamedEdgePaths =>
+        namedEdgePaths ??= GetUsedNamedEdgePaths();
+
+    protected abstract IReadOnlyList<NamedEdgePath> GetUsedNamedEdgePaths();
 
     public abstract int Count { get; }
 
@@ -66,20 +72,28 @@ public abstract class EdgePath : IReadOnlyList<Strip>
 
     protected internal abstract bool TryGetElementAt(ref int i, out Strip result);
 
-    public static EdgePath FromString(string text, IEnumerable<UnorientedStrip> strips) =>
-        FromString(text, 
-            strips.Concat(
-                strips.Select(edge => edge.Reversed())
-            ).ToDictionary(
-                strip => strip.Name
-            )
+    public static EdgePath FromString(string text, IEnumerable<UnorientedStrip> strips,
+        IEnumerable<NamedEdgePath> definitionList = null)
+    {
+        var stripDict = strips.Concat(
+            strips.Select(edge => edge.Reversed())
+        ).ToDictionary(
+            strip => strip.Name
         );
+        definitionList ??= Array.Empty<NamedEdgePath>();
+        var definitions = definitionList.Concat(
+            definitionList.Select(definition => (NamedEdgePath)definition.Inverse())
+        ).ToDictionary(
+            namedEdgePath => namedEdgePath.name
+        );
+        return FromString(text, stripDict, definitions);
+    }
 
-    public static EdgePath FromString(string text, IReadOnlyDictionary<string, Strip> stripDict)
+    public static EdgePath FromString(string text, IReadOnlyDictionary<string, Strip> stripDict,
+        IReadOnlyDictionary<string, NamedEdgePath> definitions = null)
     {
         if (text.Count(c => c == '(') != text.Count(c => c == ')'))
             throw new ArgumentException("The expression for the edge path contains a different number of closing and opening parentheses");
-
         var result = new List<EdgePath>();
         var currentlyReadNormalEdgePath = new List<Strip>();
         var currentlyReadName = "";
@@ -139,13 +153,10 @@ public abstract class EdgePath : IReadOnlyList<Strip>
             }
         }
         PushLastThing();
-        if (currentlyReadName != "")
-        {
-            CloseLastVariable();
-            PushLastVariable();
-        }
-        if (currentlyReadNormalEdgePath.Count > 0)
-            PushLastNormalEdgePath();
+        CloseLastVariable();
+        PushLastVariable();
+        PushLastNormalEdgePath();
+        
         return result.Count == 1 ? result[0] : new NestedEdgePath(result);
 
         void CloseLastVariable()
@@ -153,7 +164,12 @@ public abstract class EdgePath : IReadOnlyList<Strip>
             if (currentlyReadName == "")
                 return;
             if (!stripDict.TryGetValue(currentlyReadName, out lastStrip))
-                throw new ArgumentException($"Unknown strip {currentlyReadName} in your input at location {i}");
+            {
+                if (!definitions.TryGetValue(currentlyReadName, out var lastNamedEdgePath))
+                    throw new ArgumentException($"Unknown strip {currentlyReadName} in your input at location {i}");
+                PushLastNormalEdgePath();
+                lastThing = lastNamedEdgePath;
+            }
             currentlyReadName = "";
         }
 
@@ -203,7 +219,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
                         break;
                 }
             }
-            return FromString(text.Substring(startIndex, i - startIndex), stripDict);
+            return FromString(text.Substring(startIndex, i - startIndex), stripDict, definitions);
         }
 
         EdgePath ReadNextThing()
@@ -335,8 +351,8 @@ public abstract class EdgePath : IReadOnlyList<Strip>
 
 public class NamedEdgePath : EdgePath
 {
-    private EdgePath value;
-    private string name;
+    public readonly EdgePath value;
+    public readonly string name;
 
     public NamedEdgePath(EdgePath value, string name)
     {
@@ -361,6 +377,8 @@ public class NamedEdgePath : EdgePath
     public override EdgePath Skip(int i) => i <= 0 ? this : value.Skip(i);
 
     public override EdgePath Take(int i) => i >= Count ? this : value.Take(i);
+
+    protected override IReadOnlyList<NamedEdgePath> GetUsedNamedEdgePaths() => new []{this};
 
     public override int Count => value.Count;
 
@@ -414,6 +432,8 @@ public class ConjugateEdgePath : NestedEdgePath
             NestedEdgePath nestedEdgePath and not ConjugateEdgePath => new NestedEdgePath(nestedEdgePath.subPaths.Prepend(this)),
             _ => new NestedEdgePath(this, other)
         };
+
+    protected override IReadOnlyList<NamedEdgePath> GetUsedNamedEdgePaths() => inner.NamedEdgePaths.Concat(outer.NamedEdgePaths).ToArray();
 
     public override int Count => inner.Count + outer.Count * 2;
 
@@ -512,6 +532,8 @@ public class NestedEdgePath : EdgePath
     }
 
     private int? count;
+    protected override IReadOnlyList<NamedEdgePath> GetUsedNamedEdgePaths() => subPaths.SelectMany(p => p.NamedEdgePaths).ToArray();
+
     public override int Count => count ??= subPaths.Sum(path => path.Count);
 
     public override bool IsEmpty => subPaths.Length == 0;
@@ -592,6 +614,8 @@ class NormalEdgePath : EdgePath
     public override EdgePath Skip(int i) => i >= Count ? Empty : new NormalEdgePath(edges[i..]);
 
     public override EdgePath Take(int i) => i >= Count ? this : new NormalEdgePath(edges[..i]);
+
+    protected override IReadOnlyList<NamedEdgePath> GetUsedNamedEdgePaths() => Array.Empty<NamedEdgePath>();
 
     public override int Count => edges.Length;
 

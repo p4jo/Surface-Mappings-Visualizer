@@ -77,17 +77,10 @@ public class SurfaceMenu: MonoBehaviour
             
             SurfaceVisualizer surfaceVisualizer;
             GameObject surfaceVisualizerGameObject;
-            RawImage panel = null;
             switch (drawingSurface)
             {
                 case ParametricSurface parametricSurface:
                 {
-                    if (showOwnWindow)
-                    {
-                        var surfaceVisualizerUI = Instantiate(parametricSurfaceVisualizerUIPrefab, transform);
-                        panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
-                    }
-                    
                     surfaceVisualizerGameObject = Instantiate(parametricSurfaceVisualizerPrefab);
                     
                     var parametricSurfaceVisualizer = 
@@ -97,29 +90,19 @@ public class SurfaceMenu: MonoBehaviour
                     surfaceVisualizer = parametricSurfaceVisualizer;
                     break;
                 }
-                case ModelSurface modelSurface:
+                // case Plane:
+                case GeodesicSurface { is2D: true } modelSurface: // or Plane
                 {
-                    // var surfaceVisualizerUI = Instantiate(modelSurfaceVisualizerUIPrefab, transform);
-                    // var modelSurfaceVisualizer = surfaceVisualizerUI.GetComponentInChildren<ModelSurfaceVisualizer>();
-                    // modelSurfaceVisualizer.Initialize(modelSurface);
-                    // surfaceVisualizer = modelSurfaceVisualizer;
-                    //
-                    // now same as parametrix
-                    if (showOwnWindow)
-                    {
-                        var surfaceVisualizerUI = Instantiate(parametricSurfaceVisualizerUIPrefab, transform);
-                        panel = surfaceVisualizerUI.GetComponentInChildren<RawImage>();
-                    }
-                    
                     surfaceVisualizerGameObject = Instantiate(modelSurfaceVisualizerPrefab); // no parent                   
 
                     var modelSurfaceVisualizer = 
                         surfaceVisualizerGameObject.GetComponentInChildren<ModelSurfaceVisualizer>();
                     
-                    modelSurfaceVisualizer.Initialize(modelSurface);
+                    modelSurfaceVisualizer.Initialize(drawingSurface);
                     surfaceVisualizer = modelSurfaceVisualizer;
                     break;
                 }
+                // case Sphere:
                 default:
                     throw new NotImplementedException(); // fine
             }
@@ -139,7 +122,8 @@ public class SurfaceMenu: MonoBehaviour
             var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UIKamera>();
             if (showOwnWindow)
             {
-                kamera.Initialize(panel, canvas, drawingSurface.MinimalPosition, drawingSurface.MaximalPosition);
+                var surfaceVisualizerUI = Instantiate(parametricSurfaceVisualizerUIPrefab, transform);
+                kamera.Initialize(surfaceVisualizerUI.GetComponentInChildren<RawImage>(), canvas, drawingSurface.MinimalPosition, drawingSurface.MaximalPosition);
                 windowKameras.Add(windowName, kamera);
                 cameraManager.AddKamera(kamera);
                 mainMenu.UIMoved += () => kamera.UIMoved();

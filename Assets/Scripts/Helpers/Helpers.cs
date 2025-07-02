@@ -386,7 +386,7 @@ public static class Helpers
     {
         if (string.IsNullOrWhiteSpace(s))
             return s;
-        if (char.IsUpper(s.First(char.IsSymbol)))
+        if (char.IsUpper(s.First(char.IsLetter)))
             return s.ToLowerInvariant();
         return s.ToUpperInvariant();
     }

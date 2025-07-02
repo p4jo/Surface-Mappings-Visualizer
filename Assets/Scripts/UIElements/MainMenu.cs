@@ -6,6 +6,7 @@ using TMPro;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UI;
+using Random = System.Random;
 
 public class MainMenu: MonoBehaviour
 {
@@ -73,10 +74,8 @@ public class MainMenu: MonoBehaviour
         // [BH] example 6.1. :
         // var c = fibredSurface.Strips.First(strip => strip.Name == "c");
         // var d = fibredSurface.Strips.First(strip => strip.Name == "d");
-        // c.Curve = c.Curve.Reversed();
-        // c.Name = "d";
-        // d.Curve = d.Curve.Reversed();
-        // d.Name = "c"; 
+        // c.ReplaceWithInverseEdge();
+        // d.ReplaceWithInverseEdge();
         // fibredSurfaceMenu.UpdateGraphMap(new Dictionary<string, string>
         // {
         //     ["a"] = "a B A b D C A",
@@ -87,29 +86,43 @@ public class MainMenu: MonoBehaviour
         
         if (fibredSurface.surface is not ModelSurface { Genus: 2 }) return;
         
+        
+        var a = fibredSurface.Strips.First(strip => strip.Name == "a");
+        var b = fibredSurface.Strips.First(strip => strip.Name == "b");
+        a.ReplaceWithInverseEdge();
+        b.ReplaceWithInverseEdge();
+        
         fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
         fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
         fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
         fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
 
-        var p = "d C b A B a D c";
-        var P = reverse(p); 
-        string reverse(string c) => new((from ch in c.Reverse() select char.IsUpper(ch) ? char.ToLower(ch) : char.ToUpper(ch)).ToArray());
-        string c1 = P + " d C a d";
-        string c2 = $"D {p} c {P} d (c a d)°({P}) {P} d C a D";
-        fibredSurfaceMenu.UpdateGraphMap($"d \u21a6 {P} d\n" +
-                                         $"b \u21a6 (a d)°({P}) b\n" +
-                                         $"c \u21a6 c ({c1})°({P})\n" +
-                                         $"a \u21a6 a ({c2})°({P})",
+        fibredSurfaceMenu.SelectFibredSurface(fibredSurface);
+        fibredSurfaceMenu.UpdateGraphMap($"ρ := d C b A B a D c\n" +
+                                         $"d \u21a6 Ρ d\n" +
+                                         $"b \u21a6 (a d)°(Ρ) b\n" +
+                                         $"c \u21a6 c (d C a d)°(Ρ)\n" +
+                                         $"a \u21a6 a (D ρ c Ρ d (c a d)°(Ρ) Ρ d C a D)°(Ρ)",
             mode: GraphMapUpdateMode.Replace);
 
-        var PointPush = new PushingPath(EdgePath.FromString("C d A b a d' c d d c' a D", fibredSurface.Strips));
-
+        var pointPush = new PushingPath(EdgePath.FromString("C b d' c d d c' a", fibredSurface.Strips), startLeft: true);
+        var r = new Random();
+        foreach (var variable in pointPush.variables)
+        {
+            variable.SetValue((float) r.NextDouble());
+        }
+        pointPush.CalculateSelfIntersections();
 
         // var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
 
-        Debug.Log(PointPush.ToString());
-        Debug.Log(fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { PointPush.Image(strip)}"));
+        Debug.Log(pointPush.ToString());
+
+        var pushingMapString = fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { pointPush.Image(strip)}");
+        Debug.Log(pushingMapString);
+        
+        
+        fibredSurfaceMenu.UpdateGraphMap(fibredSurface.Strips.ToDictionary(e => (Strip) e, e => pointPush.Image(e)),
+            mode: GraphMapUpdateMode.Replace, selectFibredSurface: true); 
         
         
         // fibredSurfaceMenu.StartAlgorithm();
@@ -127,12 +140,20 @@ public class MainMenu: MonoBehaviour
         
         foreach (var (surfaceName, drawingSurface) in surface.drawingSurfaces)
         {
+            foreach (var puncture in drawingSurface.punctures)
+            {
+                surfaceMenu.Display(puncture, surfaceName, preview: false, propagateToDrawingSurfaces: false); 
+                // Todo: feature: Add styles for displayed points. Here: style: cross
+            }
+            
             if (drawingSurface is not ModelSurface modelSurface) continue;
             foreach (ModelSurfaceSide side in modelSurface.sides)
             {
                 surfaceMenu.Display(side, surfaceName, preview: false, propagateToDrawingSurfaces: false);
+                // Todo: feature: Add styles for displayed curves. Here: style: dotted
                 // surfaceMenu.Display(side.other, surfaceName, preview: false);
             }
+
         }
     }
 

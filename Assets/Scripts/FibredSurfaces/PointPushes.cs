@@ -225,19 +225,30 @@ public class PushingPath : IPatchedDrawnsformable
     
     public readonly EdgePath edgePath;
 
-    public bool Concrete => cornerList.All(pt => pt.Concrete);
+    public bool Concrete => cornerSegments.All(pt => pt.Concrete);
 
-    private readonly List<CornerSegment> cornerList;
-    private readonly List<Variable> variables;
+    private readonly IReadOnlyList<CornerSegment> cornerSegments;
+    public readonly IReadOnlyList<Variable> variables;
+    public readonly bool startLeft;
 
-    private PushingPath(List<Entry> path, EdgePath edgePath, List<CornerSegment> cornerList, List<Variable> variables)
+    private PushingPath(List<Entry> path, EdgePath edgePath, IReadOnlyList<CornerSegment> cornerSegments, IReadOnlyList<Variable> variables,
+        bool startLeft)
     {
         this.pathWithoutSelfIntersections = this.path = path;
         this.edgePath = edgePath;
-        this.cornerList = cornerList;
+        this.cornerSegments = cornerSegments;
         this.variables = variables;
-        punctureWord = new NormalEdgePath( FibredSurface.BoundaryWord(edgePath.First()) );
-        // todo: Feature. A variable? I.e. an EdgePath that encapsulates another EdgePath but gets displayed as a single symbol
+        this.startLeft = startLeft;
+        EdgePath boundaryWord;
+        if (startLeft)
+        {
+            boundaryWord = FibredSurface.BoundaryWord(edgePath.First().Reversed());
+            boundaryWord = new NormalEdgePath(boundaryWord.CyclicShift(1));
+            // this is the boundary word s.t. its reverse, the one following all edges to the left, starts with the same edge as this pushing path.
+        }
+        else
+            boundaryWord = FibredSurface.BoundaryWord(edgePath.First());
+        punctureWord = new NamedEdgePath( boundaryWord, "ρ" );
     }
     
     /// <summary>
@@ -251,7 +262,7 @@ public class PushingPath : IPatchedDrawnsformable
                 v => v, 
                 v => FibredSurface.StarOrdered(v).ToList()
             ), startLeft)
-    {   }
+    {  }
 
     private PushingPath(EdgePath edgePath, IReadOnlyDictionary<Junction, List<Strip>> stars, bool startLeft = false) :
         this(
@@ -259,14 +270,15 @@ public class PushingPath : IPatchedDrawnsformable
                 edgePath,
                 stars,
                 startLeft,
-                out var cornerPoints,
+                out var cornerSegments,
                 out var variables
             ),
             edgePath,
-            cornerPoints, 
-            variables
+            cornerSegments, 
+            variables,
+            startLeft
         )
-    {  }
+    { }
         
     private static List<Entry> FindPathWithCrossingsButNoSelfIntersections(EdgePath edgePath, IReadOnlyDictionary<Junction, List<Strip>> stars,
         bool startLeft, out List<CornerSegment> cornerPoints, out List<Variable> variables)
@@ -448,15 +460,15 @@ public class PushingPath : IPatchedDrawnsformable
         return path;
     }
 
-    // private void CalculateSelfIntersections() { 
-    //
-    //     path = new List<Entry>(pathWithoutSelfIntersections);
-    //     
-    //     if (!Concrete)
-    //         Debug.LogWarning("Evaluating self-intersections of PushingPath with free variables!");
-    //     var selfIntersections =
-    //         new List<(SelfIntersectionSecondTime secondIntersectionTime, float sideDistance)>();
-    //
+    public void CalculateSelfIntersections() { 
+        
+        path = new List<Entry>(pathWithoutSelfIntersections);
+        
+        if (!Concrete)
+            Debug.LogWarning("Evaluating self-intersections of PushingPath with free variables!");
+        var selfIntersections =
+            new List<(SelfIntersectionSecondTime secondIntersectionTime, float sideDistance)>();
+        
     //     
     //     for (int i = 0; i < path.Count; i++)
     //     {
@@ -526,7 +538,7 @@ public class PushingPath : IPatchedDrawnsformable
     //         ); // this is empty because we choose our distance after the crossing so small
     //     path.AddRange(intersectionsAfterTheCrossing);
     //
-    // }
+    }
 
     private EdgePath ConjugationPath(int startTime)
     {
@@ -570,9 +582,9 @@ public class PushingPath : IPatchedDrawnsformable
         }
     }
 
-    public IPatchedDrawnsformable Copy() => new PushingPath(path, edgePath, cornerList, variables) { Name = Name, Color = Color } ; // todo: create new variables and new lists, this is not a deep copy!
+    public IPatchedDrawnsformable Copy() => new PushingPath(path, edgePath, cornerSegments, variables, startLeft) { Name = Name, Color = Color } ; // todo: create new variables and new lists, this is not a deep copy!
 
-    public IEnumerable<IDrawnsformable> Patches => from cornerSegment in cornerList select cornerSegment.ToDrawnsformable();
+    public IEnumerable<IDrawnsformable> Patches => from cornerSegment in cornerSegments select cornerSegment.ToDrawnsformable();
 
     public override string ToString() => path.ToCommaSeparatedString(" ");
 }
