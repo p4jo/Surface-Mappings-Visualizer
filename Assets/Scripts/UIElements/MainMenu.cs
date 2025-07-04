@@ -3,9 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
-using UnityEditor.UIElements;
 using UnityEngine;
-using UnityEngine.UI;
 using Random = System.Random;
 
 public class MainMenu: MonoBehaviour
@@ -18,23 +16,112 @@ public class MainMenu: MonoBehaviour
     [SerializeField] private CameraManager cameraManager;
     [SerializeField] public MenuMode mode = MenuMode.AddPoint;
     [SerializeField] private TMP_Dropdown curveDropdown;
-    
+    private FibredSurface fibredSurface;
     public event Action UIMoved;
     public virtual void OnUIMoved() => UIMoved?.Invoke();
     public string selectedCurve;
     [SerializeField] private FibredSurfaceMenu fibredSurfaceMenu;
 
-    private void Start()
+    public void InitializeExample(string exampleName, bool showDeckTransformations = false)
     {
-        // var testSurface = SurfaceGenerator.ModelSurface4GGon(2, 0, "Genus-2 surface", 
-        //         new string[] { "side d", "side c", "side a", "side b" } // labelling from 
-        //     );
-        // var surface = new AbstractSurface(testSurface);
-        var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
-        var (surface, fibredSurface) = SurfaceGenerator.CreateSurface(parameters);
-        if (surface.drawingSurfaces.Values.FirstOrDefault() is ModelSurface { geometryType: GeometryType.HyperbolicDisk or GeometryType.HyperbolicPlane } modelSurface)
+        switch (exampleName)
         {
-            foreach (var side in modelSurface.AllSideCurves) 
+            case "Embedded Torus":
+                Initialize("g=1,#", showDeckTransformations);
+                break;
+            case "Bestvina Handel example 6.1.":
+                Initialize("g=2,p=1,P=0", showDeckTransformations, true);
+                var c = fibredSurface.Strips.First(strip => strip.Name == "c");
+                var d = fibredSurface.Strips.First(strip => strip.Name == "d");
+                c.ReplaceWithInverseEdge();
+                c.Name = "d";
+                d.ReplaceWithInverseEdge();
+                d.Name = "c";
+                fibredSurfaceMenu.UpdateGraphMap(new Dictionary<string, string>
+                {
+                    ["a"] = "a B A b D C A",
+                    ["b"] = "a c d B a b c d B",
+                    ["c"] = "c c d B",
+                    ["d"] = "b c d B"
+                });
+                break;
+            case "Point Push example":
+                Initialize("g=2,p=1,P=0", showDeckTransformations, true);
+                
+                var a = fibredSurface.Strips.First(strip => strip.Name == "a");
+                var b = fibredSurface.Strips.First(strip => strip.Name == "b");
+                a.ReplaceWithInverseEdge();
+                b.ReplaceWithInverseEdge();
+        
+                fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
+                fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
+                fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
+                fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
+
+                fibredSurfaceMenu.SelectFibredSurface(fibredSurface);
+                fibredSurfaceMenu.UpdateGraphMap($"ρ := d C b A B a D c\n" +
+                                                 $"d \u21a6 Ρ d\n" +
+                                                 $"b \u21a6 (a d)°(Ρ) b\n" +
+                                                 $"c \u21a6 c (d C a d)°(Ρ)\n" +
+                                                 $"a \u21a6 a (D ρ c Ρ d (c a d)°(Ρ) Ρ d C a D)°(Ρ)",
+                    mode: GraphMapUpdateMode.Replace);
+                break;
+            case "General Point Push example (one way)":
+                // var pointPush = new PushingPath(EdgePath.FromString("C b d' c d d c' a", fibredSurface.Strips), startLeft: true);
+                // var r = new Random();
+                // foreach (var variable in pointPush.variables)
+                // {
+                //     variable.SetValue((float) r.NextDouble()/3);
+                // }
+                // pointPush.CalculateSelfIntersections();
+                // surfaceMenu.Display(pointPush, fibredSurface.surface.Name);
+                //
+                // Debug.Log(pointPush.ToString());
+                //
+                // var pushingMapString = fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { pointPush.Image(strip)}");
+                // Debug.Log(pushingMapString);
+                //
+                //
+                // fibredSurfaceMenu.UpdateGraphMap(fibredSurface.Strips.ToDictionary(e => (Strip) e, e => pointPush.Image(e)),
+                //     mode: GraphMapUpdateMode.Replace, selectFibredSurface: true); 
+                //
+                break;
+        }
+        
+    }
+    
+    public void Initialize(string surfaceParameters = null, bool showDeckTransformations = false, bool initializeFibredSurfaceMenu = false)
+    {
+        surfaceParameters ??= this.surfaceParameters;
+        var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
+
+        AbstractSurface abstractSurface;
+        (abstractSurface, fibredSurface) = SurfaceGenerator.CreateSurface(parameters);
+        
+        Initialize(abstractSurface, showDeckTransformations);
+
+        if (initializeFibredSurfaceMenu)
+            InitializeFibredSurfaceMenu(fibredSurface);
+    }
+    
+    private void InitializeFibredSurfaceMenu(FibredSurface fibredSurface)
+    {
+        if (fibredSurfaceMenu.FibredSurface is not null || fibredSurface is null) return;
+        
+        this.fibredSurface = fibredSurface;
+        fibredSurfaceMenu.gameObject.SetActive(true);
+        fibredSurfaceMenu.Initialize(fibredSurface, surfaceMenus[0]);
+    }
+
+
+    private void Initialize(AbstractSurface surface, bool addDeckTransformations = true)
+    {
+        
+        if (addDeckTransformations && surface.drawingSurfaces.Values.FirstOrDefault(
+                surf => surf is ModelSurface 
+            ) is ModelSurface primaryModelSurface)
+        {
+            foreach (var side in primaryModelSurface.AllSideCurves) 
                 surface.AddHomeomorphism(
                     side.DeckTransformation(),
                     drawTargetInSameWindowAsSource: true
@@ -62,75 +149,8 @@ public class MainMenu: MonoBehaviour
             //     //         );
             // }
         }
-        Initialize(surface);
         
         
-        if (fibredSurfaceMenu.FibredSurface is not null) return;
-        
-        var surfaceMenu = surfaceMenus[0]; 
-        fibredSurfaceMenu.gameObject.SetActive(true);
-        fibredSurfaceMenu.Initialize(fibredSurface, surfaceMenu);
-
-        // [BH] example 6.1. :
-        // var c = fibredSurface.Strips.First(strip => strip.Name == "c");
-        // var d = fibredSurface.Strips.First(strip => strip.Name == "d");
-        // c.ReplaceWithInverseEdge();
-        // d.ReplaceWithInverseEdge();
-        // fibredSurfaceMenu.UpdateGraphMap(new Dictionary<string, string>
-        // {
-        //     ["a"] = "a B A b D C A",
-        //     ["b"] = "a c d B a b c d B",
-        //     ["c"] = "c c d B",
-        //     ["d"] = "b c d B"
-        // });
-        
-        if (fibredSurface.surface is not ModelSurface { Genus: 2 }) return;
-        
-        
-        var a = fibredSurface.Strips.First(strip => strip.Name == "a");
-        var b = fibredSurface.Strips.First(strip => strip.Name == "b");
-        a.ReplaceWithInverseEdge();
-        b.ReplaceWithInverseEdge();
-        
-        fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
-        fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
-        fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
-        fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
-
-        fibredSurfaceMenu.SelectFibredSurface(fibredSurface);
-        fibredSurfaceMenu.UpdateGraphMap($"ρ := d C b A B a D c\n" +
-                                         $"d \u21a6 Ρ d\n" +
-                                         $"b \u21a6 (a d)°(Ρ) b\n" +
-                                         $"c \u21a6 c (d C a d)°(Ρ)\n" +
-                                         $"a \u21a6 a (D ρ c Ρ d (c a d)°(Ρ) Ρ d C a D)°(Ρ)",
-            mode: GraphMapUpdateMode.Replace);
-
-        var pointPush = new PushingPath(EdgePath.FromString("C b d' c d d c' a", fibredSurface.Strips), startLeft: true);
-        var r = new Random();
-        foreach (var variable in pointPush.variables)
-        {
-            variable.SetValue((float) r.NextDouble());
-        }
-        pointPush.CalculateSelfIntersections();
-
-        // var edges = fibredSurface.OrientedEdges.ToDictionary(strip => strip.Name);
-
-        Debug.Log(pointPush.ToString());
-
-        var pushingMapString = fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { pointPush.Image(strip)}");
-        Debug.Log(pushingMapString);
-        
-        
-        fibredSurfaceMenu.UpdateGraphMap(fibredSurface.Strips.ToDictionary(e => (Strip) e, e => pointPush.Image(e)),
-            mode: GraphMapUpdateMode.Replace, selectFibredSurface: true); 
-        
-        
-        // fibredSurfaceMenu.StartAlgorithm();
-    }
-
-
-    public void Initialize(AbstractSurface surface)
-    {
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
         var surfaceMenu = gameObject.GetComponent<SurfaceMenu>();
         surfaceMenu.Initialize(surface, canvas, cameraManager, this); 

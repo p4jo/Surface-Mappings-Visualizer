@@ -1,18 +1,11 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using JetBrains.Annotations;
-using MathNet.Numerics.LinearAlgebra;
-using QuikGraph;
-using QuikGraph.Algorithms;
 using UnityEngine;
-using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
-using Object = UnityEngine.Object;
 
 public class PushingPath : IPatchedDrawnsformable
 {
+    #region Entry classes
     private abstract class Entry
     {
         public virtual EdgePath AssociatedPath(PushingPath pushingPath) => EdgePath.Empty;
@@ -92,7 +85,9 @@ public class PushingPath : IPatchedDrawnsformable
 
         public override string ToString() => $"{{{name}}}";
     }
+    #endregion
 
+    #region Variable and Corner classes
     public class Variable
     {
         public readonly string name;
@@ -133,14 +128,14 @@ public class PushingPath : IPatchedDrawnsformable
         [Flags]
         public enum SegmentType
         {
-            xDownwards = 1,
-            xUpwards = 2,
-            yDownwards = 4,
-            yUpwards = 8,
-            innerTurn = xDownwards | yDownwards,
-            outerTurn = xUpwards | yUpwards,
-            halfTurn = xUpwards | yDownwards,
-            halfTurnFromLeft = yUpwards | xDownwards
+            XDownwards = 1,
+            XUpwards = 2,
+            YDownwards = 4,
+            YUpwards = 8,
+            InnerTurn = XDownwards | YDownwards,
+            OuterTurn = XUpwards | YUpwards,
+            HalfTurn = XUpwards | YDownwards,
+            HalfTurnFromLeft = YUpwards | XDownwards
         }
 
         public readonly Strip xAxis;
@@ -159,10 +154,10 @@ public class PushingPath : IPatchedDrawnsformable
                 this.yAxis = xAxis;
                 this.x = y;
                 this.y = x;
-                this.type = (type.HasFlag(SegmentType.xDownwards) ? SegmentType.yDownwards : 0) |
-                        (type.HasFlag(SegmentType.xUpwards) ? SegmentType.yUpwards : 0) |
-                        (type.HasFlag(SegmentType.yDownwards) ? SegmentType.xDownwards : 0) |
-                        (type.HasFlag(SegmentType.yUpwards) ? SegmentType.xUpwards : 0);
+                this.type = (type.HasFlag(SegmentType.XDownwards) ? SegmentType.YDownwards : 0) |
+                        (type.HasFlag(SegmentType.XUpwards) ? SegmentType.YUpwards : 0) |
+                        (type.HasFlag(SegmentType.YDownwards) ? SegmentType.XDownwards : 0) |
+                        (type.HasFlag(SegmentType.YUpwards) ? SegmentType.XUpwards : 0);
             }
             else
             {
@@ -188,7 +183,7 @@ public class PushingPath : IPatchedDrawnsformable
             ).EndPosition;
         }
 
-        public IDrawnsformable ToDrawnsformable()
+        public IDrawnsformable ToDrawnsformable() // TODO: Feature, this seems to not be correct atm. Shift parallel to the other axis!
         {
             if (!Concrete)
                 Debug.LogWarning("Converted a PointNearVertex with free variables to Drawnsformable");
@@ -197,13 +192,13 @@ public class PushingPath : IPatchedDrawnsformable
 
             Curve xSegment = null;
             Curve ySegment = null;
-            if (type.HasFlag(SegmentType.xDownwards))
+            if (type.HasFlag(SegmentType.XDownwards))
                 xSegment = new ShiftedCurve(xAxis.Curve.Restrict(0, x.Value), y.Value);
-            if (type.HasFlag(SegmentType.xUpwards))
+            if (type.HasFlag(SegmentType.XUpwards))
                 xSegment = new ShiftedCurve(xAxis.Curve.Restrict(x.Value, xAxis.Curve.Length / 2), y.Value);
-            if (type.HasFlag(SegmentType.yDownwards))
+            if (type.HasFlag(SegmentType.YDownwards))
                 ySegment = new ShiftedCurve(yAxis.Curve.Restrict(0, y.Value), x.Value);
-            if (type.HasFlag(SegmentType.yUpwards))
+            if (type.HasFlag(SegmentType.YUpwards))
                 ySegment = new ShiftedCurve(yAxis.Curve.Restrict(y.Value, yAxis.Curve.Length / 2), x.Value);
             // todo: unordered curve? will be displayed as ordered
 
@@ -212,6 +207,12 @@ public class PushingPath : IPatchedDrawnsformable
             return (IDrawnsformable)(xSegment ?? ySegment) ?? ToPoint();
         }
     }
+    
+    #endregion
+
+    #region Properties and Constructors
+
+    
 
     private readonly List<Entry> pathWithoutSelfIntersections;
 
@@ -280,6 +281,9 @@ public class PushingPath : IPatchedDrawnsformable
         )
     { }
         
+    #endregion
+
+    #region Calculating the Crossings
     private static List<Entry> FindPathWithCrossingsButNoSelfIntersections(EdgePath edgePath, IReadOnlyDictionary<Junction, List<Strip>> stars,
         bool startLeft, out List<CornerSegment> cornerPoints, out List<Variable> variables)
     {
@@ -344,7 +348,7 @@ public class PushingPath : IPatchedDrawnsformable
                     otherAxisInArrivingQuadrant,
                     currentEdgeCrossingPosition,
                     currentDistanceToFollowedStrip, // todo think about variable: could be chosen independent from the distance that the strip has at the beginning, but this would mean that we introduce self-intersections in the middle of the edge when permuting edge followings // the incoming distance might be modified
-                    CornerSegment.SegmentType.halfTurn,
+                    CornerSegment.SegmentType.HalfTurn,
                     flip: followingLeft
                 );
 
@@ -386,7 +390,7 @@ public class PushingPath : IPatchedDrawnsformable
                         currentEdgeCrossingPosition,
                         currentDistanceToFollowedStrip, // again, the incoming distance might be modified
                         CornerSegment.SegmentType
-                            .xUpwards, // outerTurn not really because we add the outgoing thing extra at the end
+                            .XUpwards, // outerTurn not really because we add the outgoing thing extra at the end
                         flip: followingLeft
                     );
                     cornerPoints.Add(outerTurn);
@@ -401,7 +405,7 @@ public class PushingPath : IPatchedDrawnsformable
                         otherAxisInArrivingQuadrant,
                         0,
                         currentDistanceToFollowedStrip, 
-                        CornerSegment.SegmentType.xUpwards,
+                        CornerSegment.SegmentType.XUpwards,
                         flip: followingLeft
                     );
 
@@ -437,7 +441,7 @@ public class PushingPath : IPatchedDrawnsformable
                     nextEdgeToCross,
                     currentEdgeCrossingPosition,
                     nextEdgeCrossingPosition,
-                    CornerSegment.SegmentType.innerTurn,
+                    CornerSegment.SegmentType.InnerTurn,
                     turnAroundClockwise
                 );
 
@@ -453,12 +457,17 @@ public class PushingPath : IPatchedDrawnsformable
                 nextStrip,
                 currentEdgeCrossingPosition,
                 nextStartY,
-                CornerSegment.SegmentType.yUpwards, turnAroundClockwise);
+                CornerSegment.SegmentType.YUpwards, turnAroundClockwise);
             cornerPoints.Add(outgoingSegment);
         }
 
         return path;
     }
+    
+    #endregion
+
+    #region Calculating Self-Intersections
+
 
     public void CalculateSelfIntersections() { 
         
@@ -539,7 +548,12 @@ public class PushingPath : IPatchedDrawnsformable
     //     path.AddRange(intersectionsAfterTheCrossing);
     //
     }
+    #endregion
+    
+    #region Calculating the Map
 
+    
+    
     private EdgePath ConjugationPath(int startTime)
     {
         return EdgePath.Concatenate(path.Skip(startTime).Select(p => p.AssociatedPath(this)));
@@ -570,6 +584,11 @@ public class PushingPath : IPatchedDrawnsformable
                     );
     }
 
+
+    #endregion
+
+    #region Fulfilling the Interfaces
+
     public string Name { get; set; }
 
     public Color Color // Copied from "virtual" implementation in PatchedDrawnsformable
@@ -587,4 +606,7 @@ public class PushingPath : IPatchedDrawnsformable
     public IEnumerable<IDrawnsformable> Patches => from cornerSegment in cornerSegments select cornerSegment.ToDrawnsformable();
 
     public override string ToString() => path.ToCommaSeparatedString(" ");
+    
+
+    #endregion
 }

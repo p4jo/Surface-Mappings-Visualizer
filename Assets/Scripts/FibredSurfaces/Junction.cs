@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using QuikGraph;
 using UnityEngine;
-using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
 {

@@ -66,7 +66,7 @@ public abstract class Strip: IEdge<Junction>, IDrawable
         // Yep, we cannot call Curve.ColorfulName because, why? It implements IDrawnsformable, thus IDrawable, but interface members can only be called if the variable type is that interface.
     }
 
-    public static int SharedInitialSegment(IList<Strip> strips)
+    public static int SharedInitialSegment(IReadOnlyList<Strip> strips)
     {
         IEnumerable<Strip> initialSegment = strips[0].EdgePath;
         foreach (var strip in strips.Skip(1)) 

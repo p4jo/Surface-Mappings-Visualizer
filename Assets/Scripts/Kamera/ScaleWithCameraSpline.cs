@@ -1,6 +1,5 @@
 using Dreamteck.Splines;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 public class ScaleWithCameraSpline : MonoBehaviour
 {

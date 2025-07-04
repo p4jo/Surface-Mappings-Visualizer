@@ -2,8 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 using JetBrains.Annotations;
 
 public abstract class EdgePath : IReadOnlyList<Strip>
@@ -133,7 +131,10 @@ public abstract class EdgePath : IReadOnlyList<Strip>
                     PromoteLastVariableToLastThing();
                     PushLastNormalEdgePath(); // the edge path before the last variable
                     var nextThing = ReadNextThing();
-                    lastThing = nextThing.Conjugate(lastThing, c == '°');
+                    if (c == '^')
+                        lastThing = lastThing.Conjugate(nextThing, left: false);
+                    else
+                        lastThing = nextThing.Conjugate(lastThing, left: true);
                     break;
                 case '(':
                     PushLastThing();
@@ -159,7 +160,9 @@ public abstract class EdgePath : IReadOnlyList<Strip>
         
         return result.Count == 1 ? result[0] : new NestedEdgePath(result);
 
-        void CloseLastVariable()
+        void CloseLastVariable() => CloseLastVariableRef(ref lastStrip, ref lastThing);
+        
+        void CloseLastVariableRef(ref Strip lastStrip, ref EdgePath lastThing)
         {
             if (currentlyReadName == "")
                 return;
@@ -177,8 +180,12 @@ public abstract class EdgePath : IReadOnlyList<Strip>
         void PushLastVariable()
         {
             if (lastStrip != null)
+            {
                 currentlyReadNormalEdgePath.Add(lastStrip);
-            lastStrip = null;
+                lastStrip = null;
+            }
+            else if (lastThing is NamedEdgePath)
+                PushLastThing();
         }
 
         void PushLastNormalEdgePath()
@@ -234,31 +241,24 @@ public abstract class EdgePath : IReadOnlyList<Strip>
                     case '·':
                     case ' ':
                         if (CloseAndReturnLastVariable(out var readStrip))
-                            return new NormalEdgePath(readStrip);
+                            return readStrip;
                         break;
                     case '\'':
-                        if (CloseAndReturnLastVariable(out readStrip))
-                        {
-                            var stripReversed = readStrip?.Reversed();
-                            return new NormalEdgePath(stripReversed);
-                        }
-                        throw new ArgumentException($"Misplaced ' in your input at location {i}");
+                        if (!CloseAndReturnLastVariable(out readStrip))
+                            throw new ArgumentException($"Misplaced ' in your input at location {i}");
+                        var stripReversed = readStrip.Inverse();
+                        return stripReversed;
                     case '°':
                     case '^':
-                        if (CloseAndReturnLastVariable(out readStrip))
-                        {
-                            i--; // read the ° or ^ again. (left-grouping)
-                            return new NormalEdgePath(readStrip);
-                        }
-                        throw new ArgumentException(
-                            $"There are consecutive ° and ^ symbols in your input at location {i}");
+                        if (!CloseAndReturnLastVariable(out readStrip))
+                            throw new ArgumentException($"There are consecutive ° and ^ symbols in your input at location {i}");
+                        i--; // read the ° or ^ again. (left-grouping)
+                        return readStrip;
                     case '(':
-                        if (CloseAndReturnLastVariable(out readStrip))
-                        {
-                            i--; // read the ( again.
-                            return new NormalEdgePath(readStrip);
-                        }
-                        return ReadParentheses();
+                        if (!CloseAndReturnLastVariable(out readStrip)) 
+                            return ReadParentheses();
+                        i--; // read the ( again.
+                        return readStrip;
                     case ')':
                         throw new ArgumentException(
                             $"There is an unexpected closing parenthesis in your input at location {i} after a ° or ^");
@@ -269,16 +269,22 @@ public abstract class EdgePath : IReadOnlyList<Strip>
             }
 
             if (CloseAndReturnLastVariable(out var strip))
-                return new NormalEdgePath(strip);
+                return strip;
             throw new ArgumentException("Your input ended unexpectedly.");
 
-            bool CloseAndReturnLastVariable(out Strip edgePath)
+            bool CloseAndReturnLastVariable(out EdgePath edgePath)
             {
-                CloseLastVariable();
-                if (lastStrip != null)
+                Strip potentialLastStrip = null;
+                EdgePath potentialLastThing = null;
+                CloseLastVariableRef(ref potentialLastStrip, ref potentialLastThing);
+                if (potentialLastStrip != null)
                 {
-                    edgePath = lastStrip;
-                    lastStrip = null;
+                    edgePath = new NormalEdgePath(potentialLastStrip);
+                    return true;
+                }
+                if (potentialLastThing is NamedEdgePath namedEdgePath)
+                {
+                    edgePath = namedEdgePath;
                     return true;
                 }
                 edgePath = null;
@@ -289,14 +295,8 @@ public abstract class EdgePath : IReadOnlyList<Strip>
 
     public override string ToString() => ToString(150, 10);
 
-    public string ToString(int maxLength, int tail)
-    {
-        var result = ToColoredString(maxLength, tail, strip => strip.Name);
-        if (result.StartsWith('(') && result.EndsWith(')'))
-            result = result[1..^1]; 
-        return result;
-        // do not call strip.ToString() here (facepalm), this is self-referential
-    }
+    public virtual string ToString(int maxLength, int tail) => ToColoredString(maxLength, tail, strip => strip.Name); // don't remove parentheses
+
 
     public string ToColorfulString(int maxLength, int tail)
     {
@@ -391,7 +391,7 @@ public class NamedEdgePath : EdgePath
     protected internal override int ExpectedStringLength() => name.Length;
 }
 
-public class ConjugateEdgePath : NestedEdgePath
+public class ConjugateEdgePath : NestedEdgePath // todo: Clean code: remove this inheritance.
 {
     private readonly EdgePath inner;
     private readonly EdgePath outer;
@@ -437,6 +437,8 @@ public class ConjugateEdgePath : NestedEdgePath
 
     public override int Count => inner.Count + outer.Count * 2;
 
+    public override string ToString(int maxLength, int tail) => base.ToString(maxLength, tail);
+
     protected internal override string ToColoredString(int maxLength, int tail, Func<Strip, string> colorfulName)
     {
         int innerExpectedLength = inner.ExpectedStringLength();
@@ -446,7 +448,11 @@ public class ConjugateEdgePath : NestedEdgePath
         if (smallerLength < average)
             average += average - smallerLength;
         var innerString = inner.ToColoredString(average, average / 4, colorfulName);
+        while (innerString.StartsWith('(') && innerString.EndsWith(')'))
+            innerString = innerString[1..^1]; // remove parentheses
         var outerString = outer.ToColoredString(average, average / 4, colorfulName);
+        while (outerString.StartsWith('(') && outerString.EndsWith(')'))
+            outerString = outerString[1..^1]; // remove parentheses
         var innerWithParentheses = innerExpectedLength > 2 ? $"({innerString})" : innerString;
         var outerWithParentheses = outerExpectedLength > 2 ? $"({outerString})" : outerString;
         return leftConjugation
