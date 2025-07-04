@@ -7,7 +7,6 @@ using QuikGraph;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 using MenuEdge = QuikGraph.TaggedEdge<FibredSurfaceMenu.MenuVertex, string>;
 
 
@@ -58,7 +57,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     }
 
     private void UpdateSelectedSurface(MenuVertex newVertex)
-    {
+    {        
         ClearUI();
         this.currentVertex = newVertex;
         UpdateUI();
@@ -74,7 +73,7 @@ public class FibredSurfaceMenu : MonoBehaviour
             Destroy(child.gameObject);
         foreach (Transform child in optionList.transform.Cast<Transform>().ToList())
             Destroy(child.gameObject);
-        surfaceMenu.Display(FibredSurface, remove: true);
+        surfaceMenu.Display(FibredSurface, FibredSurface.surface.Name, remove: true);
     }
 
     private IEnumerator suggestionCoroutine;
@@ -103,11 +102,14 @@ public class FibredSurfaceMenu : MonoBehaviour
         LayoutRebuilder.ForceRebuildLayoutImmediate(GetComponent<RectTransform>());
     }
 
+    /// <summary>
+    /// This is part of UpdateUI
+    /// </summary>
     IEnumerator LoadSuggestionLate()
     {
         descriptionText.text = "Displaying new fibred surface...";
         yield return new WaitForEndOfFrame();
-        surfaceMenu.Display(FibredSurface);
+        surfaceMenu.Display(FibredSurface, FibredSurface.surface.Name);
         yield return new WaitForEndOfFrame();
         
         var suggestion = currentVertex.suggestion;
@@ -120,11 +122,11 @@ public class FibredSurfaceMenu : MonoBehaviour
         descriptionText.text = "Displaying next steps...";
         yield return new WaitForEndOfFrame();
         
-        descriptionText.text = suggestion.description;
+        descriptionText.text = suggestion.description ?? "";
             
         var optionToggles = new Dictionary<Toggle, (object, string)>();
         bool first = true;
-        foreach (var option in suggestion.options)
+        foreach (var option in suggestion.options ?? Array.Empty<(object, string)>())
         {
             var toggleGameObject = Instantiate(optionTogglePrefab, optionList.transform);
             toggleGameObject.GetComponentInChildren<TextMeshProUGUI>().text = option.Item2;
@@ -140,7 +142,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         // if (first) // suggestion.IsFinished, but without multiple enumeration
         //     yield break;
 
-        foreach (var buttonText in suggestion.buttons)
+        foreach (var buttonText in suggestion.buttons ?? Array.Empty<string>())
         {
             var button = Instantiate(suggestionButtonPrefab, suggestionButtonList.transform);
             button.GetComponentInChildren<TextMeshProUGUI>().text = buttonText.AddDotsMiddle(250, 30);
@@ -160,17 +162,31 @@ public class FibredSurfaceMenu : MonoBehaviour
     // called from UI 
     private void DoSuggestion(object buttonText, IReadOnlyCollection<(object, string)> selection)
     {
-        var newFibredSurface = FibredSurface.Copy();
-        var tag = buttonText + "\n" + selection.Select(e => e.Item2.AddDots(50)).Take(4).ToCommaSeparatedString() + (selection.Count > 4 ? "..." : "");
-        
-        newFibredSurface.ApplySuggestion(selection, buttonText); // often takes several seconds. Blocks the UI.
-        
-        MenuVertex newVertex = new(newFibredSurface, null);
-        fibredSurfaces.AddVerticesAndEdge(new MenuEdge( 
-            currentVertex, newVertex, tag
-        ));
-        
-        UpdateSelectedSurface(newVertex);
+        if (FibredSurface.Copyable)
+        {
+            var newFibredSurface = FibredSurface.Copy();
+
+            newFibredSurface.ApplySuggestion(selection, buttonText); // often takes several seconds. Blocks the UI.
+
+            var newVertex = new MenuVertex(newFibredSurface, null);
+            fibredSurfaces.AddVerticesAndEdge(new MenuEdge(
+                source: currentVertex, 
+                target: newVertex, 
+                tag: buttonText + "\n" + selection.Select(
+                         e => e.Item2.AddDots(50)).Take(4).ToCommaSeparatedString() +
+                     (selection.Count > 4 ? "..." : "")
+                )
+            );
+            UpdateSelectedSurface(newVertex);
+        }
+        else
+        {
+            ClearUI(); // also undraws the surface
+            FibredSurface.ApplySuggestion(selection, buttonText);
+            currentVertex.suggestion = null; // reset the suggestion, so that it is recomputed
+            UpdateUI();
+        }
+
     }
 
     public bool DoNextSuggestion()
@@ -254,6 +270,8 @@ public class FibredSurfaceMenu : MonoBehaviour
                 match = Regex.Match(trim, @"(.+)↦(.*)");
             if (!match.Success)
                 match = Regex.Match(trim, @"(.+):=(.*)");
+            if (!match.Success)
+                match = Regex.Match(trim, @"(.+)=(.*)");
             if (!match.Success)
                 throw new ArgumentException("The input should be in the form \"g(a) = a B A, g(b) = ...\" or \" a -> a B A, b -> ...\", plus potentially definitions like \"x := a B A\".");
 

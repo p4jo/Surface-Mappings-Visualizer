@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,7 +9,6 @@ using QuikGraph.Algorithms;
 using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 using Object = UnityEngine.Object;
-using Random = UnityEngine.Random;
 
 /// <summary>
 /// This implements the Bestvina-Handel algorithm.
@@ -123,6 +121,8 @@ public class FibredSurface : IPatchedDrawnsformable
         set => Debug.LogError("The graph color should not be set.");
     }
 
+    public bool Copyable => currentAlgorithmicRun is null;
+    
     IPatchedDrawnsformable IDrawnsformable<IPatchedDrawnsformable>.Copy() => Copy();
 
     public FibredSurface Copy()
@@ -215,135 +215,151 @@ public class FibredSurface : IPatchedDrawnsformable
 
     public class AlgorithmSuggestion
     {
-        // TODO: Feature. Add a way to highlight the edges that are selected in the options or even add an animation
-        public IEnumerable<(object, string)> options;
-        public string description;
-        public IEnumerable<string> buttons;
-        public bool allowMultipleSelection = false;
         
-        public static AlgorithmSuggestion Finished = new AlgorithmSuggestion() { description = "Finished." };
+        public AlgorithmSuggestion(){}
 
-        public bool IsFinished => !options.Any();
-    }
-
-    public AlgorithmSuggestion NextSuggestion()
-    {
-        // todo? add a set of ITransformables to highlight with each option?
-        // Iterate through the steps and give the possible steps to the user
-        var a = GetInvariantSubforests();
-        if (a.Any())
-            return new AlgorithmSuggestion()
-            {
-                options = from subforest in a
-                    select (subforest.Edges.Select(e => e.Name) as object,
-                        string.Join(", ", subforest.Edges.Select(v => v.Name))
-                    ),
-                description = "Collapse an invariant subforest.",
-                buttons = new[] { "Collapse" }
-            };
-        var b = GetLoosePositions();
-        if (b.Any())
+        public AlgorithmSuggestion(string description)
         {
-            return new AlgorithmSuggestion()
-            {
-                options = from loosePosition in b
-                    select (loosePosition.Item1.Name as object,
-                        $"In edge {loosePosition.Item1.Name} there are the {loosePosition.Item2.Length} backtracks " +
-                        loosePosition.Item2.Select(edgePoint => edgePoint.ToShortString(3,2)).ToCommaSeparatedString().AddDotsMiddle(200, 30) +
-                        " and " + (loosePosition.Item3.Length > 0 ? "the" : "no") +
-                        (loosePosition.Item3.Length > 1 ? loosePosition.Item3.Length + " extremal vertices " : " extremal vertex ") +  
-                        loosePosition.Item3.ToCommaSeparatedString().AddDotsMiddle(200, 30)
-                    ),
-                description = "Pull tight at one or more edges.",
-                buttons = new[] { "Tighten All", "Tighten Selected" },
-                allowMultipleSelection = true
-            };
+            this.description = description;
+            this.buttons = new[] { "Continue" };
+            this.options = Array.Empty<(object, string)>();
         }
         
-        var c = GetValenceOneJunctions(); 
+        // TODO: Feature. Add a way to highlight the edges that are selected in the options or even add an animation
+        public readonly IReadOnlyCollection<(object, string)> options;
+        public readonly string description;
+        public readonly IReadOnlyCollection<string> buttons;
+        public readonly bool allowMultipleSelection;
+
+        public AlgorithmSuggestion(IEnumerable<(object, string)> options, string description, IEnumerable<string> buttons, bool allowMultipleSelection = false)
+        {
+            this.options = options as IReadOnlyCollection<(object, string)> ?? options.ToArray();
+            this.description = description;
+            this.buttons = buttons as IReadOnlyCollection<string> ?? buttons.ToArray();
+            this.allowMultipleSelection = allowMultipleSelection;
+        }
+    }
+
+    IEnumerator<AlgorithmSuggestion> currentAlgorithmicRun;
+    IEnumerable<(object, string)> selectedOptionsDuringAlgorithmicRun; // this is to communicate with the currentAlgorithmicRun.
+    public AlgorithmSuggestion NextSuggestion()
+    {
+        if (currentAlgorithmicRun != null)
+            return currentAlgorithmicRun.Current;
+        // todo? add a set of ITransformables to highlight with each option?
+        // todo? OnHover?
+        var a = GetInvariantSubforests().ToArray();
+        if (a.Length > 0)
+            return new AlgorithmSuggestion(
+                options: from subforest in a
+                    select (subforest.Edges.Select(e => e.Name) as object,
+                        string.Join(", ", subforest.Edges.Select(v => v.Name))
+                    ), 
+                description: "Collapse an invariant subforest.", 
+                buttons: new[] { "Collapse" }
+            );
+        var b = GetLoosePositions().ToArray();
+        if (b.Length > 0)
+        {
+            return new AlgorithmSuggestion(
+                options: 
+                    from loosePosition in b
+                    select (loosePosition.Item1.Name as object,
+                        $"In edge {loosePosition.Item1.Name} there are the {loosePosition.Item2.Length} backtracks " +
+                        loosePosition.Item2.Select(edgePoint => edgePoint.ToShortString(3, 2)).ToCommaSeparatedString()
+                            .AddDotsMiddle(200, 30) +
+                        " and " + (loosePosition.Item3.Length > 0 ? "the" : "no") +
+                        (loosePosition.Item3.Length > 1
+                            ? loosePosition.Item3.Length + " extremal vertices "
+                            : " extremal vertex ") +
+                        loosePosition.Item3.ToCommaSeparatedString().AddDotsMiddle(200, 30)
+                    ), 
+                description: "Pull tight at one or more edges.",
+                buttons: new[] { "Tighten All", "Tighten Selected" }, allowMultipleSelection: true);
+        }
+        
+        var c = GetValenceOneJunctions().ToArray(); 
         // shouldn't happen at this point (tight & no invariant subforests => no valence-one junctions)
-        if (c.Any())
-            return new AlgorithmSuggestion()
-            {
-                options = from v in c select (v.Name as object, v.ToString()),
-                description = "Remove a valence-one junction. WHAT THE HECK?",
-                buttons = new[] { "Valence-1 Removal" },
-                allowMultipleSelection = true
-            };
+        if (c.Length > 0)
+            return new AlgorithmSuggestion(
+                options: from v in c select (v.Name as object, v.ToString()),
+                description: "Remove a valence-one junction. WHAT THE HECK?", buttons: new[] { "Valence-1 Removal" },
+                allowMultipleSelection: true
+            );
+        
         if (AbsorbIntoPeriphery(true))
-            return new AlgorithmSuggestion()
-            {
-                options = new (object, string)[] { (null,
-                        GetMaximalPeripheralSubgraph().Edges.Select(e => 
-                        peripheralSubgraph.ContainsEdge(e) 
-                            ? e.Name 
-                            : $"<b>{e.Name}</b>"
-                    ).ToCommaSeparatedString()
-                ) }, // todo? Display Q?
-                description = "Absorb into periphery.",
-                buttons = new[] { "Absorb" }
-            };
+            return new AlgorithmSuggestion(
+                options: new (object, string)[] {
+                    (null,
+                        GetMaximalPeripheralSubgraph().Edges.Select(e =>
+                            peripheralSubgraph.ContainsEdge(e)
+                                ? e.Name
+                                : $"<b>{e.Name}</b>"
+                        ).ToCommaSeparatedString()
+                    )
+                }, // todo? Display Q?
+                description: "Absorb into periphery.", 
+                buttons: new[] { "Absorb" }
+            );
         if (!ignoreBeingReducible)
         {
             var cd = PreservedSubgraph_Reducibility();
             if (cd != null)
-                return new AlgorithmSuggestion()
-                {
-                    options = new (object, string)[] { },
-                    description = "The map is reducible because there is an invariant essential subgraph, with edges "
-                                  + cd.Select(e =>
-                                          peripheralSubgraph.ContainsEdge(e)
-                                              ? ((IDrawable)e).ColorfulName
-                                              : $"<b>{((IDrawable)e).ColorfulName}</b>")
-                                      .ToCommaSeparatedString()
-                                  + ".\nYou can continue with the algorithm, but it will not necessarily terminate.",
+                return new AlgorithmSuggestion(
+                    options: new (object, string)[] { },
+                    description: "The map is reducible because there is an invariant essential subgraph, with edges "
+                         + cd.Select(e =>
+                                 peripheralSubgraph.ContainsEdge(e)
+                                     ? ((IDrawable)e).ColorfulName
+                                     : $"<b>{((IDrawable)e).ColorfulName}</b>")
+                             .ToCommaSeparatedString()
+                         + ".\nYou can continue with the algorithm, but it will not necessarily terminate.", 
                     // todo? Find a "reduction" in the sense of the definition - being a boundary word of the preserved subgraph?
-                    buttons = new[] { "Continue anyways" }
-                };
+                    buttons: new[] { "Continue anyways" }
+                );
         }
 
-        var d = GetValenceTwoJunctions();
-        if (d.Any())
-            return new AlgorithmSuggestion()
-            {
-                options = from v in d select (v.Name as object, v.ToString()),
-                description = "Remove a valence-two junction.",
-                buttons = new[] { "Remove Selected", "Remove All" },
-                allowMultipleSelection = true
-            };
-        var e = GetPeripheralInefficiencies();
-        if (e.Any())
-            return new AlgorithmSuggestion()
-            {
-                // l is a list of edges with the same Dg and this Dg(l) is in the periphery.
-                options = from l in e select (l.Select(edge => edge.Name) as object,
-                    l.Select(edge => edge.Name).ToCommaSeparatedString() + $" are all mapped to {l.First()!.Dg!.Name} ∈ P."
-                ),
-                description = "Fold initial segments of edges that map to edges in the pre-periphery.",
-                buttons = new[] { "Fold Selected" }
-            };
-        var f = GetInefficiencies();
-        if (f.Any())
-            return new AlgorithmSuggestion()
-            {
-                options = from inefficiency in f.OrderBy(inefficiency => inefficiency.order + (inefficiency.FullFold ? 0 : 0.5f)) select (inefficiency.ToSerializationString() as object, inefficiency.ToString()),
-                description = "Remove an inefficiency.",
-                buttons = new[] { "Remove Inefficiency" }
-            };
+        var d = GetValenceTwoJunctions().ToArray();
+        if (d.Length > 0)
+            return new AlgorithmSuggestion(
+                options: from v in d select (v.Name as object, v.ToString()),
+                description: "Remove a valence-two junction.", 
+                buttons: new[] { "Remove Selected", "Remove All" },
+                allowMultipleSelection: true
+            );
+        var e = GetPeripheralInefficiencies().ToArray();
+        if (e.Length > 0)
+            return new AlgorithmSuggestion(
+                options: from l in e
+                    // l is a list of edges with the same Dg and this Dg(l) is in the periphery.
+                    select (l.Select(edge => edge.Name) as object,
+                            l.Select(edge => edge.Name).ToCommaSeparatedString() +
+                            $" are all mapped to {l.First()!.Dg!.Name} ∈ P."
+                        ),
+                description: "Fold initial segments of edges that map to edges in the pre-periphery.",
+                buttons: new[] { "Fold Selected" }
+            );
+        var f = GetInefficiencies().ToArray();
+        if (f.Length > 0)
+            return new AlgorithmSuggestion(
+                options: from inefficiency in f.OrderBy(inefficiency =>
+                    inefficiency.order + (inefficiency.FullFold ? 0 : 0.5f))
+                    select (inefficiency.ToSerializationString() as object, inefficiency.ToString()),
+                description: "Remove an inefficiency.",
+                buttons: new[] { "Remove at once", "Remove in steps", "Remove in fine steps" }
+            );
         if (!isTrainTrack && !ignoreBeingReducible)
-            return new AlgorithmSuggestion()
-            {
-                options = new (object, string)[] { },
-                description = "The algorithm is finished. The graph map is a train track map and we can thus turn the fibred surface into a train track.",
-                buttons = new[] { "Turn into Train Track" }
-            };
+            return new AlgorithmSuggestion(
+                options: new (object, string)[] { },
+                description: "The algorithm is finished. The graph map is a train track map and we can thus turn the fibred surface into a train track.",
+                buttons: new[] { "Turn into Train Track" }
+            );
                     
-        return new AlgorithmSuggestion()
-        {
-            options = new (object, string)[] { },
-            description = "The algorithm is finished.",
-            buttons = new string[] { }
-        };
+        return new AlgorithmSuggestion(
+            options: new (object, string)[] { },
+            description: "The algorithm is finished.",
+            buttons: new string[] { }
+        );
     }
 
     private bool ignoreBeingReducible;
@@ -410,20 +426,53 @@ public class FibredSurface : IPatchedDrawnsformable
 
                 break;
             case "Fold Selected": // peripheral inefficiencies
-                if (suggestion.FirstOrDefault().Item1 is IEnumerable<string> edges)
-                    RemovePeripheralInefficiency(edges.Select(name => OrientedEdges.FirstOrDefault(e => e.Name == name)).ToList());
-                else Debug.LogError($"Weird type of suggestion for Fold Selected: {suggestion.FirstOrDefault().Item1}");
-                break;
-            case "Remove Inefficiency":
-                if (suggestion.FirstOrDefault().Item1 is string inefficiencyText)
+                if (suggestion.FirstOrDefault().Item1 is not IEnumerable<string> edges)
                 {
-                    var a = inefficiencyText.Split('@');
-                    var edge = OrientedEdges.First(e => e.Name == a[0]);
-                    var index = int.Parse(a[1]);
-                    RemoveInefficiency(new Inefficiency(edge[index]));
+                    Debug.LogError($"Weird type of suggestion for Fold Selected: {suggestion.FirstOrDefault().Item1}");
+                    break;
                 }
-                else Debug.LogError($"Weird type of suggestion for Remove Inefficiency: {suggestion.FirstOrDefault().Item1}");
-                // todo: split into steps?
+                var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
+                var edgesToFold = edges.Select(name => edgeDict[name]).ToArray();
+                RemovePeripheralInefficiency(edgesToFold); // todo!
+                break;
+            Inefficiency ExtractInefficiencyFromSuggestion()
+            {
+                if (suggestion.FirstOrDefault().Item1 is not string inefficiencyText)
+                    throw new ArgumentException($"Weird type of suggestion for Remove Inefficiency: {suggestion.FirstOrDefault().Item1}");
+                var a = inefficiencyText.Split('@');
+                var edge = OrientedEdges.First(e => e.Name == a[0]);
+                var index = int.Parse(a[1]);
+                return new Inefficiency(edge[index]);
+            }
+            case "Remove at once": // inefficiency
+                var inefficiency = ExtractInefficiencyFromSuggestion();                
+                var algorithmicList = RemoveInefficiencyInSteps(inefficiency, fineSteps: false);
+                while (algorithmicList.MoveNext())
+                { }
+                break;
+            case "Remove in steps": // inefficiency
+                inefficiency = ExtractInefficiencyFromSuggestion();
+                currentAlgorithmicRun = RemoveInefficiencyInSteps(inefficiency, fineSteps: false);
+                if (!currentAlgorithmicRun.MoveNext()) 
+                    currentAlgorithmicRun = null; // if it had just one step (degree zero, so shouldn't happen)
+                break;
+            case "Remove in fine steps": // inefficiency
+                inefficiency = ExtractInefficiencyFromSuggestion();
+                currentAlgorithmicRun = RemoveInefficiencyInSteps(inefficiency, fineSteps: true);
+                if (!currentAlgorithmicRun.MoveNext()) 
+                    currentAlgorithmicRun = null; // if it had just one step (degree zero, so shouldn't happen)
+                break;
+            case "Move":
+            case "Continue": // continue the algorithmic steps started with "Remove in steps"
+                if (currentAlgorithmicRun == null)
+                    throw new ArgumentException("There is no current algorithmic list to continue.");
+
+                selectedOptionsDuringAlgorithmicRun = suggestion;
+                
+                // the MoveNext() runs the RemoveInefficiencyInSteps method until the next suggestion is returned or until the end.
+                if (!currentAlgorithmicRun.MoveNext()) 
+                    currentAlgorithmicRun = null; // done
+                selectedOptionsDuringAlgorithmicRun = null;
                 break;
             case "Continue anyways":
                 ignoreBeingReducible = true;
@@ -881,6 +930,8 @@ public class FibredSurface : IPatchedDrawnsformable
                     "The component is not a subforest. This should not happen as we only call this on invariant subforests.");
 
             PullTowardsCenter(newVertex, null, 1f);
+            // TODO: Feature. Also make this as a algorithm with substeps and let user choose the center vertex (and understand the movement).
+            // the choice is also sometimes not optimal
 
             // Moves the source of the strip along the strip (removing it) and returns the cyclic order. This is done recursively, edge for edge, so that the strips are parallel but not at the same place.
             IEnumerable<Strip> PullTowardsCenter(Junction junction, Strip stripToCenter, float orderIndexWidth)
@@ -1250,9 +1301,10 @@ public class FibredSurface : IPatchedDrawnsformable
             }
         }
 
-        public void MoveVerticesForFolding(FibredSurface fibredSurface, bool removeEdges = false)
+        public void MoveVerticesForFolding(bool removeEdges = false)
         {
-            // shorten the prefereed curve if necessary
+            var fibredSurface = edges.First().fibredSurface;
+            // shorten the preferred curve if necessary
             var preferredCurve = preferredEdge.Curve;
             var (t0l, t1l) = preferredCurve.VisualJumpTimes.Prepend(0f).Skip(l);
             var timeFEnd = (t1l + t0l) / 2; 
@@ -1263,11 +1315,6 @@ public class FibredSurface : IPatchedDrawnsformable
                 fibredSurface.MoveJunction(preferredEdge.Reversed(), preferredCurve.Length - timeFEnd);
             preferredCurve = preferredEdge.Curve; // = preferredCurve.Restrict(0, timeFEnd);
             
-            if (removeEdges)
-                foreach (var edge in edges)
-                    if (!Equals(edge, preferredEdge))
-                        fibredSurface.graph.RemoveEdge(edge.UnderlyingEdge);
-
             var stringWidths = (
                 from edge in edges 
                 select baseShiftStrength * MathF.Sqrt(Star(edge.Target).Count()) * Mathf.Clamp(edge.Curve.Length, 0.01f, 1f)
@@ -1298,7 +1345,7 @@ public class FibredSurface : IPatchedDrawnsformable
                     timeX = (t0x + 2 * t1x) / 3; // a bit closer to the last side crossing along the original edge that is shared with the preferred edge 
                     // todo: fixed distance to last crossing (or the source vertex if there is no crossing)? Shorter for the preferred edge in that case for better visuals?
 
-                    fibredSurface.MoveJunction(vertex, backwardsCurve, timeX, removeEdges ? null : edge.Reversed());
+                    fibredSurface.MoveJunction(vertex, backwardsCurve, timeX, edge.Reversed(), ignoreGivenEdge: true);
                     // moves along backwardsCurve and shortens the edge itself (unless we removed it)
                 }
 
@@ -1340,24 +1387,25 @@ public class FibredSurface : IPatchedDrawnsformable
 
                 
                 if (forwardMovementCurve.Length > 1e-3) 
-                    fibredSurface.MoveJunction(vertex, forwardMovementCurve, forwardMovementCurve.Length);
+                    fibredSurface.MoveJunction(vertex, forwardMovementCurve, forwardMovementCurve.Length, edge.Reversed(), ignoreGivenEdge: true);
                 // this prolongs the edge (unless we removed it) 
                 
                 // todo: addedShiftStrength positive or negative depending on the direction of the edge and the cyclic order.
                 // More than one (better: add up the widths) if several vertices are moved along this edge, so that all of the edges are disjoint (hard)
                 
-                continue;
+                if (removeEdges)
+                    fibredSurface.graph.RemoveEdge(edge.UnderlyingEdge);
             }
         }
 
         public override string ToString() {
             var sb = new StringBuilder();
-            sb.AppendLine($"Movement plan: Shorten the \"preferred edge\" {preferredEdge.Name} to the first {l}/{preferredEdge.Curve.SideCrossingWord.Count()} side crossings: ");
-            sb.AppendLine($"  {string.Join(", ", c)}");
-            sb.AppendLine($"Badness: {Badness}");
+            sb.AppendLine($"Movement plan: Pull backwards along the \"preferred edge\" {preferredEdge.Name} to keep the first {l}/{preferredEdge.Curve.SideCrossingWord.Count()} side crossings: ");
+            // sb.AppendLine($"  {string.Join(", ", c)}");
             sb.AppendLine($"Vertex movements:");
             foreach (var (vertex, movement) in vertexMovements)
-                sb.AppendLine($"{vertex}: {(from sideCrossing in movement select sideCrossing.Item1 + (sideCrossing.Item2 ? "'" : "")).ToCommaSeparatedString()}");
+                sb.AppendLine($"Move vertex {vertex} across the sides {(from sideCrossing in movement select sideCrossing.Item1 + (sideCrossing.Item2 ? "'" : "")).ToCommaSeparatedString()}");
+            sb.AppendLine($"Badness: {Badness}");
             return sb.ToString(); 
         }
     }
@@ -1366,13 +1414,13 @@ public class FibredSurface : IPatchedDrawnsformable
 
     
     const float baseShiftStrength = 0.07f;
-    public void MoveJunction(Junction v, Curve curve, float length, Strip e = null) 
+    public void MoveJunction(Junction v, Curve curve, float length, Strip e = null, bool ignoreGivenEdge = false) 
     {
         v.Patches = new []{ curve[length] };
         
         var precompositionCurve = curve.Restrict(0, length).Reversed();
         var star = StarOrdered(v, e, removeFirstEdgeIfProvided: true).ToList();
-        if (e != null)
+        if (e != null && !ignoreGivenEdge)
         {
             var name = e.Name;
             e.Curve = e.Curve.Restrict(length);
@@ -1406,14 +1454,14 @@ public class FibredSurface : IPatchedDrawnsformable
     
     #region Folding initial segments
 
-    public Strip FoldEdges(IList<Strip> edges, IList<EdgePoint> updateEdgePoints = null)
+    public IEnumerable<AlgorithmSuggestion> FoldEdgesInSteps(IList<Strip> edges, IList<EdgePoint> updateEdgePoints = null)
     {
         updateEdgePoints ??= new List<EdgePoint>();
 
         if (edges.Count < 2)
         {
             Debug.Log($"Wanted to fold {edges.Count} edges. Nothing to do.");
-            return edges.FirstOrDefault();
+            yield break;
         }
 
         var edgePath = edges[0].EdgePath;
@@ -1429,78 +1477,65 @@ public class FibredSurface : IPatchedDrawnsformable
         edges = edgesOrdered;
 
         
-        var movements = new List<MovementForFolding>(
+        var movements = 
             from edge in edges
             from i in Enumerable.Range(0, edge.Curve.SideCrossingWord.Count() + 1).Reverse()
-            select new MovementForFolding(edges, edge, i)
-        );
+            select new MovementForFolding(edges, edge, i);
         
-        var (movement, badness) = movements.ArgMin(m =>
+        var movementsOrdered = movements.OrderBy(m =>
             m.Badness +
             MathF.Abs(edges.IndexOf(m.preferredEdge) - edges.Count / 2f) / edges.Count + // prefer the middle edges
             graph.AdjacentDegree(m.preferredEdge.Target) / (edges.Count + 1f) + // prefer the edges with fewer crossings
             (!char.IsLetter(m.preferredEdge.Name[^1]) ? 1f / edges.Count : 0) 
-        );
-
+        ).ToArray();
+        
+        yield return new AlgorithmSuggestion(
+            description: "Move vertices for folding:",
+            options: from m in movementsOrdered 
+                select (m as object, m.ToString()),
+                // for the other steps (see fold inefficiencies) we changed it so that this doesn't contain actual Strips (SerializationString),
+                // so that the FibredSurface can be copied, but this step is only ever applied on an uncopied Surface (because in the steps of currentAlgorithmSteps)
+            buttons: new[] { "Move" }
+        ); 
+        if (selectedOptionsDuringAlgorithmicRun?.FirstOrDefault().Item1 is not MovementForFolding selectedMovement) 
+            selectedMovement = movementsOrdered[0];
+        
+        if (selectedMovement.edges.First().fibredSurface != this)
+            throw new InvalidOperationException(
+                $"The selected movement {selectedMovement} is not defined on this FibredSurface. " +
+                $"It was defined on {selectedMovement.edges.First().fibredSurface}.");
+        
         var targetVerticesToFold =
             (from edge in edges select edge.Target).WithoutDuplicates().ToArray(); // has the correct order
-        var preferredOldEdge = movement.preferredEdge;
         
-        var cyclicOrderAtFoldedVertex = StarAtFoldedVertex().ToList();
+        selectedMovement.MoveVerticesForFolding();
         
-        movement.MoveVerticesForFolding(this, removeEdges: true);
+        yield return new AlgorithmSuggestion($"Fold the edges"); // todo: better string
 
-        string name = null;
-        if (!char.IsLetter(preferredOldEdge.Name[^1]))
-            name = NextEdgeName();
-        else name = preferredOldEdge.Name.ToLower();
-
-
-        // todo: if the (folding) edges pass through a side, we should isotope in the following way:
-        // Move all of the vertices in targetVerticesToFold that arent the source vertex edges[0].Source (all or all but one) along 
-        // (any of) the corresponding edge in reverse.
-        // Then all but the potential self-edge that we fold don't pass through boundary, so the connecting curve will more likely make sense.
-        // If there is a self-edge there, either also move the vertex along the self-edge in reverse
-        // (affecting the start of all of our folding edges and all other edges at that vertex)
-        // Or move all of our already moved vertices along the self-edge (which prolongs all edges at these vertices)
+        var remainingEdge = selectedMovement.preferredEdge;
+        remainingEdge.UnderlyingEdge.Name = char.IsLetter(remainingEdge.Name[^1]) ? remainingEdge.Name.ToLower() : NextEdgeName();
+        // OrderIndexStart might be set in the FoldVertices (if one of the targetVerticesToFold was the source of the edge)
         
-        // the ClampPoint prevents that ClampPoint is called again later, but with a too large tolerance
-        // var waypoints = from edge in edges select surface.ClampPoint( edge.Curve.EndPosition, 1e-6f ); 
-        // var connectingCurve = surface.GetPathFromWaypoints(waypoints, newVertexName);
-        // var patches = targetVerticesToFold.Append<IDrawnsformable>(connectingCurve);
-        
-        // var newVertexName = NextVertexName();
-        // var vertexColor = NextVertexColor();
-        var newVertex = preferredOldEdge.Target; // .Copy(name: newVertexName, color: vertexColor);
-        // graph.AddVertex(newVertex);
-
-        var newEdge = preferredOldEdge; //.Copy(name: name, target: newVertex, orderIndexEnd: 0);
-        newEdge.UnderlyingEdge.Name = name;
-        newEdge.OrderIndexEnd = 0;
-        // orderIndexStart might have been set in the loop above (if one of the targetVerticesToFold was the source of the edge)
-        
-        // graph.AddEdge(newEdge.UnderlyingEdge);
-
-
         foreach (var edge in edges)
         {
             for (var k = 0; k < updateEdgePoints.Count; k++)
             {
                 int j = updateEdgePoints[k].AlignedIndex(edge, out bool reverse);
                 if (j < 0) continue;
-                var res = new EdgePoint(newEdge, j);
+                var res = new EdgePoint(remainingEdge, j);
                 updateEdgePoints[k] = reverse ? res.Reversed() : res;
             }
-        }
-        ReplaceVertices(cyclicOrderAtFoldedVertex, newVertex);
-        ReplaceEdges(edges, newEdge);
-        
 
-        return newEdge;
+        }
+
+        ReplaceVertices(StarAtFoldedVertex().ToArray(), remainingEdge.Target, removeOldVertices: true);
+        ReplaceEdges(edges, remainingEdge, removeEdges: true);
+
+        yield break;
 
         IEnumerable<Strip> StarAtFoldedVertex()
         {
-            yield return preferredOldEdge.Reversed();
+            yield return remainingEdge.Reversed();
             
             foreach (var vertex in targetVerticesToFold)
             {
@@ -1516,7 +1551,7 @@ public class FibredSurface : IPatchedDrawnsformable
         }
     }
 
-    private void ReplaceEdges(ICollection<Strip> edges, Strip newEdge)
+    private void ReplaceEdges(ICollection<Strip> edges, Strip newEdge, bool removeEdges = false)
     {
         foreach (var strip in Strips) 
             strip.EdgePath = strip.EdgePath.Replace(edge => 
@@ -1524,17 +1559,22 @@ public class FibredSurface : IPatchedDrawnsformable
                 edges.Contains(edge.Reversed()) ? newEdge.Reversed() :
                 edge
             );
+        if (removeEdges)
+            foreach (var edge in edges)
+                if (!Equals(edge.UnderlyingEdge, newEdge.UnderlyingEdge) && graph.ContainsEdge(edge.UnderlyingEdge))
+                    graph.RemoveEdge(edge.UnderlyingEdge);
     }
 
-    void ReplaceVertices(ICollection<Junction> vertices, Junction newVertex)
+    void ReplaceVertices(ICollection<Junction> vertices, Junction newVertex, bool removeOldVertices = false)
     {
         foreach (var strip in OrientedEdges.ToList())
             if (vertices.Contains(strip.Source))
                 strip.Source = newVertex;
 
-        foreach (var vertex in vertices)
-            if (vertex != newVertex)
-                graph.RemoveVertex(vertex);
+        if (removeOldVertices)
+            foreach (var vertex in vertices)
+                if (vertex != newVertex)
+                    graph.RemoveVertex(vertex);
         
         foreach (var junction in graph.Vertices)
         {
@@ -1543,9 +1583,9 @@ public class FibredSurface : IPatchedDrawnsformable
         }
     }
     
-    void ReplaceVertices(IEnumerable<Strip> newOrderedStar, Junction newVertex)
+    void ReplaceVertices(IReadOnlyCollection<Strip> newOrderedStar, Junction newVertex, bool removeOldVertices = false)
     {
-        ReplaceVertices(newOrderedStar.Select(strip => strip.Source).ToHashSet(), newVertex);
+        ReplaceVertices(newOrderedStar.Select(strip => strip.Source).ToHashSet(), newVertex, removeOldVertices);
         int index = 0;
         foreach (var strip in newOrderedStar)
         {
@@ -1590,7 +1630,7 @@ public class FibredSurface : IPatchedDrawnsformable
                     secondSegmentName = NextEdgeName();
                 break;
             case '1':
-                firstSegmentName = originalName;
+                firstSegmentName = originalName + '-';
                 secondSegmentName = originalName + '+';
                 if (Strips.Any(edge => edge.Name == secondSegmentName))
                     secondSegmentName = NextEdgeName();
@@ -1671,14 +1711,11 @@ public class FibredSurface : IPatchedDrawnsformable
         return (firstSegment, secondSegment);
     }
 
-    public void FoldInitialSegment(IList<Strip> strips, int? i = null, IList<EdgePoint> updateEdgePoints = null)
+    public IEnumerable<AlgorithmSuggestion> FoldInitialSegmentInSteps(IReadOnlyList<Strip> strips, int? i = null, IList<EdgePoint> updateEdgePoints = null)
     {
         i ??= Strip.SharedInitialSegment(strips);
         if (i == 0)
-        {
             throw new("The edges do not have a common initial segment.");
-            return;
-        }
 
         updateEdgePoints ??= new List<EdgePoint>();
         var l = updateEdgePoints.Count;
@@ -1702,7 +1739,8 @@ public class FibredSurface : IPatchedDrawnsformable
         });
         float splitLength = maxDistanceAlongCurves * 0.5f;
         // todo: optimize this with respect to the movements
-        
+        yield return
+            new AlgorithmSuggestion($"To fold the initial segments of length {i} of the edges {strips.ToCommaSeparatedString(e => e.Name)}, first split them");
         for (var index = 0; index < strips.Count; index++)
         {
             var splitEdgePoint = updateEdgePoints[l + index];
@@ -1720,6 +1758,8 @@ public class FibredSurface : IPatchedDrawnsformable
             
             initialStripSegments.Add(firstSegment);
             terminalStripSegments[edge.Name.ToLower().TrimEnd('2')] = secondSegment;
+            // TODO: Bug. if the original is called e1 then this is a wrong renaming, both will be called e1!!
+            // We could give better names, for example actually parsing e{i} where i is a number.
         }
 
         // give the remaining segments the original names. 
@@ -1730,7 +1770,8 @@ public class FibredSurface : IPatchedDrawnsformable
         }
 
 
-        var newEdge = FoldEdges(initialStripSegments, updateEdgePoints);
+        foreach (var yieldedString in FoldEdgesInSteps(initialStripSegments, updateEdgePoints))
+            yield return yieldedString; 
         // newEdge.Color = NextEdgeColor();
     }
 
@@ -1809,15 +1850,15 @@ public class FibredSurface : IPatchedDrawnsformable
     /// At this point, we assume that the fibred surface is irreducible, i.e. that all inefficiencies are in H and that there are no
     /// valence-one junctions or edges that get mapped to junctions.
     /// </summary>
-    /// <param name="p"></param>
-    /// <exception cref="Exception"></exception>
-    public void RemoveInefficiency(Inefficiency p)
+    public IEnumerator<AlgorithmSuggestion> RemoveInefficiencyInSteps(Inefficiency p, bool fineSteps = false)
     {
         if (p.order == 0)
         {
             // The inefficiency is a back track or a valence two extremal vertex
+            if (fineSteps)
+                yield return new AlgorithmSuggestion($"Pull tight in {p.DgAfter()}.");
             PullTightAll(p.DgAfter());
-            return;
+            yield break;
         }
 
         var initialSegment = p.initialSegmentToFold;
@@ -1827,9 +1868,10 @@ public class FibredSurface : IPatchedDrawnsformable
                    Equals(p, new EdgePoint(edge, initialSegment))
                ))
         {
-            Debug.Log(
-                $"When folding the inefficiency (illegal turn) \"{p}\" we had to decrease the initial segment because the point where the illegal turn happened was the same as the subdivision / folding point");
-                initialSegment--;
+            if (fineSteps) // todo: feature. better text here
+                yield return new AlgorithmSuggestion($"Decrease folded initial segment because else a subdivision point equals the inefficiency point ({initialSegment} -> {initialSegment - 1})");
+            Debug.Log($"When folding the inefficiency (illegal turn) \"{p}\" we had to decrease the initial segment because the point where the illegal turn happened was the same as the subdivision / folding point");
+            initialSegment--;
         }
 
         var updateEdgePoints = new List<EdgePoint>() { p };
@@ -1846,7 +1888,9 @@ public class FibredSurface : IPatchedDrawnsformable
             if (edgesToSplit[0].EdgePath.Count == 1)
                 throw new Exception(
                     "Weird: This edge only gets mapped to single edges under g. This shouldn't happen at this stage unless f is efficient and permutes the edges, g is a homeo, the growth is λ=1 and f is periodic. But it isn't efficient because we are in this method.");
-
+            if (fineSteps) 
+                yield return new AlgorithmSuggestion($"Split the edge c = {c!.Name}" + (edgesToSplit.Count == 0 ? "" :
+                    $" and its iterates {string.Join(", ", edgesToSplit.Select(e => e.Name))} to shorten the initial segment to fold."));
             updateEdgePoints.AddRange(edgesToFold.Select(edge => new EdgePoint(edge, 0)));
 
             foreach (var edge in edgesToSplit) // we split the last edge first, so that we can split the one before and so on.
@@ -1858,7 +1902,11 @@ public class FibredSurface : IPatchedDrawnsformable
             // They started with edge.EdgePath = c,..., now they have edge.EdgePath = c1,c2,...
         }
 
-        FoldInitialSegment(edgesToFold, initialSegment, updateEdgePoints);
+        foreach (var suggestion in FoldInitialSegmentInSteps(edgesToFold, initialSegment, updateEdgePoints))
+        {
+            if (fineSteps)
+                yield return suggestion;
+        }
 
         // Now p is an inefficiency of degree one lower.
 
@@ -1866,10 +1914,17 @@ public class FibredSurface : IPatchedDrawnsformable
         var newInefficiency = CheckEfficiency(pNew, Gate.FindGates(graph));
 
         if (newInefficiency == null || newInefficiency.order != p.order - 1)
-           throw new(
-                $"Bug: The inefficiency was not turned into an efficiency of order one less: {p} was turned into {newInefficiency ?? pNew}");
-        if (newInefficiency != null && newInefficiency.order < p.order)
-            RemoveInefficiency(newInefficiency);
+           throw new Exception($"Bug: The inefficiency was not turned into an efficiency of order one less: {p} was turned into {newInefficiency ?? pNew}");
+        
+        if (newInefficiency.order > 0)
+            yield return new AlgorithmSuggestion($"Remove inefficiency {newInefficiency}");
+        
+        var subEnumerator = RemoveInefficiencyInSteps(newInefficiency, fineSteps);
+        while (subEnumerator.MoveNext())
+        {
+            if (fineSteps)
+                yield return subEnumerator.Current;
+        }
     }
 
     #endregion
@@ -2017,10 +2072,8 @@ public class FibredSurface : IPatchedDrawnsformable
         }
     }
 
-    public void RemovePeripheralInefficiency(List<Strip> foldableEdges)
-    {
-        FoldInitialSegment(foldableEdges);
-    }
+    public IEnumerable<AlgorithmSuggestion> RemovePeripheralInefficiency(IReadOnlyList<Strip> foldableEdges) => 
+        FoldInitialSegmentInSteps(foldableEdges); 
 
     #endregion
 
@@ -2117,7 +2170,7 @@ public class FibredSurface : IPatchedDrawnsformable
     public string NextEdgeNameGreek() {
         UpdateUsedEdgeNames();
         return edgeNames.Concat(from i in Enumerable.Range(1, 1000) select $"ε{i}").First(
-            name => !usedEdgeNames.Contains(name) && name[0] <= 'z'
+            name => !usedEdgeNames.Contains(name) && name[0] >= 'z'
         );
     }
 
