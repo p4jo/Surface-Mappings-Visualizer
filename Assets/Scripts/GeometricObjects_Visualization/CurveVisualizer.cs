@@ -7,6 +7,7 @@ public class CurveVisualizer : MonoBehaviour
 {
     public GameObject splinePrefab;
     public List<SplineComputer> activeSplines = new(), inactiveSplines = new();
+    [SerializeField] private float outwardOffset = 0.05f;
 
     /// <summary>
     /// We assume this curve to not have any (visual) jump points.
@@ -73,7 +74,7 @@ public class CurveVisualizer : MonoBehaviour
                 let position = tangentSpace.point.Position * scale + offset
                 let tangentVector = basis.a * scale * newResolution / 3 // /2 would be the guess for the position, /
                 let normalVector = basis.c.normalized * scale
-                let positionOutside = position + normalVector * 0.1f
+                let positionOutside = position + normalVector * outwardOffset
                 select new SplinePoint(positionOutside,
                     positionOutside - tangentVector,
                     normalVector,

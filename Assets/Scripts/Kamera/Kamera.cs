@@ -1,6 +1,7 @@
 using UnityEngine;
 using System;
 using System.Linq;
+using UnityEngine.Events;
 
 public class Kamera : MonoBehaviour
 {
@@ -15,13 +16,16 @@ public class Kamera : MonoBehaviour
     [SerializeField] protected Kamera childKamera;
 
     public CenterPointer centerPointer;
-    public Vector3 minimalPosition = new(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
-    public Vector3 maximalPosition = new(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+    private Vector3 minimalPosition = new(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+    private Vector3 maximalPosition = new(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
 
-    bool pinching = false;
+    private bool pinching;
     [SerializeField] private bool rotateWithMouse;
     public float maxOrthographicSize = 6f;
     public float minOrthographicSize = 0.3f;
+
+    public UnityEvent MouseEnteredViewport = new();
+    public UnityEvent MouseExitedViewport = new();
 
     protected void Awake() {
         if (Cam == null && TryGetComponent<Camera>(out var cam))
@@ -31,36 +35,44 @@ public class Kamera : MonoBehaviour
     }
 
     const float movementSpeed = 5f;
+    private bool isMouseInViewport;
 
     void Update()
     {
-        var goalPosition = transform.position;
-        var goalRotation = transform.rotation;
+        // follow parent
+        var thisTransform = transform;
+        var goalPosition = thisTransform.position;
+        var goalRotation = thisTransform.rotation;
         if (parentKamera != null) {
-            goalPosition = parentKamera.transform.position;
-            goalRotation = parentKamera.transform.rotation;
-            Cam.orthographicSize = parentKamera.Cam.orthographicSize;
+            var parentTransform = parentKamera.transform;
+            goalPosition = parentTransform.position;
+            goalRotation = parentTransform.rotation;
+            SetOrthographicSize(parentKamera.Cam.orthographicSize);
         }
-        else if (centerPointer?.position != null) goalPosition = (Vector3) centerPointer.position;
+        else if (centerPointer?.position != null) 
+            goalPosition = (Vector3) centerPointer.position;
+
+
+        var movement = (goalPosition - thisTransform.position);
+        var maxDistanceThisFrame = movementSpeed * Time.deltaTime;
+        if (movement.sqrMagnitude > maxDistanceThisFrame * maxDistanceThisFrame)
+            movement = movement.normalized * maxDistanceThisFrame;
+        transform.position += movement;
+        transform.rotation = Quaternion.Slerp(thisTransform.rotation, goalRotation, Time.deltaTime * 5);
 
         Vector3 mousePosition = Input.touchCount > 0 ? Input.touches.First().position : Input.mousePosition;
 
-        var movement = (goalPosition - transform.position);
-        var maxDistanceThisFrame = movementSpeed * Time.deltaTime;
-        if (movement.sqrMagnitude > maxDistanceThisFrame * maxDistanceThisFrame) {
-            movement = movement.normalized * maxDistanceThisFrame;
-        }
-        transform.position += movement;
-
-        transform.rotation = Quaternion.Slerp(transform.rotation, goalRotation, Time.deltaTime * 5);
-        
-        if (!IsMouseInViewport(mousePosition)) return;
+        var mouseInViewport = IsMouseInViewport(mousePosition);
+        if (!isMouseInViewport && mouseInViewport)
+            MouseEnteredViewport.Invoke();
+        else if (isMouseInViewport && !mouseInViewport)
+            MouseExitedViewport.Invoke();
+        isMouseInViewport = mouseInViewport;
+        if (!mouseInViewport) return;
         
         // Zoom by mouse wheel
         float newOrthographicSize = Cam.orthographicSize - Input.GetAxis("Mouse ScrollWheel") * wheelSensitivity;
-        if (newOrthographicSize > maxOrthographicSize) newOrthographicSize = maxOrthographicSize;
-        if (newOrthographicSize < minOrthographicSize) newOrthographicSize = minOrthographicSize;
-        Cam.orthographicSize = newOrthographicSize;
+        SetOrthographicSize(newOrthographicSize);
 
         // Zoom by finger pinch is broken on WebGL. Zoom will be deactivated on mobile devices.
         if (Input.touchCount == 2)
@@ -80,7 +92,7 @@ public class Kamera : MonoBehaviour
                 deltaMagnitudeDiff = Mathf.Clamp(deltaMagnitudeDiff, -5, 5);
                 var orthographicSize = Cam.orthographicSize;
                 orthographicSize -= deltaMagnitudeDiff * pinchSensitivity;
-                Cam.orthographicSize = Math.Max(1, orthographicSize);
+                SetOrthographicSize(orthographicSize);
             }
             
         }
@@ -110,6 +122,11 @@ public class Kamera : MonoBehaviour
         }
     }
 
+    private void SetOrthographicSize(float orthographicSize)
+    {
+        Cam.orthographicSize = Math.Clamp(orthographicSize, minOrthographicSize, maxOrthographicSize);
+    }
+
     private void Move(Vector2 delta)
     {
         if (rotateWithMouse)
@@ -121,7 +138,7 @@ public class Kamera : MonoBehaviour
         }
         else
         {
-            delta *= mouseMovementSpeed;
+            delta *= mouseMovementSpeed * Cam.orthographicSize;
             var transformLocalPosition = transform.localPosition - (transform.right * delta.x + transform.up * delta.y);
             transform.localPosition = transformLocalPosition.Clamp(minimalPosition, maximalPosition);
         }
@@ -133,9 +150,9 @@ public class Kamera : MonoBehaviour
                ( !ignoreSubCameras && childKamera != null && childKamera.IsMouseInViewport(mousePosition, true) );
     }
 
-    public void zoomIn() => Cam.orthographicSize = Math.Max(1, Cam.orthographicSize - 3);
+    public void zoomIn() => SetOrthographicSize(Cam.orthographicSize - 3);
 
-    public void zoomOut() => Cam.orthographicSize = Math.Max(1, Cam.orthographicSize + 3);
+    public void zoomOut() => SetOrthographicSize(Cam.orthographicSize + 3);
 
     public virtual Ray ScreenPointToRay(Vector3 mousePosition) => Cam.ScreenPointToRay(mousePosition);
     public int cullingMask => Cam.cullingMask;
@@ -161,22 +178,51 @@ public class Kamera : MonoBehaviour
 
     protected void Initialize(Vector3 minimalPosition, Vector3 maximalPosition)
     {
-        if (!maximalPosition.AtLeast(minimalPosition))
-            throw new ArgumentException("Maximal position must be at least as large as minimal position.");
-        if (float.IsInfinity(minimalPosition.x))
-            minimalPosition.x = -10;
-        if (float.IsInfinity(minimalPosition.y))
-            minimalPosition.y = -10;
-        if (float.IsInfinity(maximalPosition.x))
-            maximalPosition.x = 10;
-        if (float.IsInfinity(maximalPosition.y))
-            maximalPosition.y = 10;
-        this.minimalPosition = minimalPosition;
-        this.maximalPosition = maximalPosition;
+        MinimalPosition = minimalPosition;
+        MaximalPosition = maximalPosition;
+        InitializeOrthographicSize();
+
+        SetOrthographicSize( maxOrthographicSize * 0.6f );
+    }
+
+    public Vector3 MinimalPosition
+    {
+        get => minimalPosition;
+        set
+        {
+            if (!maximalPosition.AtLeast(minimalPosition))
+                Debug.LogError("Maximal position should be at least as large as minimal position.");
+            if (float.IsInfinity(value.x))
+                value.x = maximalPosition.x - 1;
+            if (float.IsInfinity(value.y))
+                value.y = maximalPosition.y - 1;
+            minimalPosition = value;
+            InitializeOrthographicSize();
+        }
+    }
+
+    public Vector3 MaximalPosition
+    {
+        get => maximalPosition;
+        set
+        {
+            if (!maximalPosition.AtLeast(minimalPosition))
+                Debug.LogError("Maximal position should be at least as large as minimal position.");
+            if (float.IsInfinity(value.x))
+                value.x = minimalPosition.x + 1;
+            if (float.IsInfinity(value.y))
+                value.y = minimalPosition.y + 1;
+            maximalPosition = value;
+            InitializeOrthographicSize();
+        }
+    }
+
+    private void InitializeOrthographicSize()
+    {
         minOrthographicSize = MathF.Min(maximalPosition.x - minimalPosition.x, 
             maximalPosition.y - minimalPosition.y) / 30;
         maxOrthographicSize = MathF.Max(maximalPosition.x - minimalPosition.x,
             maximalPosition.y - minimalPosition.y) * 0.6f;
-        Cam.orthographicSize = maxOrthographicSize * 0.6f;
+        SetOrthographicSize(Cam.orthographicSize);
     }
 }

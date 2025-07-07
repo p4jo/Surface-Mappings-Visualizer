@@ -67,7 +67,7 @@ public class SurfaceMenu: MonoBehaviour
         this.mainMenu = mainMenu;
         var i = -1;
         Dictionary<string, Vector3> drawingSurfacePositions = new(); 
-        Dictionary<string, Kamera> windowKameras = new();
+        Dictionary<string, UIKamera> windowKameras = new();
         foreach (var (drawingSurfaceName, drawingSurface) in surface.drawingSurfaces)
         {
             i++;
@@ -133,7 +133,10 @@ public class SurfaceMenu: MonoBehaviour
                 // Don't actually use the camera nor the panel.
                 // This will be displayed in the same window (with the same camera) as the surface with name surface.windowAssignment[drawingSurface.Name]
                 kamera.gameObject.SetActive(false);
-                surfaceVisualizer.camera = windowKameras[windowName].Cam;
+                kamera = windowKameras[windowName];
+                surfaceVisualizer.camera = kamera.Cam;
+                kamera.MinimalPosition = Helpers.Min(drawingSurface.MinimalPosition, kamera.MinimalPosition);
+                kamera.MaximalPosition = Helpers.Max(drawingSurface.MaximalPosition, kamera.MaximalPosition);
             }
 
             float orthographicSize = kamera.Cam.orthographicSize;
@@ -151,6 +154,7 @@ public class SurfaceMenu: MonoBehaviour
                     float currentOrthographicSize = kamera.Cam.orthographicSize;
                     float closenessThreshold = closenessThresholdBaseValue * orthographicNormalization * currentOrthographicSize * currentOrthographicSize;
                     foreach (var otherDrawingSurface in surface.drawingSurfaces.Values.Where(otherDrawingSurface => 
+                                 surface.windowAssignment[otherDrawingSurface.Name] == windowName &&
                                  otherDrawingSurface != drawingSurface &&
                                  location.Value.AtLeast(otherDrawingSurface.MinimalPosition, ignoreZ: true) &&
                                  location.Value.AtMost(otherDrawingSurface.MaximalPosition, ignoreZ: true) 

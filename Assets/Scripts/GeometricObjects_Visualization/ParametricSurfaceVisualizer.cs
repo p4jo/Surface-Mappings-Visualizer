@@ -32,7 +32,7 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
             meshGenerators.Add(generator);
 
             gameObject.GetComponent<MeshCollider>().sharedMesh = generator.mesh;
-            gameObject.GetComponent<TooltipTarget>().Initialize(this);
+            gameObject.GetComponent<TooltipTarget>().Initialize(this, transformForHitCoordsToLocal: transform);
         }
     }
 }

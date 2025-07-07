@@ -129,7 +129,7 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
             stop = Length;
         if (start == 0 && stop == Length)
             return this;
-        return new RestrictedCurve(this, start, stop);
+        return new RestrictedCurve(this, start, stop) { Color = Color };
     }
 
     public abstract Curve Copy();
@@ -464,10 +464,19 @@ public partial class ConcatenatedCurve : Curve
             break;
         }
         if (startSegmentIndex == endSegmentIndex)
-            return segments[startSegmentIndex].Restrict(movedStartTime, movedEndTime);
+        {
+            var restrictedSegment = segments[startSegmentIndex].Restrict(movedStartTime, movedEndTime);
+            restrictedSegment.Color = Color;
+            return restrictedSegment;
+        }
 
         if (startSegmentIndex == -1) // start - sum(segmentsLength) > 0, i.e. start > Length - (calculation error from movedStartTime), so probably start == Length
-            return segments[^1].Restrict(segments[^1].Length); // will do the same and return the standing path.
+        {
+            var restrictedSegment = segments[^1].Restrict(segments[^1].Length);
+            restrictedSegment.Color = Color;
+            return restrictedSegment; // will do the same and return the standing path.
+        }
+
         var firstSegment = segments[startSegmentIndex].Restrict(movedStartTime, segments[startSegmentIndex].Length);
         var curves = segments[(startSegmentIndex + 1)..endSegmentIndex].Prepend(firstSegment);
         
@@ -567,7 +576,7 @@ public class RestrictedCurve : Curve
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
 
-    public override Curve Restrict(float start, float? end = null) => new RestrictedCurve(curve, this.start + start, this.start + (end ?? Length));
+    public override Curve Restrict(float start, float? end = null) => new RestrictedCurve(curve, this.start + start, this.start + (end ?? Length)) { Color = Color };
 
     public override Curve Copy() =>
         new RestrictedCurve(curve.Copy(), start, end)

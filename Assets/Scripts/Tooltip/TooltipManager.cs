@@ -51,11 +51,12 @@ public class TooltipManager : MonoBehaviour {
 
             layerMask = kamera.cullingMask; // LayerMask.GetMask("TooltipObjects");
 
-            Debug.DrawRay(ray.origin, ray.direction.normalized * 2000, Color.yellow,0.1f);
+            // Debug.DrawRay(ray.origin, ray.direction.normalized * 2000, Color.yellow,0.1f);
 
             if (Physics.Raycast(ray, out var hit, maxDistance: 2000, layerMask)) { 
                 var tooltipObject = hit.transform;
                 lastHoverPosition = hit.point;
+                Debug.DrawLine(ray.origin, hit.point, Color.red, 0.1f);
                 if (tooltipObject != lastHoverObject) {
                     OnHoverEnd(lastTooltipThing);
                     lastHoverObject = tooltipObject;

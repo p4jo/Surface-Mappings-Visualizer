@@ -387,6 +387,8 @@ public partial class ModelSurface: GeodesicSurface
         if (startPoint is not IModelSurfacePoint start || endPoint is not IModelSurfacePoint end)
             throw new("Start and end point should have the type IModelSurfacePoint");
         var (optimalSide, _) = DistanceMinimizingDeckTransformation1Side(startPoint, endPoint);
+        if (optimalSide == null)
+            return null;
         var geodesic = baseGeometrySurface.GetGeodesic(startPoint, endPoint.ApplyHomeomorphism(optimalSide.DeckTransformation()), "DistanceMinimizer");
         var a = start.ClosestBoundaryPoints(optimalSide);
         var b = end.ClosestBoundaryPoints(optimalSide.other);

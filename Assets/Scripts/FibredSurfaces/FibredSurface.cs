@@ -256,7 +256,7 @@ public class FibredSurface : IPatchedDrawnsformable
                         string.Join(", ", subforest.Edges.Select(v => v.Name))
                     ), 
                 description: "Collapse an invariant subforest.", 
-                buttons: new[] { "Collapse" }
+                buttons: new[] { "Collapse at once", "Collapse in steps" }
             );
         var b = GetLoosePositions().ToArray();
         if (b.Length > 0)
@@ -368,10 +368,23 @@ public class FibredSurface : IPatchedDrawnsformable
     {
         switch (button)
         {
-            case "Collapse":
-                if (suggestion.FirstOrDefault().Item1 is IEnumerable<string> subforestEdges)
-                    CollapseInvariantSubforest(subforestEdges);
+            case "Collapse at once":
+                if (suggestion.FirstOrDefault().Item1 is not IEnumerable<string> subforestEdges)
+                    break;
+                var localAlgorithmicRun = CollapseInvariantSubforest(subforestEdges);
+                while (localAlgorithmicRun.MoveNext())
+                { } // run until the end
+                break;
+            case "Collapse in steps":
+                if (suggestion.FirstOrDefault().Item1 is not IEnumerable<string> subforestEdges2)
+                    break;
                 // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
+                
+                
+                currentAlgorithmicRun = CollapseInvariantSubforest(subforestEdges2);
+                if (!currentAlgorithmicRun.MoveNext()) 
+                    currentAlgorithmicRun = null; // if it had just one step 
+
                 break;
             case "Tighten Selected":
                 foreach (var (o ,_) in suggestion)
@@ -890,19 +903,18 @@ public class FibredSurface : IPatchedDrawnsformable
         return IsPeripheryFriendlySubforest(subgraph, peripheralSubgraph, remove, touching);
     }
 
-    public void CollapseInvariantSubforest(IEnumerable<string> edges)
+    public IEnumerator<AlgorithmSuggestion> CollapseInvariantSubforest(IEnumerable<string> edges)
     {
         var subforest = new FibredGraph(true);
-        var edgeNames = edges.ToHashSet();
-        foreach (var strip in Strips)
-        {
-            if (edgeNames.Contains(strip.Name))
-                subforest.AddVerticesAndEdge(strip);
-        }
-        CollapseInvariantSubforest(subforest);
+        var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
+        subforest.AddVerticesAndEdgeRange(
+            from edgeName in edges
+            select edgeDict[edgeName].UnderlyingEdge
+        );
+        return CollapseInvariantSubforest(subforest);
     }
 
-    public void CollapseInvariantSubforest(FibredGraph subforest)
+    public IEnumerator<AlgorithmSuggestion> CollapseInvariantSubforest(FibredGraph subforest)
     {
         var subforestEdges = Enumerable.ToHashSet(subforest.Edges);
 
@@ -919,7 +931,21 @@ public class FibredSurface : IPatchedDrawnsformable
             //     name: NextVertexName(),
             //     color: NextVertexColor()
             // );
-            var (newVertex, _) = component.Vertices.ArgMax(v => component.AdjacentDegree(v));
+            if (component.EdgeCount > 0) 
+                yield return new AlgorithmSuggestion(
+                    options: from v in component.Vertices.OrderByDescending(
+                            v => graph.AdjacentDegree(v)
+                        )
+                        select (v.Name as object, ((IDrawable)v).ColorfulName),
+                    description: $"Pull component {{{component.Edges.ToCommaSeparatedString(e => ((IDrawable)e).ColorfulName)}}} towards vertex",
+                    buttons: new[] { "Continue" }    
+                );
+            var selectedOption = selectedOptionsDuringAlgorithmicRun?.FirstOrDefault().Item1;
+            Junction newVertex = null;
+            if (selectedOption is string selectedVertexName)
+                newVertex = component.Vertices.FirstOrDefault(v => v.Name == selectedVertexName);
+            newVertex ??= component.Vertices.ArgMax(v => graph.AdjacentDegree(v)).Item1;
+            
             newVertices.Add(newVertex);
             
             // ReplaceVertices(SubgraphStarOrdered(component), newVertex);
@@ -1090,6 +1116,7 @@ public class FibredSurface : IPatchedDrawnsformable
             curve: removeStrip.Curve.Reversed().Concatenate(keptStrip.Curve),
             edgePath: removeStrip.EdgePath.Inverse().Concat(keptStrip.EdgePath)
         );
+        newStrip.Color = keptStrip.Color;
 
         graph.RemoveVertex(junction); // removes the old edges as well
         graph.AddVerticesAndEdge(newStrip);
@@ -1301,7 +1328,7 @@ public class FibredSurface : IPatchedDrawnsformable
             }
         }
 
-        public void MoveVerticesForFolding(bool removeEdges = false)
+        public void MoveVerticesForFolding(bool removeEdges = false, bool ignoreGivenEdges = false) 
         {
             var fibredSurface = edges.First().fibredSurface;
             // shorten the preferred curve if necessary
@@ -1345,7 +1372,7 @@ public class FibredSurface : IPatchedDrawnsformable
                     timeX = (t0x + 2 * t1x) / 3; // a bit closer to the last side crossing along the original edge that is shared with the preferred edge 
                     // todo: fixed distance to last crossing (or the source vertex if there is no crossing)? Shorter for the preferred edge in that case for better visuals?
 
-                    fibredSurface.MoveJunction(vertex, backwardsCurve, timeX, edge.Reversed(), ignoreGivenEdge: true);
+                    fibredSurface.MoveJunction(vertex, backwardsCurve, timeX, edge.Reversed(), ignoreGivenEdge: ignoreGivenEdges, movingAlongGivenEdge: true);
                     // moves along backwardsCurve and shortens the edge itself (unless we removed it)
                 }
 
@@ -1387,7 +1414,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
                 
                 if (forwardMovementCurve.Length > 1e-3) 
-                    fibredSurface.MoveJunction(vertex, forwardMovementCurve, forwardMovementCurve.Length, edge.Reversed(), ignoreGivenEdge: true);
+                    fibredSurface.MoveJunction(vertex, forwardMovementCurve, forwardMovementCurve.Length, edge.Reversed(), ignoreGivenEdge: ignoreGivenEdges, movingAlongGivenEdge: false); 
                 // this prolongs the edge (unless we removed it) 
                 
                 // todo: addedShiftStrength positive or negative depending on the direction of the edge and the cyclic order.
@@ -1414,13 +1441,13 @@ public class FibredSurface : IPatchedDrawnsformable
 
     
     const float baseShiftStrength = 0.07f;
-    public void MoveJunction(Junction v, Curve curve, float length, Strip e = null, bool ignoreGivenEdge = false) 
+    public void MoveJunction(Junction v, Curve curve, float length, Strip e = null, bool ignoreGivenEdge = false, bool movingAlongGivenEdge = true) 
     {
         v.Patches = new []{ curve[length] };
         
         var precompositionCurve = curve.Restrict(0, length).Reversed();
-        var star = StarOrdered(v, e, removeFirstEdgeIfProvided: true).ToList();
-        if (e != null && !ignoreGivenEdge)
+        var star = StarOrdered(v, e, removeFirstEdgeIfProvided: ignoreGivenEdge || movingAlongGivenEdge ).ToList();
+        if (e != null && !ignoreGivenEdge && movingAlongGivenEdge)
         {
             var name = e.Name;
             e.Curve = e.Curve.Restrict(length);
@@ -1508,7 +1535,7 @@ public class FibredSurface : IPatchedDrawnsformable
         var targetVerticesToFold =
             (from edge in edges select edge.Target).WithoutDuplicates().ToArray(); // has the correct order
         
-        selectedMovement.MoveVerticesForFolding();
+        selectedMovement.MoveVerticesForFolding(ignoreGivenEdges: selectedOptionsDuringAlgorithmicRun == null);
         
         yield return new AlgorithmSuggestion($"Fold the edges"); // todo: better string
 

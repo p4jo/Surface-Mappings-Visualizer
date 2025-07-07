@@ -9,6 +9,10 @@ public class CameraManager : MonoBehaviour
     [SerializeField] Kamera secondaryKamera;
     [SerializeField] UnityEvent<bool> onMainToSecondaryLock = new();
     [SerializeField] UnityEvent<bool> onSecondaryToMainLock = new();
+    [SerializeField] UnityEvent<Kamera> ViewportEntered = new();
+    [SerializeField] UnityEvent<Kamera> ViewportExited = new();
+    [SerializeField] UnityEvent AllViewportsExited = new();
+    HashSet<Kamera> kamerasWithMouseInViewport = new();
 
     [SerializeField] CameraLockState _cameraLockState;
 
@@ -106,6 +110,18 @@ public class CameraManager : MonoBehaviour
     
     public void AddKamera(Kamera kamera, bool isMain = false, bool isSecondary = false) {
         cameras.Add(kamera.Cam);
+        kamera.MouseEnteredViewport.AddListener(() =>
+        {
+            kamerasWithMouseInViewport.Add(kamera);
+            ViewportEntered.Invoke(kamera);
+        });
+        kamera.MouseExitedViewport.AddListener(() =>
+        {
+            kamerasWithMouseInViewport.Remove(kamera);
+            ViewportExited.Invoke(kamera);
+            if (kamerasWithMouseInViewport.Count == 0)
+                AllViewportsExited.Invoke();
+        });
         if (isMain)
             mainKamera = kamera;
         if (isSecondary)
