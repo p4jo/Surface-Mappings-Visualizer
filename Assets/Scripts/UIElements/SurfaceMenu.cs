@@ -132,8 +132,8 @@ public class SurfaceMenu: MonoBehaviour
                 kamera.gameObject.SetActive(false);
                 kamera = windowKameras[windowName];
                 surfaceVisualizer.camera = kamera.Cam;
-                kamera.MinimalPosition = Helpers.Min(drawingSurface.MinimalPosition, kamera.MinimalPosition);
-                kamera.MaximalPosition = Helpers.Max(drawingSurface.MaximalPosition, kamera.MaximalPosition);
+                kamera.MinimalPosition = EnumerableHelpers.Min(drawingSurface.MinimalPosition, kamera.MinimalPosition);
+                kamera.MaximalPosition = EnumerableHelpers.Max(drawingSurface.MaximalPosition, kamera.MaximalPosition);
             }
 
             float orthographicSize = kamera.Cam.orthographicSize;

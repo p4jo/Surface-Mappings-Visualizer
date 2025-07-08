@@ -6,120 +6,19 @@ using UnityEngine;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
 
-public static class Helpers
+public static class EnumerableHelpers
 {
-    public enum RectCutMode
-    {
-        Corners,
-        Vertical,
-        Horizontal
-    }
-    private static IEnumerable<Rect> Minus_internal (Rect A, Rect B, RectCutMode mode = RectCutMode.Corners) {
-        var bYMax = MathF.Max( MathF.Min(B.yMax, A.yMax), A.yMin);
-        var bYMin = MathF.Min(MathF.Max(B.yMin, A.yMin), A.yMax);
-        var bXMax = MathF.Max( MathF.Min(B.xMax, A.xMax), A.xMin);
-        var bXMin = MathF.Min(MathF.Max(B.xMin, A.xMin), A.xMax);
-        
-        var bWidth = bXMax - bXMin;
-        var bHeight = bYMax - bYMin;
-        
-        var α = bXMin - A.xMin;
-        var β = A.yMax - bYMax;
-        var γ =  bYMin - A.yMin;
-        var δ = A.xMax - bXMax;
-        
-        if (mode != RectCutMode.Vertical) // use short vertical rects
-        {
-            yield return new(A.xMin, bYMin, α, bHeight);
-            yield return new(bXMax, bYMin, δ, bHeight);
-        }
-        if (mode != RectCutMode.Horizontal) // use short horizontal rects
-        {
-            yield return new(bXMin, bYMax, bWidth, β);
-            yield return new(bXMin, A.yMin, bWidth, γ);
-        }
-        switch (mode)
-        {
-            // use the corner rects
-            case RectCutMode.Corners: // copilot 
-                yield return new(A.xMin, A.yMin, α, γ);
-                yield return new(bXMax, A.yMin, δ, γ);
-                yield return new(A.xMin, bYMax, α, β);
-                yield return new(bXMax, bYMax, δ, β);
-                break;
-            // use long horizontal rects
-            case RectCutMode.Horizontal: // copilot 
-                yield return new(A.xMin, A.yMin, A.width, γ);
-                yield return new(A.xMin, bYMax, A.width, β);
-                break;
-            // use long vertical rects
-            case RectCutMode.Vertical: // copilot 
-                yield return new(A.xMin, A.yMin, α, A.height);
-                yield return new(bXMax, A.yMin, δ, A.height);
-                break;
-        }
-    }
+    public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, string comma = ", ") => string.Join(comma, list);
     
-    public static IEnumerable<Rect> Minus(this Rect A, Rect B, RectCutMode mode = RectCutMode.Corners) 
-        => from rect in Minus_internal(A, B, mode)
-            where rect is { width: > 0, height: > 0 }
-            select rect;
+    public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, Func<T, string> selector, string comma = ", ") =>
+        string.Join(comma, list.Select(selector));
     
+    public static string ToLineSeparatedString<T>(this IEnumerable<T> list, string newline = "\n") => 
+        string.Join(newline, list);
     
-    private const float εSquared = 1e-6f;
+    public static string ToLineSeparatedString<T>(this IEnumerable<T> list, Func<T, string> selector, string newline = "\n") =>
+        string.Join(newline, list.Select(selector));
 
-    public static bool ApproximatelyEquals(this Vector3 v, Vector3 w) => 
-        (v - w).sqrMagnitude < εSquared;
-
-    public static bool ApproximateEquals(this float t, float s) => 
-        (t - s) * (t - s) < εSquared;
-
-    public static Vector3 Clamp(this Vector3 x, Vector3 minPos, Vector3 maxPos)
-    {
-        return new(
-            Mathf.Clamp(x.x, minPos.x, maxPos.x),
-            Mathf.Clamp(x.y, minPos.y, maxPos.y),
-            Mathf.Clamp(x.z, minPos.z, maxPos.z)
-        );
-    }
-
-    public static Vector3 Max(Vector3 a, Vector3 b)
-    {
-        return new(
-            MathF.Max(a.x, b.x),
-            MathF.Max(a.y, b.y),
-            MathF.Max(a.z, b.z)
-        );
-    }
-    
-    public static Vector3 Min(Vector3 a, Vector3 b)
-    {
-        return new(
-            MathF.Min(a.x, b.x),
-            MathF.Min(a.y, b.y),
-            MathF.Min(a.z, b.z)
-        );
-    }
-    
-    public static bool AtLeast(this Vector3 a, Vector3 b, bool ignoreZ = false) => 
-        a.x >= b.x && a.y >= b.y && (ignoreZ || a.z >= b.z);
-    
-    public static bool AtMost(this Vector3 a, Vector3 b, bool ignoreZ = false) =>
-        a.x <= b.x && a.y <= b.y && (ignoreZ || a.z <= b.z);
-    
-    public static Vector3 Average(this IEnumerable<Vector3> enumerable)
-    {
-        var sum = Vector3.zero;
-        var count = 0;
-        foreach (var v in enumerable)
-        {
-            sum += v;
-            count++;
-        }
-
-        return count > 0 ? sum / count : Vector3.zero;
-    }
-    
     public static (T, float) ArgMin<T>(this IEnumerable<T> enumerable, System.Func<T, float> selector)
     {
         var min = float.MaxValue;
@@ -174,19 +73,6 @@ public static class Helpers
         return from t in enumerable from t2 in other select (t, t2);
     }
     
-    public static float Angle(this Vector2 v) => MathF.Atan2(v.y, v.x);
-    public static float Angle(this Vector3 v) => MathF.Atan2(v.y, v.x);
-    
-    public static Vector3 ToVector3(this Complex v) => new((float)v.Real, (float)v.Imaginary);
-    
-    public static Vector2 ToVector2(this Complex v) => new((float)v.Real, (float)v.Imaginary);
-    
-    public static Matrix3x3 ToMatrix3x3(this Complex v) => new((float)v.Real, (float)-v.Imaginary, (float)v.Imaginary, (float)v.Real);
-    
-    public static Complex ToComplex(this Vector2 v) => new(v.x, v.y);
-    
-    public static Complex ToComplex(this Vector3 v) => new(v.x, v.y);
-    
     public static T Pop<T> (this List<T> list)
     {
         if (list.Count == 0) return default;
@@ -225,7 +111,7 @@ public static class Helpers
         return list.FirstOrDefault(t => !hashSet.Add(selector(t)));
     }
     
-    public static IEnumerable<T> WithoutDuplicates<T>(this IEnumerable<T> list)
+    public static IEnumerable<T> WithoutDuplicates<T>(this IEnumerable<T> list) // the same as Distinct()
     {
         var hashSet = new HashSet<T>();
         return list.Where(hashSet.Add);
@@ -281,7 +167,7 @@ public static class Helpers
     
     public static IEnumerable<T> Loop<T>(this IEnumerable<T> list, int length) => list.EndlessLoop().Take(length);
     
-    
+    #region weirdly specific "cancellation" methods for (T, bool) tuples
     public static List<(T, bool)> ConcatWithCancellation<T>(this IEnumerable<(T, bool)> list, IEnumerable<(T, bool)> other)
     {
         var newList = new List<(T, bool)>(list);
@@ -358,81 +244,7 @@ public static class Helpers
     public static IEnumerable<(T, bool)> Inverse<T>(this IEnumerable<(T, bool)> list) => 
         list.Reverse().Select(t => (t.Item1, !t.Item2));
 
-
-    public static ObjectWithString WithToString(this object obj, string toString) => new(obj, toString);
-
-    public class ObjectWithString
-    {
-        public readonly object obj;
-        public readonly string toString;
-
-        public ObjectWithString(object obj, string toString)
-        {
-            this.obj = obj;
-            this.toString = toString;
-        }
-
-        public override string ToString() => toString;
-    }
-    
-    public static string AddDots(this string s, int maxLength)
-    {
-        if (s.Length <= maxLength) return s;
-        return s[..(maxLength - 3)] + "...";
-    }
-
-    public static string ReverseUpper(this string s)
-    {
-        if (string.IsNullOrWhiteSpace(s))
-            return s;
-        if (char.IsUpper(s.First(char.IsLetter)))
-            return s.ToLowerInvariant();
-        return s.ToUpperInvariant();
-    }
-    
-    public static string AddDotsMiddle(this string s, int maxLength, int? tail = null)
-    {
-        if (s.Length <= maxLength) return s;
-        var firstSegment = tail.HasValue ? maxLength - tail.Value - 3 : maxLength / 2;
-        var secondSegment = tail ?? maxLength - firstSegment - 3;
-        return s[..firstSegment] + "..." + s[^secondSegment..];
-    }
-
-    public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, string comma = ", ") => string.Join(comma, list);
-    
-    public static string ToCommaSeparatedString<T>(this IEnumerable<T> list, Func<T, string> selector, string comma = ", ") =>
-        string.Join(comma, list.Select(selector));
-    
-    public static string ToLineSeparatedString<T>(this IEnumerable<T> list, string newline = "\n") => 
-        string.Join(newline, list);
-    
-    public static string ToLineSeparatedString<T>(this IEnumerable<T> list, Func<T, string> selector, string newline = "\n") =>
-        string.Join(newline, list.Select(selector));
-
-    public static string ToShortString(this int i) =>
-        i switch
-        {
-            < 0 => "-" + ToShortString(-i),
-            < 1000 => i.ToString(),
-            < 1000000 => (i * 1e-3).ToString("G3") + "k",
-            < 1000000000 => (i * 1e-6).ToString("G3") + "M",
-            _ => (i * 1e-9).ToString("G3") + "G"
-        };
-    public static string ToShortString(this double d) =>
-        d switch
-        {
-            < 0 => "-" + ToShortString(-d),
-            0 => "0",
-            < 1e-9 => (d * 1e12).ToString("G3") + "p",
-            < 1e-6 => (d * 1e9).ToString("G3") + "n",
-            < 1e-3 => (d * 1e6).ToString("G3") + "μ",
-            < 1 => (d * 1e3).ToString("G3") + "m",
-            < 1e3 => d.ToString("G3"),
-            < 1e6 => (d * 1e-3).ToString("G3") + "k",
-            < 1e9 => (d * 1e-6).ToString("G3") + "M",
-            < 1e12 => (d * 1e-9).ToString("G3") + "G",
-            _ => d.ToString("G3")
-        };
+    #endregion
 
     public static double GeometricMean(this IEnumerable<double> list) 
     {

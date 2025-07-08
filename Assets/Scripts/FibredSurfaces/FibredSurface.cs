@@ -594,7 +594,7 @@ public class FibredSurface : IPatchedDrawnsformable
         }
         var brokenJumpPoints = Strips.FirstOrDefault(e => e.Curve.VisualJumpPoints.Count() != e.Curve.VisualJumpTimes.Count());
         if (brokenJumpPoints != null)
-            Debug.LogWarning($"The edge {brokenJumpPoints} has a broken jump point.");
+            HandleInconsistentBehavior($"The edge {brokenJumpPoints} has a broken jump point.");
     }
 
     private Strip BrokenVertexMapEdge() => OrientedEdges.FirstOrDefault(e => e.Dg != null && e.Source.image != e.Dg.Source);
@@ -1589,7 +1589,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 $"It was defined on {selectedMovement.edges.First().fibredSurface}.");
         
         var targetVerticesToFold =
-            (from edge in edges select edge.Target).WithoutDuplicates().ToArray(); // has the correct order
+            (from edge in edges select edge.Target).Distinct().ToArray(); // has the correct order
         
         selectedMovement.MoveVerticesForFolding(ignoreGivenEdges: selectedOptionsDuringAlgorithmicRun == null);
         

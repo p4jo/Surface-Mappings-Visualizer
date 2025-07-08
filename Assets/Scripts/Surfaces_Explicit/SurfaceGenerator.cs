@@ -450,7 +450,7 @@ public static class SurfaceGenerator
         };
         var newBaseSurface = surface.WithAddedBoundaries(1, addedPunctures, boundaries);
         
-        var newChartRects = targetSurface.chartRects.SelectMany(rect => rect.Minus(cutoutInTarget, Helpers.RectCutMode.Horizontal));
+        var newChartRects = targetSurface.chartRects.SelectMany(rect => rect.Minus(cutoutInTarget, EnumerableHelpers.RectCutMode.Horizontal));
         Debug.Log($"newChartRects: {string.Join(", ", (from rect in newChartRects select rect.ToString()).ToArray())}");
 
 
@@ -476,8 +476,8 @@ public static class SurfaceGenerator
         return new ParametricSurface($"{targetSurface.Name}#T",
             embedding,
             newChartRects,
-            Helpers.Max(targetSurface.MinimalPosition, center - torusSize), 
-            Helpers.Min(targetSurface.MaximalPosition, center + torusSize)
+            EnumerableHelpers.Max(targetSurface.MinimalPosition, center - torusSize), 
+            EnumerableHelpers.Min(targetSurface.MaximalPosition, center + torusSize)
         );
 
         Vector3 NewTorus(Vector2 p) => FlatTorusEmbedding(new Vector2(2 * cutoutCenter.x - p.x, p.y), largeRadius, smallRadius) + center;
