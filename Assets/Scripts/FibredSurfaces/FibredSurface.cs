@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using JetBrains.Annotations;
 using MathNet.Numerics.LinearAlgebra;
 using QuikGraph;
@@ -164,30 +165,79 @@ public class FibredSurface : IPatchedDrawnsformable
         return newFibredSurface;
     }
 
-    
-    public void SetMap(IDictionary<string, string> map, GraphMapUpdateMode mode)
+    public Dictionary<Strip, EdgePath> ParseMap(string text)
     {
-        var mapKeys = map.Keys.Select(k => k.ToLower()).ToHashSet();
+        string[] lines = text.Split(',', '\n');
+        var graphMap = new Dictionary<string, string>();
+        foreach (string line in lines)
+        {
+            string trim = line.Trim();
+            if (trim == "") 
+                continue;
+            var match = Regex.Match(trim, @"g\s*\((.+)\)\s*=(.*)");
+            if (!match.Success)
+                match = Regex.Match(trim, @"(.+)->(.*)");
+            if (!match.Success)
+                match = Regex.Match(trim, @"(.+)↦(.*)");
+            if (!match.Success)
+                match = Regex.Match(trim, @"(.+):=(.*)");
+            if (!match.Success)
+                match = Regex.Match(trim, @"(.+)=(.*)");
+            if (!match.Success)
+                throw new ArgumentException("The input should be in the form \"g(a) = a B A, g(b) = ...\" or \" a -> a B A, b -> ...\", plus potentially definitions like \"x := a B A\".");
+
+            string name = match.Groups[1].Value.Trim();
+            string imageText = match.Groups[2].Value;
+            graphMap[name] = imageText;
+        }
+        return ParseMap(graphMap);
+    }
+
+    public Dictionary<Strip, EdgePath> ParseMap(IReadOnlyDictionary<string, string> map)
+    {
         var stripNames = Strips.Select(s => s.Name).ToHashSet();
-        if (!mapKeys.IsSupersetOf(stripNames))
-            throw new ArgumentException($"The map must be given for each of the edges of the surface, which are {stripNames.ToCommaSeparatedString()}");
-        mapKeys.ExceptWith(stripNames);
+        var definitionNames = map.Keys.Select(k => k.ToLower()).ToHashSet();
+        
+        var missingNames = stripNames.ToHashSet();
+        missingNames.ExceptWith(definitionNames);
+        definitionNames.ExceptWith(stripNames);
+        
         var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
         var definitions = new List<NamedEdgePath>();
-        foreach (var definitionName in mapKeys)
-        {
-            definitions.Add(new NamedEdgePath(EdgePath.FromString(map[definitionName], Strips, definitions), definitionName));    
-        }
+        foreach (var definitionName in definitionNames)
+            definitions.Add(new NamedEdgePath(
+                    EdgePath.FromString(map[definitionName], Strips, definitions),
+                    definitionName
+                )
+            );
 
-        var enteredMap = stripNames.ToDictionary(name => edgeDict[name], name => EdgePath.FromString(map[name], Strips, definitions));
-        
-        SetMap(enteredMap, mode);
+        var result = new Dictionary<Strip, EdgePath>();
+        foreach (var (name, edgePathText) in map)
+            if (edgeDict.TryGetValue(name, out var strip))
+                result[strip] = EdgePath.FromString(edgePathText, Strips, definitions);
+        foreach (var missingKey in missingNames) 
+            result[edgeDict[missingKey]] = new NormalEdgePath(edgeDict[missingKey]); 
+            // identity on the other edges
+        return result;
     }
-    public void SetMap(IDictionary<Strip, EdgePath> enteredMap, GraphMapUpdateMode mode)
+
+    public void SetMap(string map, GraphMapUpdateMode mode) =>
+        SetMap(ParseMap(map), mode);
+    
+    public void SetMap(IReadOnlyDictionary<string, string> map, GraphMapUpdateMode mode) =>
+        SetMap(ParseMap(map), mode);
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="enteredMap">This must contain exactly one of {e, e.Reversed()} for any edge of the graph</param>
+    /// <param name="mode"></param>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    public void SetMap(IReadOnlyDictionary<Strip, EdgePath> enteredMap, GraphMapUpdateMode mode)
     {
         if (enteredMap.Keys.Any(e => e.graph != graph))
             throw new ArgumentException("The edges in the map must be from the same graph as this fibred surface.");
-        var oldMap = OrientedEdges.ToDictionary(e => e, e => e.EdgePath);
         switch (mode)
         {
             case GraphMapUpdateMode.Replace:
@@ -195,14 +245,16 @@ public class FibredSurface : IPatchedDrawnsformable
                     edge.EdgePath = enteredMap[edge];
                 break;
             case GraphMapUpdateMode.Precompose:
+                var oldMap = OrientedEdges.ToDictionary(e => e, e => e.EdgePath);
                 foreach (var edge in enteredMap.Keys) 
                     edge.EdgePath = enteredMap[edge].Replace(e => oldMap[e]);
                 break;
             case GraphMapUpdateMode.Postcompose:
-                foreach (var edge in enteredMap.Keys.ToArray()) 
-                    enteredMap[edge.Reversed()] = enteredMap[edge].Inverse();
+                var fullDict = new Dictionary<Strip, EdgePath>(enteredMap);
+                foreach (var (edge, image) in enteredMap) 
+                    fullDict[edge.Reversed()] = image.Inverse();
                 foreach (var edge in Strips) 
-                    edge.EdgePath = oldMap[edge].Replace(e => enteredMap[e]);
+                    edge.EdgePath = edge.EdgePath.Replace(e => fullDict[e]);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
@@ -547,10 +599,13 @@ public class FibredSurface : IPatchedDrawnsformable
 
     private Strip BrokenVertexMapEdge() => OrientedEdges.FirstOrDefault(e => e.Dg != null && e.Source.image != e.Dg.Source);
 
-    private static void HandleInconsistentBehavior(string errorMessage)
+
+    
+    public event Action<string> OnError;
+    private void HandleInconsistentBehavior(string errorMessage)
     {
+        OnError?.Invoke(errorMessage);
         Debug.LogError(errorMessage);
-        Object.FindObjectsByType<FibredSurfaceMenu>(FindObjectsSortMode.None).First().StopAllCoroutines();
     }
     public bool ApplyNextSuggestion()
     {
@@ -608,7 +663,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 graphString += "\nType: Pseudo-Anosov";
             else
                 graphString += "\nType: Finite-Order";
-        
+
         return graphString;
 
         IEnumerable<string> MatrixStrings()
@@ -722,7 +777,7 @@ public class FibredSurface : IPatchedDrawnsformable
     /// of another element of connectedSet (unless k = #star).
     /// So, if connectedSet is not actually connected, then the result will not set-equal to connectedSet.
     /// </summary>
-    static IEnumerable<Strip> SortConnectedSetInStar(List<Strip> sortedStar, ICollection<Strip> connectedSet)
+    private IEnumerable<Strip> SortConnectedSetInStar(List<Strip> sortedStar, ICollection<Strip> connectedSet)
     {
         int startIndex = sortedStar.FindIndex(connectedSet.Contains);
         // this should be the index in the cyclic order where the connected set starts
@@ -732,7 +787,7 @@ public class FibredSurface : IPatchedDrawnsformable
         return sortedStar.CyclicShift(startIndex).Take(connectedSet.Count);
     }
     
-    static bool IsConnectedSet(List<Strip> sortedStar, ICollection<Strip> connectedSet) => 
+    bool IsConnectedSet(List<Strip> sortedStar, ICollection<Strip> connectedSet) => 
         SortConnectedSetInStar(sortedStar, connectedSet).All(connectedSet.Contains);
 
     /// <summary>
@@ -1427,12 +1482,13 @@ public class FibredSurface : IPatchedDrawnsformable
 
         public override string ToString() {
             var sb = new StringBuilder();
-            sb.AppendLine($"Movement plan: Pull backwards along the \"preferred edge\" {preferredEdge.Name} to keep the first {l}/{preferredEdge.Curve.SideCrossingWord.Count()} side crossings: ");
+            sb.AppendLine($"Preferred edge: {preferredEdge.Name} - Keep the first {l}/{preferredEdge.Curve.SideCrossingWord.Count()} side crossings.");
             // sb.AppendLine($"  {string.Join(", ", c)}");
-            sb.AppendLine($"Vertex movements:");
+            sb.AppendLine($"Vertex movements to converge at {preferredEdge.Target.Name}");
             foreach (var (vertex, movement) in vertexMovements)
-                sb.AppendLine($"Move vertex {vertex} across the sides {(from sideCrossing in movement select sideCrossing.Item1 + (sideCrossing.Item2 ? "'" : "")).ToCommaSeparatedString()}");
-            sb.AppendLine($"Badness: {Badness}");
+                if (movement.Any())
+                    sb.AppendLine($"Move vertex {vertex} across {(from sideCrossing in movement select sideCrossing.Item1 + (sideCrossing.Item2 ? "'" : "")).ToCommaSeparatedString()}");
+            sb.AppendLine($"Total number of side crossings afterwards: {Badness}");
             return sb.ToString(); 
         }
     }
@@ -1993,12 +2049,12 @@ public class FibredSurface : IPatchedDrawnsformable
         }
 
         if (testDry) return false;
-
+        // todo: feature, don't change everything if not necessary to make it maximal, for example if all edges already leave Q immediately, then Q is already a circle graph, isn't it?
         var components = Q.ComponentGraphs(out var componentDict);
         var gates = Gate.FindGates(starQ, vertex => componentDict[vertex]);
         // todo? Display the peripheral gates?
         var newJunctions = new List<Junction>();
-        var stars = (from component in components select SubgraphStarOrdered(component).ToList()).ToList();
+        var stars = (from component in components select SubgraphStarOrdered(component).ToList()).ToList(); // todo: bug. not ordered correctly (not starting right after the peripheral loop!)
         foreach (var gate in gates)
         {
             var gateInOrder = SortConnectedSetInStar(stars[gate.junctionIdentifier], gate.Edges).ToList();
@@ -2006,7 +2062,7 @@ public class FibredSurface : IPatchedDrawnsformable
             // give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
             // todo: currently this does not follow the boundary of <Q>.
             string name = NextVertexName();
-            var newJunction = new Junction(this, surface.GetPathFromWaypoints(positions, name), name, color: NextVertexColor()); // image set below
+            var newJunction = new Junction(this, surface.GetPathFromWaypoints(positions, name), name, color: NextVertexColor()); // image set below // TODO: Bug, feature. what if there only one vertex in here? What if two edges in different gates start at the same vertex? 
             newJunctions.Add(newJunction);
             var orderIndex = 0;
             foreach (var edge in gateInOrder)
@@ -2175,6 +2231,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
 
     private HashSet<string> usedEdgeNames;
+
     public void Initialize()
     {
         UpdateUsedEdgeNames();

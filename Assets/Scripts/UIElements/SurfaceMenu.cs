@@ -53,7 +53,7 @@ public class SurfaceMenu: MonoBehaviour
     [SerializeField] private Color previewPointColor;
     [SerializeField] private Color previewCurveColor;
     [SerializeField] private float closenessThresholdBaseValue = 0.01f;
-
+    private static int _visualizerPositionID;
     public event Action<IDrawnsformable, string> StuffShown;
     public event Action<IDrawnsformable, string> StuffDeleted;
     
@@ -65,13 +65,10 @@ public class SurfaceMenu: MonoBehaviour
         this.surface = surface;
         this.cameraManager = cameraManager;
         this.mainMenu = mainMenu;
-        var i = -1;
         Dictionary<string, Vector3> drawingSurfacePositions = new(); 
         Dictionary<string, UIKamera> windowKameras = new();
         foreach (var (drawingSurfaceName, drawingSurface) in surface.drawingSurfaces)
         {
-            i++;
-
             string windowName = surface.windowAssignment[drawingSurface.Name];
             bool showOwnWindow = !windowKameras.ContainsKey(windowName);
             
@@ -116,7 +113,7 @@ public class SurfaceMenu: MonoBehaviour
             else
                 surfaceVisualizerGameObject.transform.position =
                     drawingSurfacePositions[windowName] =
-                        new Vector3(100 * i,0, 0);
+                        new Vector3(100 * _visualizerPositionID++,0, 0);
 
                     
             var kamera = surfaceVisualizerGameObject.GetComponentInChildren<UIKamera>();

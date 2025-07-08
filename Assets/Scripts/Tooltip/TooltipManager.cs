@@ -27,8 +27,11 @@ public class TooltipManager : MonoBehaviour {
     private Vector3 lastHoverPosition;
 
     private void Awake() {
-        if (Instance == this) 
-            return;
+        // bug: Unity Objects might not be "alive" anymore, even though their C# object is not null. 
+        // You then get Errors when calling things like GetComponent on them.
+        // Go to definition of == below: this function is stupid...
+        // if both objects aren't null (is not null) independent of if they are alive (!= null), it returns equality of m_InstanceID
+        // but here, there is a previous value for Instance (why? I don't know), and this is not null but is not alive...
         if (Instance == null) {
             Instance = this;
             return;
@@ -109,9 +112,9 @@ public class TooltipManager : MonoBehaviour {
         tooltipThing.OnHover(kamera, position);
     }
 
-    private void ShowTooltip()
+    public void ShowTooltip(string text = null, float timeout = float.PositiveInfinity)
     {
-        var text = content.text ?? "";
+        text ??= content.text ?? "";
         if (!string.IsNullOrWhiteSpace(content.url)) 
             text += "\n<b>Right click for more info.</b>";
 
@@ -122,9 +125,13 @@ public class TooltipManager : MonoBehaviour {
 
         LayoutRebuilder.ForceRebuildLayoutImmediate(tooltipPanel);
         tooltipPanel.SetAsLastSibling();
+        
+        if (timeout < float.PositiveInfinity && timeout > 0) {
+            Invoke(nameof(HideTooltip), timeout);
+        }
     }
 
-
+    void HideTooltip() => tooltipPanel.gameObject.SetActive(false);
 
     public void OnHoverEnd(ITooltipOnHover tooltipThing) {
         tooltipThing?.OnHoverEnd();
@@ -133,7 +140,7 @@ public class TooltipManager : MonoBehaviour {
         uiActivated = false;
         objectActivated = false;
         isActive = false;
-        tooltipPanel.gameObject.SetActive(false);
+        HideTooltip();
         lastTooltipThing = null;
         lastHoverObject = null;
     }

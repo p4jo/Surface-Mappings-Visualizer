@@ -165,7 +165,7 @@ public partial class TransformedCurve : Curve
         //     throw new Exception("Homeomorphism does not match surface");
     }
 
-    [CanBeNull] public string _name;
+    [CanBeNull] private string _name;
     public override string Name
     {
         get => _name ?? curve.Name + " --> " + homeomorphism.target.Name;
@@ -186,10 +186,9 @@ public partial class TransformedCurve : Curve
     public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
 
     public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t).ApplyHomeomorphism(homeomorphism);
-    // we should have a TangentVector class that is transformable. 
-
     
     public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
+    
     public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism) { Name = Name, Color = Color } ;
 
     public override Curve Reversed() => reverseCurve ??= new TransformedCurve(curve.Reversed(), homeomorphism) { Color = Color, reverseCurve = this };
@@ -407,7 +406,9 @@ public partial class ConcatenatedCurve : Curve
             bool actualJump = distanceSquared > 1e-3f;
             // if distance is too large, this means, these points are actually different; even considering multiple positions.
             // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might be far apart (converging to the different positions).
-            bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
+            bool visualJump = curve.Surface is ModelSurface modelSurface &&
+                              modelSurface.ClampPoint(curve.EndPosition, 1e-3f) is ModelSurfaceBoundaryPoint;
+            // bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
             if (visualJump && (curve.EndPosition is not ModelSurfaceBoundaryPoint || 
                 nextCurve.StartPosition is not ModelSurfaceBoundaryPoint))
             {

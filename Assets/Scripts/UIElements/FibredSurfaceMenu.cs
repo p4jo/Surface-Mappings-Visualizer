@@ -35,6 +35,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     [SerializeField] private GameObject optionList;
     [SerializeField] private GameObject optionTogglePrefab;
     [SerializeField] private TMP_Text descriptionText;
+    [SerializeField] private TMP_Text errorText;
     [SerializeField] private TMP_Text graphStatusText;
     [SerializeField] private ToggleGroup toggleGroup;
 
@@ -50,6 +51,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         this.surfaceMenu = surfaceMenu;
 
         MenuVertex vertex = new MenuVertex(fibredSurface, null);
+        fibredSurface.OnError += HandleError; // handle errors in the fibred surface
         fibredSurfaces.AddVertex(vertex);
         
         currentVertex = vertex;
@@ -101,6 +103,20 @@ public class FibredSurfaceMenu : MonoBehaviour
         
         LayoutRebuilder.ForceRebuildLayoutImmediate(GetComponent<RectTransform>());
     }
+    
+    private void HandleError(string message)
+    {
+        StopCoroutine(suggestionCoroutine);
+        errorText.text += message + "\n";
+        StartCoroutine(ClearErrorText());
+        return;
+
+        IEnumerator ClearErrorText()
+        {
+            yield return new WaitForSeconds(20f);
+            errorText.text = errorText.text.Substring(message.Length + 1); // clear the error text after 10 seconds
+        }
+    }
 
     /// <summary>
     /// This is part of UpdateUI
@@ -117,7 +133,15 @@ public class FibredSurfaceMenu : MonoBehaviour
         {
             descriptionText.text = "Loading next steps...";
             yield return new WaitForEndOfFrame();
-            suggestion = currentVertex.suggestion = FibredSurface.NextSuggestion();
+            try
+            {
+                suggestion = currentVertex.suggestion = FibredSurface.NextSuggestion();
+            }
+            catch (Exception e)
+            {
+                HandleError(e.Message);
+                yield break; // stop the coroutine if an error occurs
+            }
         }
         descriptionText.text = "Displaying next steps...";
         yield return new WaitForEndOfFrame();
@@ -153,6 +177,7 @@ public class FibredSurfaceMenu : MonoBehaviour
                     select toggleOptionPair.Value).ToList();
                 if (selection.Count == 0)
                     selection = new (optionToggles.Values.Take(1));
+                
                 DoSuggestion(buttonText, selection);
             });
         }
@@ -165,8 +190,18 @@ public class FibredSurfaceMenu : MonoBehaviour
         if (FibredSurface.Copyable)
         {
             var newFibredSurface = FibredSurface.Copy();
+            newFibredSurface.OnError += HandleError; // handle errors in the fibred surface
 
-            newFibredSurface.ApplySuggestion(selection, buttonText); // often takes several seconds. Blocks the UI.
+            try
+            {
+                // often takes several seconds. Blocks the UI.
+                newFibredSurface.ApplySuggestion(selection, buttonText); 
+            }
+            catch (Exception e)
+            {
+                HandleError(e.Message);
+                return;
+            }
 
             var newVertex = new MenuVertex(newFibredSurface, null);
             fibredSurfaces.AddVerticesAndEdge(new MenuEdge(
@@ -182,7 +217,16 @@ public class FibredSurfaceMenu : MonoBehaviour
         else
         {
             ClearUI(); // also undraws the surface
-            FibredSurface.ApplySuggestion(selection, buttonText);
+            try
+            {
+                // often takes several seconds. Blocks the UI.
+                FibredSurface.ApplySuggestion(selection, buttonText); 
+            }
+            catch (Exception e)
+            {
+                HandleError(e.Message);
+                return;
+            }
             currentVertex.suggestion = null; // reset the suggestion, so that it is recomputed
             UpdateUI();
         }
@@ -254,71 +298,44 @@ public class FibredSurfaceMenu : MonoBehaviour
             UpdateSelectedSurface(parent);
     }
 
-    public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
-    {
-        string[] lines = text.Split(',', '\n');
-        var graphMap = new Dictionary<string, string>();
-        foreach (string line in lines)
-        {
-            string trim = line.Trim();
-            if (trim == "") 
-                continue;
-            var match = Regex.Match(trim, @"g\s*\((.+)\)\s*=(.*)");
-            if (!match.Success)
-                match = Regex.Match(trim, @"(.+)->(.*)");
-            if (!match.Success)
-                match = Regex.Match(trim, @"(.+)↦(.*)");
-            if (!match.Success)
-                match = Regex.Match(trim, @"(.+):=(.*)");
-            if (!match.Success)
-                match = Regex.Match(trim, @"(.+)=(.*)");
-            if (!match.Success)
-                throw new ArgumentException("The input should be in the form \"g(a) = a B A, g(b) = ...\" or \" a -> a B A, b -> ...\", plus potentially definitions like \"x := a B A\".");
+    public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace) => 
+        UpdateGraphMap(FibredSurface.ParseMap(text), reset, mode);
 
-            string name = match.Groups[1].Value.Trim();
-            string imageText = match.Groups[2].Value;
-            graphMap[name] = imageText;
-        }
-        UpdateGraphMap(graphMap, reset, mode);
-    }
-    
-    public void UpdateGraphMap(IDictionary<string, string> map, bool reset = false,
-        GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
-    {
-        var edgeNames = (from strip in FibredSurface.Strips select strip.Name).ToHashSet();
-        edgeNames.ExceptWith(from k in map.Keys select k.ToLower());
-        foreach (var missingKey in edgeNames) 
-            map[missingKey] = missingKey; // identity on the other edges
-        UpdateGraphMapInternal(fibredSurface => fibredSurface.SetMap(map, mode), reset, mode);
-    }
+    public void UpdateGraphMap(IReadOnlyDictionary<string, string> map, bool reset = false,
+        GraphMapUpdateMode mode = GraphMapUpdateMode.Replace) =>
+        UpdateGraphMap(FibredSurface.ParseMap(map), reset, mode);
 
-    public void UpdateGraphMap(IDictionary<Strip, EdgePath> map, bool reset = false,
+    public void UpdateGraphMap(IReadOnlyDictionary<Strip, EdgePath> map, bool reset = false,
         GraphMapUpdateMode mode = GraphMapUpdateMode.Replace, bool selectFibredSurface = false)
     {
-        var fibredGraphUsedInMap = map.Keys.First().graph;
-        if (FibredSurface.graph != fibredGraphUsedInMap)
+        if (FibredSurface == null)
+            throw new InvalidOperationException("Cannot change the original fibred surface if no fibred surface is selected. Did you initialize the menu with any fibred surface?");
+        if (map.Count > 0)
         {
-            if (!selectFibredSurface)
-                throw new ArgumentException("The map keys must be strips of the current fibred surface.");
-            currentVertex = fibredSurfaces.Vertices.First(v => v.fibredSurface.graph == fibredGraphUsedInMap);
+            var fibredGraphUsedInMap = map.Keys.First().graph;
+            if (FibredSurface.graph != fibredGraphUsedInMap)
+            {
+                if (!selectFibredSurface)
+                    throw new ArgumentException("The map keys must be strips of the current fibred surface.");
+                currentVertex = fibredSurfaces.Vertices.First(v => v.fibredSurface.graph == fibredGraphUsedInMap);
+            }
         }
         var edges = FibredSurface.Strips.ToHashSet();
         edges.ExceptWith(from k in map.Keys select k.UnderlyingEdge);
-        foreach (var missingEdge in edges) 
-            map[missingEdge] = new NormalEdgePath(missingEdge); // identity on the other edges
-        UpdateGraphMapInternal(fibredSurface => fibredSurface.SetMap(map, mode), reset, mode, changeOriginal: true);
-    }
-    
-    private void UpdateGraphMapInternal(Action<FibredSurface> updateMap, bool reset, GraphMapUpdateMode mode, bool changeOriginal = false)
-    {
-        if (changeOriginal && FibredSurface == null)
-            throw new InvalidOperationException("Cannot change the original fibred surface if no fibred surface is selected. Did you initialize the menu with any fibred surface?");
-        var fibredSurfaceCopy = FibredSurface.Copy();
-        var changedFibredSurface = changeOriginal ? FibredSurface : fibredSurfaceCopy;
-        updateMap(changedFibredSurface);
+        if (edges.Count != 0)
+        {
+            var enteredMapNew = new Dictionary<Strip, EdgePath>(map);
+            foreach (var missingEdge in edges)
+                enteredMapNew[missingEdge] = new NormalEdgePath(missingEdge); // identity on the other edges
+            map = enteredMapNew;
+        }
 
-        MenuVertex newVertex = new MenuVertex(changedFibredSurface, null);
-        if (changeOriginal)
+        var fibredSurfaceCopy = FibredSurface.Copy();
+        fibredSurfaceCopy.OnError += HandleError; // handle errors in the fibred surface
+        FibredSurface.SetMap(map, mode);
+
+        MenuVertex newVertex = new MenuVertex(FibredSurface, null);
+        if (true)
         {
             currentVertex.fibredSurface = fibredSurfaceCopy;
             currentVertex.suggestion = null; // reset the suggestion, so that it is recomputed
@@ -332,8 +349,9 @@ public class FibredSurfaceMenu : MonoBehaviour
         else
         {
             var text = (
-                from edge in changedFibredSurface.Strips
-                select ((IDrawable)edge).ColorfulName + " -> " + edge.EdgePath.ToColorfulString(50, 10)
+                from edge in map.Keys
+                where map[edge].Count != 1 || !Equals(map[edge].First(), edge.UnderlyingEdge)  
+                select ((IDrawable)edge).ColorfulName + " -> " + map[edge].ToColorfulString(50, 10)
             ).ToCommaSeparatedString();
             fibredSurfaces.AddVerticesAndEdge(new MenuEdge(
                 currentVertex,
