@@ -15,8 +15,11 @@ public interface IDrawable
     // btw. there is a Raycast method in Dreamteck.Spline.
     
     IDrawable Copy();
-    
-    public virtual string ColorfulName => $"<color=#{ColorUtility.ToHtmlStringRGBA(Color)}>{Name}</color>";
+
+    public virtual string ColorfulName => GetColorfulName();
+        
+    public string GetColorfulName() => $"<color=#{ColorUtility.ToHtmlStringRGBA(Color)}>{Name}</color>";
+    public static string GetColorfulName(Color color, string name) => $"<color=#{ColorUtility.ToHtmlStringRGBA(color)}>{name}</color>";
 }
 
 public interface IDrawnsformable: IDrawable, ITransformable

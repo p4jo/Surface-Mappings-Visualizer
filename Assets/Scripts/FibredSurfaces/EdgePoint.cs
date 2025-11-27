@@ -78,11 +78,12 @@ public class EdgePoint
     }
 
 
-    public override string ToString() => $"Point in Strip {edge.Name} at {ToShortString()}";
+    public override string ToString() => ToString(false);
+    public string ToColorfulString() => ToString(true);
+    protected virtual string ToString(bool colorful) => $"Point in Strip {edge.ColorfulName} at {ToShortString(colorful: colorful)}";
     
-    public string ToShortString(int innerLength = 5, int outerLength = 4)
+    public string ToShortString(int innerLength = 5, int outerLength = 4, bool colorful = false)
     {
-        var names = (from e in edge.EdgePath select e.Name).ToArray();
         var initialSegmentLength = index;
         var firstMiddleSegmentLength = 0;
         var secondMiddleSegmentLength = 0;
@@ -101,17 +102,26 @@ public class EdgePoint
             lastSegmentStart = edge.EdgePath.Count - outerLength;
             secondEllipse = "...";
         }
+        var names = (from e in edge.EdgePath select colorful ? e.ColorfulName : e.Name).ToArray();
         var initialSegment = names[..initialSegmentLength];
         var firstMiddleSegment = names[(index-firstMiddleSegmentLength)..index];
         var lastMiddleSegment = names[index..(index+secondMiddleSegmentLength)];
         var lastSegment = names[lastSegmentStart..];
             
-        return $"g({edge.Name}) = {string.Join(" ", initialSegment)}{firstEllipse}{string.Join(" ", firstMiddleSegment)}|{string.Join(" ", lastMiddleSegment)}{secondEllipse}{string.Join(" ", lastSegment)}";
+        return $"g({(colorful ? edge.ColorfulName : edge.Name)}) = {string.Join(" ", initialSegment)}{firstEllipse}{string.Join(" ", firstMiddleSegment)}|{string.Join(" ", lastMiddleSegment)}{secondEllipse}{string.Join(" ", lastSegment)}";
     }
     
     public string ToSerializationString()
     {
         return $"{edge.Name}@{index}";
+    }
+    
+    public static EdgePoint Deserialize(string inefficiencySerializationString, IEnumerable<Strip> orientedEdges)
+    {
+        var a = inefficiencySerializationString.Split('@');
+        var edge = orientedEdges.First(e => e.Name == a[0]);
+        var index = int.Parse(a[1]);
+        return new EdgePoint(edge, index);
     }
 
     public Strip DgBefore()
@@ -137,6 +147,7 @@ public class EdgePoint
         var e = star.First(e => !Equals(e, edgeReversed));
         return e.Dg;
     }
+
 }
 public class Inefficiency: EdgePoint
 {
@@ -196,19 +207,31 @@ public class Inefficiency: EdgePoint
 
      public bool SameEdgesToFold(Inefficiency other) => edgesToFold.SequenceEqual(other.edgesToFold);
 
-     public override string ToString()
+     protected override string ToString(bool colorful)
      {
-         var fullyFoldedEdgesText = (from e in edgesToFold where e.EdgePath.Count == initialSegmentToFold select e.Name).ToCommaSeparatedString();
-         var partiallyFoldedEdgesText = (from e in edgesToFold where e.EdgePath.Count > initialSegmentToFold select e.Name).ToCommaSeparatedString();
-         
-         var text = $"Inefficiency of order {order} folding {fullyFoldedEdgesText}";
+         var fullyFoldedEdgesText = (from e in edgesToFold where e.EdgePath.Count == initialSegmentToFold select colorful ? e.ColorfulName : e.Name).ToCommaSeparatedString();
+         var partiallyFoldedEdgesText = (from e in edgesToFold where e.EdgePath.Count > initialSegmentToFold select colorful ? e.ColorfulName : e.Name).ToCommaSeparatedString();
+
+         var text = new System.Text.StringBuilder($"Inefficiency of order {order}: {ToShortString(colorful: colorful)}");
+         var before = DgBefore();
+         var after = DgAfter();
+         for (int i = 1; i <= order; i++)
+         {
+             text.Append(" -> ...");
+             text.AppendJoin(" ", before.EdgePath.TakeLast(3).Select(e => colorful ? e.ColorfulName : e.Name));
+             text.Append("|");
+             text.AppendJoin(" ", after.EdgePath.Take(3).Select(e => colorful ? e.ColorfulName : e.Name));
+             text.Append("...");
+             before = before.Dg; // cannot be null, can it?
+             after = after.Dg;
+         }
+         text.Append("\nFold ").Append(fullyFoldedEdgesText);
          if (fullyFoldedEdgesText != "" && partiallyFoldedEdgesText != "")
-             text += $" and initial segments of {partiallyFoldedEdgesText}";
+             text.Append($" and initial segments of {partiallyFoldedEdgesText}");
          else if (partiallyFoldedEdgesText != "")
-             text += $"initial segments of {partiallyFoldedEdgesText}";
-         return $"{text} at {base.ToString()}";
+             text.Append($"initial segments of {partiallyFoldedEdgesText}");
+         return $"{text} (based at {edgesToFold.First().Source.ColorfulName}).";
      }
-     
 
      private const bool AlwaysFoldAllEdgesWithShortSharedInitialSegment = false;
 }

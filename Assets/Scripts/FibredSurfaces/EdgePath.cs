@@ -300,7 +300,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
 
     public string ToColorfulString(int maxLength, int tail)
     {
-        var result = ToColoredString(maxLength, tail, strip => ((IDrawable)strip).ColorfulName);
+        var result = ToColoredString(maxLength, tail, strip => strip.ColorfulName);
         if (result.StartsWith('(') && result.EndsWith(')'))
             result = result[1..^1]; 
         return result;

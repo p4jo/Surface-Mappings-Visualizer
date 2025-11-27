@@ -157,6 +157,27 @@ public static class EnumerableHelpers
         foreach (var element in shiftedList)
             yield return element;
     }
+    
+    /// <summary>
+    /// Rotates the list until the first element satisfying the selector is at the front.
+    /// </summary>
+    public static IEnumerable<T> CyclicShift<T>(this IEnumerable<T> list, Func<T, bool> selector)
+    {
+        var done = false;
+        var shiftedList = new List<T>();
+        foreach (var element in list)
+        {
+            if (!done && !selector(element))
+            {
+                shiftedList.Add(element);
+                continue;
+            }
+            done = true;
+            yield return element;
+        }
+        foreach (var element in shiftedList)
+            yield return element;
+    }
 
     public static IEnumerable<T> EndlessLoop<T>(this IEnumerable<T> list)
     {

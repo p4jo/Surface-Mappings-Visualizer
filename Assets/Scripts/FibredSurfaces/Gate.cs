@@ -30,7 +30,7 @@ public class EdgeCycle
     {
         try
         {
-            return attractedEdges.First(stripDistancePair => stripDistancePair.Item1.Equals(edge)).Item2;
+            return attractedEdges.First(stripDistancePair => Equals(stripDistancePair.Item1, edge)).Item2;
         }
         catch
         {
@@ -52,12 +52,6 @@ public class EdgeCycle
             for (int i = 0; i <= 2 * edges.Count; i++)
                 // it should never break because of the upper limit because after at most #E elements the orbit must repeat.
             {
-                if (e_i == null)
-                {
-                    throw new ArgumentException(
-                        "The strip has no Dg, which messes with the determination of gates. At this point we should assume there are no strips that get mapped into junctions.");
-                    break; // todo? edgeCycle to which all edges attract that eventually map to null under Dg? (Dg∞ = null)
-                }
 
                 var (edgeCycle, l) = Dg_infinity(e_i);
                 if (l >= 0)
@@ -70,13 +64,23 @@ public class EdgeCycle
                     break;
                 }
 
-                int j = orbit.IndexOf(e_i); 
-                if (j < 0) {
-                    orbit.Add(e_i);
-                    e_i = e_i.Dg;
-                    continue;
+                int j = i;
+                if (e_i == null)
+                {
+                    // create edgeCycle to which all edges attract that eventually map to null under Dg (Dg∞ = null, with distance as appropriate)
+                     edgeCycle = new EdgeCycle(null, 1);
                 }
-                edgeCycle = new EdgeCycle(e_i, i - j); 
+                else
+                {
+                    // look for repetition in the orbit
+                    j = orbit.IndexOf(e_i); 
+                    if (j < 0) {
+                        orbit.Add(e_i);
+                        e_i = e_i.Dg;
+                        continue;
+                    }
+                    edgeCycle = new EdgeCycle(e_i, i - j); 
+                }
                 edgeCycles.Add(edgeCycle); // this assigns the Dg∞ to the cycle
 
                 for (int m = 0; m < j; m++)
@@ -93,7 +97,7 @@ public class EdgeCycle
 
         (EdgeCycle, int) Dg_infinity(Strip edge)
         {
-
+            
             foreach (var edgeCycle in edgeCycles)
             {
                 int l = edgeCycle.CycleIndexOf(edge);

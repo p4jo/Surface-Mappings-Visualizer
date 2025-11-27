@@ -30,6 +30,8 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
 
     public Point Position => Patches.FirstOrDefault(v => v is Point) as Point;
 
+    public string ColorfulName => ((IDrawable)this).GetColorfulName();
+
     public Junction Copy(FibredSurface fibredSurface = null, string name = null, Junction image = null, Color? color = null, IEnumerable<IDrawnsformable> patches = null) =>
         new(
             fibredSurface ?? this.fibredSurface,
@@ -63,9 +65,30 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
 
     public override int GetHashCode() => id;
 
-    public string ToColorfulString() =>
-        ((IDrawable)this).ColorfulName + " with cyclic ordered star " +
-        FibredSurface.StarOrdered(this).Select(
-            j => ((IDrawable)j).ColorfulName
-        ).ToCommaSeparatedString();
+    public string ToColorfulString(IReadOnlyList<Gate<Junction>> gates = null)
+    {
+        if (gates == null)
+        {
+            return
+                $"{ColorfulName} with edges {FibredSurface.StarOrdered(this).Select(e => e.ColorfulName).ToCommaSeparatedString()}";
+        }
+
+        var starOrdered = FibredSurface.StarOrdered(this).ToArray();
+        var firstGate = gates.First(gate => gate.Edges.Contains(starOrdered[^1]));
+        var starOrderedShifted = starOrdered.CyclicShift(edge => !firstGate.Edges.Contains(edge));
+
+        Gate<Junction> currentGate = null;
+        var res = "";
+        foreach (var edge in starOrderedShifted)
+        {
+            if (currentGate?.Edges.Contains(edge) != true)
+            {
+                currentGate = gates.First(gate => gate.Edges.Contains(edge));
+                res += "}, {" + edge.ColorfulName;
+            }
+            else
+                res += ", " + edge.ColorfulName;
+        }
+        return ColorfulName + " with gates " + res[3..] + "}";
+    }
 }

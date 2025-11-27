@@ -36,7 +36,9 @@ public abstract class Strip: IEdge<Junction>, IDrawable
     public abstract string Name { get; set; }
     public abstract Color Color { get; set; }
     IDrawable IDrawable.Copy() => Copy();
+    public string ColorfulName => ((IDrawable)this).GetColorfulName();
 
+    public void AssignNewColor() => Color = fibredSurface.NextEdgeColor();
 
     public virtual Junction OtherVertex(Junction vertex) => vertex == Source ? Target : Source;
     
@@ -60,10 +62,7 @@ public abstract class Strip: IEdge<Junction>, IDrawable
     
     public string ToColorfulString()
     {
-        return $"{ColorfulName(this)}: {ColorfulName(Source)} -> {ColorfulName(Target)} with g({ColorfulName(this)}) = {EdgePath.ToColorfulString(300, 15)}";
-        
-        string ColorfulName(IDrawable obj) => obj.ColorfulName; 
-        // Yep, we cannot call Curve.ColorfulName because, why? It implements IDrawnsformable, thus IDrawable, but interface members can only be called if the variable type is that interface.
+        return $"{ColorfulName}: {Source.ColorfulName} -> {Target.ColorfulName} with g({ColorfulName}) = {EdgePath.ToColorfulString(300, 15)}";
     }
 
     public static int SharedInitialSegment(IReadOnlyList<Strip> strips)
@@ -274,15 +273,18 @@ public class OrderedStrip: Strip
     public override Strip Copy(FibredSurface fibredSurface = null, Curve curve = null,
         Junction source = null, Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null)
     {
-        if (!reverse) return UnderlyingEdge.CopyUnoriented(fibredSurface, curve, source, target, edgePath, name); 
+        if (!reverse) return UnderlyingEdge.CopyUnoriented(fibredSurface, curve, source, target, edgePath, name);
         
-        if (edgePath != null) edgePath = edgePath.Inverse();
-        if (curve != null) curve = curve.Reversed();
-        (source, target) = (target, source);
-        (orderIndexStart, orderIndexEnd) = (orderIndexEnd, orderIndexStart);
-        
-        var unorientedCopy = UnderlyingEdge.CopyUnoriented(fibredSurface, curve, source, target, edgePath, name, orderIndexStart, orderIndexEnd);
-        return unorientedCopy.Reversed();
+        return UnderlyingEdge.CopyUnoriented(
+            fibredSurface: fibredSurface,
+            curve: curve?.Reversed(),
+            source: target,
+            target: source,
+            edgePath: edgePath?.Inverse(),
+            name: name,
+            orderIndexStart: orderIndexEnd,
+            orderIndexEnd: orderIndexStart
+        ).Reversed();
     }
 
     public override Junction OtherVertex(Junction vertex) => UnderlyingEdge.OtherVertex(vertex);

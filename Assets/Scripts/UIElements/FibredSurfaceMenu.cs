@@ -106,6 +106,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     
     private void HandleError(string message)
     {
+        Debug.LogError(message);
         StopCoroutine(suggestionCoroutine);
         errorText.text += message + "\n";
         StartCoroutine(ClearErrorText());
@@ -185,7 +186,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     }
 
     // called from UI 
-    private void DoSuggestion(object buttonText, IReadOnlyCollection<(object, string)> selection)
+    private void DoSuggestion(string buttonText, IReadOnlyCollection<(object, string)> selection)
     {
         if (FibredSurface.Copyable)
         {
@@ -195,7 +196,7 @@ public class FibredSurfaceMenu : MonoBehaviour
             try
             {
                 // often takes several seconds. Blocks the UI.
-                newFibredSurface.ApplySuggestion(selection, buttonText); 
+                newFibredSurface.ApplySuggestion(from tuple in selection select tuple.Item1, buttonText); 
             }
             catch (Exception e)
             {
@@ -220,7 +221,7 @@ public class FibredSurfaceMenu : MonoBehaviour
             try
             {
                 // often takes several seconds. Blocks the UI.
-                FibredSurface.ApplySuggestion(selection, buttonText); 
+                FibredSurface.ApplySuggestion(from tuple in selection select tuple.Item1, buttonText); 
             }
             catch (Exception e)
             {
