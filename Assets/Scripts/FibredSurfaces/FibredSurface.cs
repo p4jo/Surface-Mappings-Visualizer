@@ -2063,10 +2063,8 @@ public class FibredSurface : IPatchedDrawnsformable
         
         var subEnumerator = RemoveInefficiencyInSteps(newInefficiency, fineSteps);
         while (subEnumerator.MoveNext())
-        {
             if (fineSteps)
                 yield return subEnumerator.Current;
-        }
     }
 
     #endregion

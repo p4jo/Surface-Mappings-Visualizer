@@ -126,6 +126,7 @@ public class MainMenu: MonoBehaviour
                     side.DeckTransformation(),
                     drawTargetInSameWindowAsSource: true
                 );
+            
             // var modelChange = modelSurface.SwitchHyperbolicModel();
             // if (modelChange != null)
             // {
@@ -151,30 +152,37 @@ public class MainMenu: MonoBehaviour
         }
         
         
+           
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
         var surfaceMenu = gameObject.GetComponent<SurfaceMenu>();
         surfaceMenu.Initialize(surface, canvas, cameraManager, this); 
         surfaceMenu.StuffShown += OnStuffShown;
         surfaceMenu.StuffDeleted += OnStuffDeleted;
         surfaceMenus.Add(surfaceMenu);
-        
-        foreach (var (surfaceName, drawingSurface) in surface.drawingSurfaces)
+        if (surface.drawingSurfaces.Values.FirstOrDefault(
+                surf => surf is ModelSurface
+            ) is ModelSurface primaryModelSurface1)
         {
-            foreach (var puncture in drawingSurface.punctures)
-            {
-                surfaceMenu.Display(puncture, surfaceName, preview: false, propagateToDrawingSurfaces: false); 
-                // Todo: feature: Add styles for displayed points. Here: style: cross
-            }
-            
-            if (drawingSurface is not ModelSurface modelSurface) continue;
-            foreach (ModelSurfaceSide side in modelSurface.sides)
-            {
-                surfaceMenu.Display(side, surfaceName, preview: false, propagateToDrawingSurfaces: false);
-                // Todo: feature: Add styles for displayed curves. Here: style: dotted
-                // surfaceMenu.Display(side.other, surfaceName, preview: false);
-            }
-
+            foreach (ModelSurfaceSide side in primaryModelSurface1.sides)
+                surfaceMenu.Display(side, primaryModelSurface1.Name, preview: false, propagateToDrawingSurfaces: true);
         }
+        // foreach (var (surfaceName, drawingSurface) in surface.drawingSurfaces)
+        // {
+        //     foreach (var puncture in drawingSurface.punctures)
+        //     {
+        //         surfaceMenu.Display(puncture, surfaceName, preview: false, propagateToDrawingSurfaces: false); 
+        //         // Todo: feature: Add styles for displayed points. Here: style: cross
+        //     }
+        //     
+        //     if (drawingSurface is not ModelSurface modelSurface) continue;
+        //     foreach (ModelSurfaceSide side in modelSurface.sides)
+        //     {
+        //         surfaceMenu.Display(side, surfaceName, preview: false, propagateToDrawingSurfaces: false);
+        //         // Todo: feature: Add styles for displayed curves. Here: style: dotted
+        //         // surfaceMenu.Display(side.other, surfaceName, preview: false);
+        //     }
+        //
+        // }
     }
 
     private void OnStuffShown(IDrawnsformable stuff, string surface)
