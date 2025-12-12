@@ -57,6 +57,9 @@ public static class StringHelpers
     public static string ToShortString(this double d) =>
         d switch
         {
+            double.PositiveInfinity => "?",
+            double.NegativeInfinity => "?",
+            double.NaN => "?",
             < 0 => "-" + ToShortString(-d),
             0 => "0",
             < 1e-9 => (d * 1e12).ToString("G3") + "p",

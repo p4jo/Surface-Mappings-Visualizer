@@ -122,12 +122,26 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
         );
     }
 
+    protected const float restrictTolerance = 0.0001f;
+    
+    /// <summary>
+    /// Restrict the curve to a subinterval. This is computed with a tolerance: If start > -ε and end &lt; Length + ε and start &lt; end + ε, the restriction is valid. Else, an ArgumentOutOfRangeException is thrown.
+    /// If start &lt; ε and end > Length - ε, the original curve is returned.
+    /// </summary>
+    /// <param name="start"></param>
+    /// <param name="end"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
     public virtual Curve Restrict(float start, float? end = null)
     {
         var stop = end ?? Length;
-        if (stop > Length)
+        if (start < -restrictTolerance || stop > Length + restrictTolerance || start > stop + restrictTolerance)
+            throw new ArgumentOutOfRangeException($"Invalid restriction in curve {this}: {start} to {end} for length {Length}");
+        if (stop > Length) 
             stop = Length;
-        if (start == 0 && stop == Length)
+        if (start < 0) 
+            start = 0;
+        if (start < restrictTolerance && stop > Length - restrictTolerance)
             return this;
         return new RestrictedCurve(this, start, stop) { Color = Color };
     }
@@ -150,6 +164,7 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
         result.Name = Name;
         return result;
     }
+
 }
 
 public partial class TransformedCurve : Curve
@@ -240,7 +255,7 @@ public partial class ConcatenatedCurve : Curve
                     else
                     {
                         if (singularPoint.outgoingCurve.StartPosition is ModelSurfaceBoundaryPoint boundaryPoint2)
-                            yield return (singularPoint.time, boundaryPoint2);
+                            yield return (singularPoint.time, boundaryPoint2.SwitchSide());
                         else
                         {
                             // todo: Performance. Can we avoid the expensive calls to ClampPoint?
@@ -269,7 +284,8 @@ public partial class ConcatenatedCurve : Curve
         segments = curves.SelectMany(
             curve => curve is ConcatenatedCurve concatenatedCurve ? concatenatedCurve.segments : new []{ curve }
         ).ToArray();
-
+        if (segments.Any(segment => segment.Length == 0))
+            Debug.LogWarning("One of the segments of the concatenated curve has zero length.");
         float length = (from segment in segments select segment.Length).Sum();
         if (length == 0) 
             throw new Exception("Length of curve is zero");
@@ -278,6 +294,12 @@ public partial class ConcatenatedCurve : Curve
         Name = name ?? string.Join(" -> ", from segment in segments select segment.Name);
     }
 
+    /// <summary>
+    /// ATM, this assumes that the curves are in 2D subspace! 
+    /// </summary>
+    /// <param name="segments"></param>
+    /// <returns></returns>
+    /// <exception cref="Exception"></exception>
     static List<Curve> Smoothed(IEnumerable<Curve> segments)
     {
         var curves = segments.ToList();
@@ -301,16 +323,32 @@ public partial class ConcatenatedCurve : Curve
                 throw new Exception("Something went wrong");
 
             var inVector = incomingCurve.EndVelocity.VectorAtPositionIndex(singularPoint.incomingPosIndex);
-            var inAngle = inVector.Angle();
             var outVector = outgoingCurve.StartVelocity.VectorAtPositionIndex(singularPoint.outgoingPosIndex);
+            
+            
+            var (incomingCurveByArclengthFunction, incomingArclength) = GeodesicSurface.TimeFromArclengthParametrization(incomingCurve.Reversed());
+            var (outgoingCurveByArclengthFunction, outgoingArclength) = GeodesicSurface.TimeFromArclengthParametrization(outgoingCurve);
+            inVector *= incomingCurveByArclengthFunction(0).Item2; // dc/ds = dc/dt * dt/ds
+            outVector *= outgoingCurveByArclengthFunction(0).Item2;
+            
+            var inAngle = inVector.Angle();
             var outAngle = outVector.Angle();
             var angle = (inAngle + outAngle) / 2;
+            if (MathF.Abs(inAngle - outAngle) > MathF.PI)
+                angle += MathF.PI;
             var length = MathF.Pow(inVector.sqrMagnitude * outVector.sqrMagnitude, 0.25f);
             
-            var restrictedIncomingCurve = curves[index] = incomingCurve.Restrict(0, incomingCurve.Length * 0.9f);
-            var restrictedOutgoingCurve = curves[index + 1] = outgoingCurve.Restrict(outgoingCurve.Length * 0.1f, outgoingCurve.Length);
-            var startOfFirstInterpolated = restrictedIncomingCurve.EndVelocity;
-            var endOfLastInterpolated = restrictedOutgoingCurve.StartVelocity;
+            
+            var incomingDeductedArclength = 0.3f * incomingArclength * (1 - MathF.Exp(-length / incomingArclength / 0.3f));
+            var outgoingDeductedArclength = 0.3f * outgoingArclength * (1 - MathF.Exp(-length / outgoingArclength / 0.3f));
+
+            var incomingDeductedLength = incomingCurveByArclengthFunction(incomingDeductedArclength).Item1;
+            var outgoingDeductedLength = outgoingCurveByArclengthFunction(outgoingDeductedArclength).Item1;
+            var restrictedIncomingCurve = curves[index] = incomingCurve.Restrict(0, incomingCurve.Length - incomingDeductedLength);
+            var restrictedOutgoingCurve = curves[index + 1] = outgoingCurve.Restrict(outgoingDeductedLength);
+            
+            var startOfFirstInterpolated = incomingCurveByArclengthFunction(incomingDeductedArclength).Item2 * restrictedIncomingCurve.EndVelocity; // dc/ds = dc/dt * dt/ds
+            var endOfLastInterpolated = outgoingCurveByArclengthFunction(outgoingDeductedArclength).Item2 * restrictedOutgoingCurve.StartVelocity;
             
             var centerVector = Complex.FromPolarCoordinates(length, angle).ToVector3(); 
             // centerVector is the abstract vector in the shared tangent space (corresponding to the incomingPosIndex'th position of incomingCurve and the outgoingPosIndex'th position of outgoingCurve)
@@ -318,11 +356,11 @@ public partial class ConcatenatedCurve : Curve
             var outgoingCenterVector = new TangentVector(outgoingCurve.StartPosition, outgoingCurve.StartPosition.PassThrough(singularPoint.outgoingPosIndex, 0, centerVector));
 
             var firstInterpolated = new SplineSegment(
-                startOfFirstInterpolated, ingoingCenterVector,incomingCurve.Length * 0.1f,  incomingCurve.Surface,  incomingCurve.Name + " interp. segment"             
+                startOfFirstInterpolated, ingoingCenterVector, incomingDeductedArclength,  incomingCurve.Surface,  incomingCurve.Name + " interp. segment"             
             );
 
             var secondInterpolated = new SplineSegment(
-                outgoingCenterVector, endOfLastInterpolated, outgoingCurve.Length * 0.1f, outgoingCurve.Surface, outgoingCurve.Name + " interp. segment"
+                outgoingCenterVector, endOfLastInterpolated, outgoingDeductedArclength, outgoingCurve.Surface, outgoingCurve.Name + " interp. segment"
             );
             
             curves.Insert(index + 1, firstInterpolated);
@@ -399,7 +437,7 @@ public partial class ConcatenatedCurve : Curve
                 break;
             timeA += curve.Length; // todo: Bug. this seems to not work correctly in some cases (the time is the 0.1f*Length off in the smoothed curves) and this compounds.
             
-            var (herePosIndex, therePosIndex, distanceSquared) = curve.EndPosition.ClosestPositionIndices(nextCurve.StartPosition);
+            var (herePosIndex, therePosIndex, distanceSquared) = curve.EndPosition.ClosestPositionIndices(nextCurve.StartPosition, curve.Surface as GeodesicSurface);
             // if (!curve.EndPosition.Equals(nextCurve.StartPosition))
             bool angleJump = !curve.EndVelocity.VectorAtPositionIndex(herePosIndex).ApproximatelyEquals(
                 nextCurve.StartVelocity.VectorAtPositionIndex(therePosIndex));
@@ -435,34 +473,43 @@ public partial class ConcatenatedCurve : Curve
     }
 
     public override Curve Restrict(float start, float? end = null)
-    {
-        end ??= Length;
-        if (start < 0 || end > Length || start > end)
-            throw new Exception("Invalid restriction");
+    { 
+        var stop = end ?? Length;
+        if (start < -restrictTolerance || stop > Length + restrictTolerance || start > stop + restrictTolerance)
+            throw new ArgumentOutOfRangeException($"Invalid restriction in curve {this}: {start} to {end} for length {Length}");
+        if (stop > Length) 
+            stop = Length;
+        if (start < 0) 
+            start = 0;
+        if (start < restrictTolerance && stop > Length - restrictTolerance)
+            return this;
+        
+        
         var movedStartTime = start;
-        var movedEndTime = end.Value;
+        var movedEndTime = stop;
         int startSegmentIndex = -1, endSegmentIndex = segments.Length;
         for (int i = 0; i < segments.Length; i++)
         {
             var segmentLength = segments[i].Length;
-            if (startSegmentIndex == -1)
+            if (movedStartTime <= segmentLength - restrictTolerance)
             {
-                if (movedStartTime > segmentLength)
-                {
-                    movedStartTime -= segmentLength;
-                    movedEndTime -= segmentLength;
-                    continue;
-                }
                 startSegmentIndex = i;
+                break;
             }
 
-            if (movedEndTime > segmentLength)
+            movedStartTime -= segmentLength; // > - restrictTolerance
+        }
+
+        for (int i = 0; i < segments.Length; i++)
+        {
+            var segmentLength = segments[i].Length;
+            if (movedEndTime <= segmentLength + restrictTolerance)
             {
-                movedEndTime -= segmentLength;
-                continue;
+                endSegmentIndex = i;
+                break;
             }
-            endSegmentIndex = i;
-            break;
+
+            movedEndTime -= segmentLength; // > restrictTolerance
         }
         if (startSegmentIndex == endSegmentIndex)
         {
@@ -478,7 +525,7 @@ public partial class ConcatenatedCurve : Curve
             return restrictedSegment; // will do the same and return the standing path.
         }
 
-        var firstSegment = segments[startSegmentIndex].Restrict(movedStartTime, segments[startSegmentIndex].Length);
+        var firstSegment = segments[startSegmentIndex].Restrict(movedStartTime);
         var curves = segments[(startSegmentIndex + 1)..endSegmentIndex].Prepend(firstSegment);
         
         if (endSegmentIndex < segments.Length) 
@@ -577,7 +624,19 @@ public class RestrictedCurve : Curve
     public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
         => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
 
-    public override Curve Restrict(float start, float? end = null) => new RestrictedCurve(curve, this.start + start, this.start + (end ?? Length)) { Color = Color };
+    public override Curve Restrict(float start, float? end = null)
+    {
+        var stop = end ?? Length;
+        if (start < -restrictTolerance || stop > Length + restrictTolerance || start > stop + restrictTolerance)
+            throw new Exception($"Invalid restriction in curve {this}: {start} to {end} for length {Length}");
+        if (stop > Length) 
+            stop = Length;
+        if (start < 0) 
+            start = 0;
+        if (start < restrictTolerance && stop > Length - restrictTolerance)
+            return this;
+        return new RestrictedCurve(curve, this.start + start, this.start + (end ?? Length)) { Color = Color };
+    }
 
     public override Curve Copy() =>
         new RestrictedCurve(curve.Copy(), start, end)

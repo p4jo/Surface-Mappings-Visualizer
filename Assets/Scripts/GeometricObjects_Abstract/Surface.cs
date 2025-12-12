@@ -64,7 +64,7 @@ public abstract class GeodesicSurface: Surface
     public virtual float Distance(Point startPoint, Point endPoint) => MathF.Sqrt(DistanceSquared(startPoint, endPoint));
 
     public abstract float DistanceSquared(Point startPoint, Point endPoint);
-
+    
     public virtual float CurveLength(Curve curve)
     {
         var res = 0.1f;
@@ -92,10 +92,11 @@ public abstract class GeodesicSurface: Surface
         for (float t = res; t < T; t += res)
         {
             var p = curve[t];
-            l += MathF.Sqrt(surface.DistanceSquared(p, lastPoint));
+            l += surface.Distance(p, lastPoint);
+            lastPoint = p;
             lengths.Add(l);
         }
-        var lastLength = MathF.Sqrt(surface.DistanceSquared(curve.EndPosition, lastPoint));
+        var lastLength = surface.Distance(curve.EndPosition, lastPoint);
         var lastTimeInterval = curve.Length - (lengths.Count - 1) * res;
         return (lengths, lastLength, lastTimeInterval);
     }
@@ -111,6 +112,13 @@ public abstract class GeodesicSurface: Surface
         var (lengths, lastLength, lastTimeInterval) = ArclengthFromTimeList(curve, res);
         var f = ListToInverseDerivative(lengths, lastLength, lastTimeInterval, res);
         return x => f(x).Item1;
+    }
+    
+    public static (Func<float, (float, float)>, float) TimeFromArclengthParametrization(Curve curve, float res = 0.05f)
+    {
+        var (lengths, lastLength, lastTimeInterval) = ArclengthFromTimeList(curve, res);
+        var f = ListToInverseDerivative(lengths, lastLength, lastTimeInterval, res);
+        return (f, lastLength + lengths[^1]);
     }
 
     static Func<float, float> ListToFunction(List<float> lengths, float lastLength, float lastTimeInterval, float res) =>
@@ -132,20 +140,17 @@ public abstract class GeodesicSurface: Surface
         float lastTimeInterval, float res) =>
         length =>
         { // todo: check
-            if (length <= 0) return (0f, 0f);
             float dtdl = lastTimeInterval / lastLength;
-            float t = lengths[^1] + lastLength;
+
+            if (length > lengths[^1])
+                return (res * lengths.Count + (length - lengths[^1]) * dtdl, dtdl);
             
-            if (length > lengths[^1] + lastLength)
-                return (t, dtdl );
-            
-            int i = 0;
-            while (i < lengths.Count && lengths[i] < length) 
+            int i = 1;
+            while (length > lengths[i]) 
                 i++;
-            if (i < lengths.Count)
-                dtdl = res / (lengths[i] - lengths[i - 1]);
-            t = res * (i - 1) + (length - lengths[i - 1]) * dtdl;
-            return (t, dtdl);
+            
+            dtdl = res / (lengths[i] - lengths[i - 1]);
+            return (res * (i - 1) + (length - lengths[i - 1]) * dtdl, dtdl);
         };
 
     public static Curve ByArclength(Curve curve)
@@ -177,6 +182,12 @@ public abstract class GeodesicSurface: Surface
             return dtdl * curve.DerivativeAt(t);
         }
     }
+
+    /// <summary>
+    /// Computes the times of intersection of two geodesics. The curves have to be Geodesics on this surface!
+    /// </summary>
+    /// <returns>null if there is no intersection (in finite time)</returns>
+    public abstract (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2);
 }
 
 public class ShiftedCurve : Curve
@@ -366,5 +377,15 @@ public class ShiftedCurve : Curve
     public override Curve Reversed() => reverseCurve ??=
         new ShiftedCurve(curve.Reversed(), t => - shift(Length - t), Name.EndsWith("'") ? Name : Name + "'") { Color = Color, reverseCurve =  this, _visualJumpTimes = (from jumpTime in VisualJumpTimes select Length - jumpTime).ToList() };
 
-    public override Curve Restrict(float start, float? end = null) => new ShiftedCurve(curve.Restrict(start, end), t => shift(t + start), Name + $"[{start:g2}, {end:g2}]") {Color = Color};
+    public override Curve Restrict(float start, float? end = null)
+    {
+        var stop = end ?? Length;
+        if (stop > Length - restrictTolerance)
+            stop = Length;
+        // ReSharper disable once CompareOfFloatsByEqualityOperator
+        if (start == 0 && stop == Length)
+            return this;
+        return new ShiftedCurve(curve.Restrict(start, end), t => shift(t + start), Name + $"[{start:g2}, {end:g2}]")
+            { Color = Color };
+    }
 }

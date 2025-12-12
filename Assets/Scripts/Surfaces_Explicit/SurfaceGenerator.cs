@@ -604,11 +604,28 @@ public static class SurfaceGenerator
     public static (AbstractSurface, FibredSurface) CreateSurface(IEnumerable<SurfaceParameter> parameters)
     {
         var p = parameters.First();
+        FibredSurface fibredSurface = null;
         if (p.connectedSumEmbedding)
-            return (new AbstractSurface(
-                GenusGSurfaceConnectedSumFlat(p.genus, p.punctures).embedding
-            ), null);
-        var fibredSurface = SpineForSurface(p.genus, p.punctures, p.peripheralPunctures);
+        {
+            var parametricSurface = GenusGSurfaceConnectedSumFlat(p.genus, p.punctures);
+            var embedding = parametricSurface.embedding;
+            if (p.genus == 1 && p.punctures == 1 && p.peripheralPunctures == 0)
+            {
+                fibredSurface = SpineForSurface(p.genus, p.punctures, p.peripheralPunctures);
+                embedding = new Homeomorphism(fibredSurface.surface, parametricSurface,
+                    embedding.f, embedding.fInv, embedding.df,
+                    embedding.dfInv, "T ⊆ R³"); 
+                // change source of embedding. This depends on me not changing the implementation...
+                // Both are FlatTorusModelSurface(...)
+            }
+            else
+            {
+                // todo: Feature, a spine for the connected sum model surface.
+            }
+            return (new AbstractSurface(embedding), fibredSurface);
+        }
+
+        fibredSurface = SpineForSurface(p.genus, p.punctures, p.peripheralPunctures);
         return (new AbstractSurface(fibredSurface.surface), fibredSurface);
         // todo: Feature: Make the parameters useful (or delete them)
         

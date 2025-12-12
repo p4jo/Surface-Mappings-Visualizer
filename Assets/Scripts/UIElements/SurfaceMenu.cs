@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
@@ -54,10 +55,15 @@ public class SurfaceMenu: MonoBehaviour
     [SerializeField] private Color previewCurveColor;
     [SerializeField] private float closenessThresholdBaseValue = 0.01f;
     private static int _visualizerPositionID;
+    public CurveEditor curveEditor;
     public event Action<IDrawnsformable, string> StuffShown;
     public event Action<IDrawnsformable, string> StuffDeleted;
-    
 
+
+    public void Start()
+    {
+        curveEditor.CurveUpdated += UpdateCurve;
+    }
 
     public void Initialize(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager, MainMenu mainMenu)
     {
@@ -264,7 +270,10 @@ public class SurfaceMenu: MonoBehaviour
         }
     }
 
-
+    public void UpdateCurve(Curve curve)
+    {
+        Display(curve); // in the SurfaceVisualizer, this reuses the same CurveVisualizer (if the curve still has the same name), just reinitinalizes it.
+    }
 
     public void MouseEvent(Point location, string surfaceName, int button)
     {

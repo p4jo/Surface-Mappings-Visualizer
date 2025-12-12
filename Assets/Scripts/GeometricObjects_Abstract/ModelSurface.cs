@@ -278,7 +278,13 @@ public partial class ModelSurface: GeodesicSurface
         // the corresponding homeomorphisms must be defined elsewhere (where this is called from)
     }
     
-    public Curve GetBasicGeodesic(Point startPoint, Point endPoint, string name, GeodesicSurface surface = null) => GeometrySurface.GetGeodesic(startPoint, endPoint, name, surface ?? this);
+    public Curve GetBasicGeodesic(Point startPoint, Point endPoint, string name, GeodesicSurface surface = null)
+    {
+        surface ??= this;
+        // var ((startPos, endPos), _) = startPoint.ClosestPosition(endPoint, surface);
+        return GeometrySurface.GetGeodesic(startPoint, endPoint, name, surface);
+    }
+
     public Curve GetBasicGeodesic(TangentVector tangentVector, float length, string name, GeodesicSurface surface = null) => GeometrySurface.GetGeodesic(tangentVector, length, name, surface ?? this);
     
     public override Curve GetGeodesic(Point startPoint, Point endPoint, string name, GeodesicSurface surface = null)
@@ -291,17 +297,14 @@ public partial class ModelSurface: GeodesicSurface
             endPoint = ClampPoint(endPoint.Position, 0.001f);
         if (endPoint is null)
             throw new Exception("The end point is not on the surface.");
-
+ 
         var centerPoint = DistanceMinimizer(startPoint, endPoint, GeometrySurface);
         if (centerPoint == null)
-            return GetBasicGeodesic(startPoint, endPoint, name, surface);
+        {
+            var ((startPos, endPos), _) = startPoint.ClosestPosition(endPoint, surface);
+            return GetBasicGeodesic(startPos, endPos, name, surface);
+        }
         
-        var ((_, firstCenterPosition), _) = startPoint.ClosestPosition(centerPoint);
-        var ((_, secondCenterPosition), _) = endPoint.ClosestPosition(centerPoint);
-        if (secondCenterPosition == firstCenterPosition) // else we would go from centerPoint.Position to centerPoint.Position
-            Debug.Log("Weird reflection at the boundary. For some reason it thought that going to the boundary is efficient, but we actually don't go through it because that takes longer.");
-        if (firstCenterPosition != centerPoint.Position) // else, we actually want to go from centerPoint.Positions[1] to centerPoint.Position[2]
-            centerPoint = centerPoint.SwitchSide(); // we want to go from centerPoint.Position[2] to centerPoint.Position[1]
         var firstSegment = GetBasicGeodesic(startPoint, centerPoint, name + "pt 1", surface);
         var secondSegment = GetBasicGeodesic(centerPoint.SwitchSide(), endPoint, name + "pt 2", surface);
         return new ConcatenatedCurve(new[] { firstSegment, secondSegment },
@@ -384,26 +387,23 @@ public partial class ModelSurface: GeodesicSurface
 
     private ModelSurfaceBoundaryPoint DistanceMinimizer(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
     {
+        // TODO implement for vertices?
+        if (startPoint is ModelSurfaceVertex vertex)
+            startPoint = vertex.boundaryCurves.First().ValueAt(0.01f);
+        if (endPoint is ModelSurfaceVertex vertex2)
+            endPoint = vertex2.boundaryCurves.First().ValueAt(0.01f);
         if (startPoint is not IModelSurfacePoint start || endPoint is not IModelSurfacePoint end)
             throw new("Start and end point should have the type IModelSurfacePoint");
         var (optimalSide, _) = DistanceMinimizingDeckTransformation1Side(startPoint, endPoint);
         if (optimalSide == null)
             return null;
         var geodesic = baseGeometrySurface.GetGeodesic(startPoint, endPoint.ApplyHomeomorphism(optimalSide.DeckTransformation()), "DistanceMinimizer");
-        var a = start.ClosestBoundaryPoints(optimalSide);
-        var b = end.ClosestBoundaryPoints(optimalSide.other);
-        var t1 = MathF.Sqrt( a.DistanceSquared(startPoint) );
-        var t2 = MathF.Sqrt(  b.DistanceSquared(endPoint) );
-        var t = (t1 + (geodesic.Length - t2)) / 2;
-        t = Mathf.Clamp(t, 0, geodesic.Length);
-        var intersectionPoint = ClampPoint(geodesic[t], MathF.Max(t, geodesic.Length - t) / 5f, allowVertices: false);
-        if (intersectionPoint is ModelSurfaceBoundaryPoint sidePoint)
-            return sidePoint;
-        Debug.LogError($"Intersection point {intersectionPoint} is not a ModelSurfaceBoundaryPoint, but {intersectionPoint.GetType()}");
-        return null;
+        var (tGeodesic, tSide) = baseGeometrySurface.GetGeodesicIntersection(geodesic, optimalSide.curve) ?? throw new Exception("There should be an intersection point here.");
+        return new ModelSurfaceBoundaryPoint(optimalSide, tSide);
     }
 
-    private (ModelSurfaceSide optimalSide, float shortestLength) DistanceMinimizingDeckTransformation1Side(Point startPoint,
+    private const float preferBasicGeodesicTolerance = 0.01f;
+    private (ModelSurfaceSide optimalSide, float shortestLengthSquared) DistanceMinimizingDeckTransformation1Side(Point startPoint,
         Point endPoint)
     {
         ModelSurfaceSide optimalSide = null;
@@ -412,12 +412,14 @@ public partial class ModelSurface: GeodesicSurface
         {
             float distance = GeometrySurface.DistanceSquared(startPoint, endPoint.ApplyHomeomorphism(side.DeckTransformation()));
 
-            if (!(distance < shortestLength)) continue;
+            if (distance >= shortestLength || optimalSide == null && distance >= shortestLength - preferBasicGeodesicTolerance) 
+                continue;
             shortestLength = distance;
             optimalSide = side;
         }
         return (optimalSide, shortestLength);
     }
+
 
     private ModelSurfaceBoundaryPoint DistanceMinimizerOld(Point startPoint, Point endPoint, GeodesicSurface baseGeometrySurface)
     {
@@ -450,14 +452,17 @@ public partial class ModelSurface: GeodesicSurface
             continue;
 
             float LengthVia(ModelSurfaceBoundaryPoint x) =>
-                baseGeometrySurface.DistanceSquared(x, startPoint) + baseGeometrySurface.DistanceSquared(x, endPoint); // this minimizes over the positions
+                baseGeometrySurface.Distance(x, startPoint) + baseGeometrySurface.Distance(x, endPoint); // this minimizes over the positions
         }
         return result;
     }
 
+    // sped up by 50 times from using GetGeodesic(....).Length ^ 2
     public override float DistanceSquared(Point startPoint, Point endPoint) => 
         DistanceMinimizingDeckTransformation1Side(startPoint, endPoint).Item2;
-    // sped up by 50 times from using GetGeodesic(....).Length ^ 2
+
+    public override (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2) =>
+        GeometrySurface.GetGeodesicIntersection(geodesic1, geodesic2);
 
     public override Point ClampPoint(Vector3? point, float closenessThreshold) => 
         ClampPoint(point, closenessThreshold, allowVertices: true);

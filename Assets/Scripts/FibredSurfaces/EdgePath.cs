@@ -18,7 +18,10 @@ public abstract class EdgePath : IReadOnlyList<Strip>
         return new ConjugateEdgePath(this, c, left);
     }
 
-    public abstract EdgePath Inverse();
+    private EdgePath inverse = null;
+    public EdgePath Inverse => inverse ??= GetInverse();
+
+    protected abstract EdgePath GetInverse();
 
     public abstract IEnumerator<Strip> GetEnumerator();
 
@@ -26,7 +29,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
     
     public EdgePath Replace(Func<UnorientedStrip, Strip> newEdges) => 
         Replace(
-            strip => strip is OrderedStrip { reverse: true }
+            strip => strip is ReverseStrip
                 ? newEdges(strip.UnderlyingEdge).Reversed()
                 : newEdges(strip.UnderlyingEdge)
         );
@@ -35,8 +38,8 @@ public abstract class EdgePath : IReadOnlyList<Strip>
     
     public EdgePath Replace(Func<UnorientedStrip, EdgePath> newEdges) => 
         Replace(
-            strip => strip is OrderedStrip { reverse: true }
-                ? newEdges(strip.UnderlyingEdge).Inverse()
+            strip => strip is ReverseStrip
+                ? newEdges(strip.UnderlyingEdge).Inverse
                 : newEdges(strip.UnderlyingEdge)
         );
     
@@ -80,7 +83,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
         );
         definitionList ??= Array.Empty<NamedEdgePath>();
         var definitions = definitionList.Concat(
-            definitionList.Select(definition => (NamedEdgePath)definition.Inverse())
+            definitionList.Select(definition => (NamedEdgePath)definition.Inverse)
         ).ToDictionary(
             namedEdgePath => namedEdgePath.name
         );
@@ -121,7 +124,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
                     }
                     if (lastThing != null)
                     {
-                        lastThing = lastThing.Inverse();
+                        lastThing = lastThing.Inverse;
                         break;
                     }
                     throw new ArgumentException($"Misplaced ' in your input at location {i}");
@@ -246,7 +249,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
                     case '\'':
                         if (!CloseAndReturnLastVariable(out readStrip))
                             throw new ArgumentException($"Misplaced ' in your input at location {i}");
-                        var stripReversed = readStrip.Inverse();
+                        var stripReversed = readStrip.Inverse;
                         return stripReversed;
                     case '°':
                     case '^':
@@ -360,7 +363,7 @@ public class NamedEdgePath : EdgePath
         this.name = name;
     }
 
-    public override EdgePath Inverse() => new NamedEdgePath(value.Inverse(), name.ReverseUpper());
+    protected override EdgePath GetInverse() => new NamedEdgePath(value.Inverse, name.ReverseUpper());
 
     public override IEnumerator<Strip> GetEnumerator() => value.GetEnumerator();
 
@@ -399,18 +402,17 @@ public class ConjugateEdgePath : NestedEdgePath // todo: Clean code: remove this
 
     public ConjugateEdgePath(EdgePath inner, EdgePath outer, bool leftConjugation): base(
         leftConjugation ?
-            new []{ outer, inner, outer.Inverse() } :
-            new []{ outer.Inverse(), inner, outer }
+            new []{ outer, inner, outer.Inverse } :
+            new []{ outer.Inverse, inner, outer }
     )
     {
         this.inner = inner;
         this.outer = outer;
         this.leftConjugation = leftConjugation;
     }
-    
-    
 
-    public override EdgePath Inverse() => new ConjugateEdgePath(inner.Inverse(), outer, leftConjugation);
+
+    protected override EdgePath GetInverse() => new ConjugateEdgePath(inner.Inverse, outer, leftConjugation);
 
     public override EdgePath Replace(Func<Strip, Strip> newEdges) => 
         inner.Replace(newEdges).Conjugate(
@@ -428,7 +430,7 @@ public class ConjugateEdgePath : NestedEdgePath // todo: Clean code: remove this
         other switch
         {
             EdgePath { IsEmpty: true } => this,
-            ConjugateEdgePath otherConjugate when otherConjugate.outer.Equals(outer) && otherConjugate.leftConjugation == leftConjugation || otherConjugate.outer.Equals(outer.Inverse()) && otherConjugate.leftConjugation != leftConjugation => new ConjugateEdgePath(inner.Concat(otherConjugate.inner), outer,  leftConjugation),
+            ConjugateEdgePath otherConjugate when otherConjugate.outer.Equals(outer) && otherConjugate.leftConjugation == leftConjugation || otherConjugate.outer.Equals(outer.Inverse) && otherConjugate.leftConjugation != leftConjugation => new ConjugateEdgePath(inner.Concat(otherConjugate.inner), outer,  leftConjugation),
             NestedEdgePath nestedEdgePath and not ConjugateEdgePath => new NestedEdgePath(nestedEdgePath.subPaths.Prepend(this)),
             _ => new NestedEdgePath(this, other)
         };
@@ -478,8 +480,8 @@ public class NestedEdgePath : EdgePath
     public NestedEdgePath(IEnumerable<EdgePath> subPaths) : this(subPaths.ToArray())
     {   }
 
-    private EdgePath inverse;
-    public override EdgePath Inverse() => inverse ??= new NestedEdgePath(subPaths.Reverse().Select(path => path.Inverse()));
+
+    protected override EdgePath GetInverse() => new NestedEdgePath(subPaths.Reverse().Select(path => path.Inverse));
 
     public override IEnumerator<Strip> GetEnumerator() => subPaths.SelectMany(edgePath => edgePath).GetEnumerator();
 
@@ -592,10 +594,10 @@ class NormalEdgePath : EdgePath
     public NormalEdgePath(IEnumerable<Strip> strips) : this(strips.ToArray())
     {   }
 
-    public override EdgePath Inverse()
+    protected override EdgePath GetInverse()
     {
         Strip[] reversedNormalEdgePath = new Strip[edges.Length];
-        for (int i = 0; i < edges.Length; i++) 
+        for (int i = 0; i < edges.Length; i++)
             reversedNormalEdgePath[i] = edges[^(i + 1)].Reversed();
         return new NormalEdgePath(reversedNormalEdgePath);
     }

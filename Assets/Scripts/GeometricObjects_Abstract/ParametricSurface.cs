@@ -6,6 +6,10 @@ using UnityEngine;
 [Serializable]
 public class ParametricSurface: Surface
 {
+    /// <summary>
+    /// The defining Homeomorphism from a ModelSurface (or Cylinder) to this surface (actually an embedding to R^3).
+    /// Use embedding.source to access the ModelSurface
+    /// </summary>
     public readonly Homeomorphism embedding; 
     
     public readonly List<Rect> chartRects = new();
@@ -13,6 +17,14 @@ public class ParametricSurface: Surface
     public override Vector3 MinimalPosition { get; }
     public override Vector3 MaximalPosition { get; }
     
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="embedding">The defining "Homeomorphism" from a ModelSurface (or Cylinder) to R^3. The source should be a ModelSurface, and the target will be assigned to this (the result of the constructor) inside the constructor.</param>
+    /// <param name="chartRects"></param>
+    /// <param name="minimalPosition"></param>
+    /// <param name="maximalPosition"></param>
     public ParametricSurface(string name, Homeomorphism embedding, IEnumerable<Rect> chartRects, Vector3 minimalPosition, Vector3 maximalPosition) : base(name, embedding.source.Genus, false)
     {
         embedding.target = this;

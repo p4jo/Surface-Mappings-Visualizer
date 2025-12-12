@@ -66,7 +66,7 @@ public class PushingPath : IPatchedDrawnsformable
         }
 
         public override EdgePath AssociatedPath(PushingPath pushingPath) => new ConjugateEdgePath(
-            rightToLeft ? pushingPath.punctureWord : pushingPath.punctureWord.Inverse(),
+            rightToLeft ? pushingPath.punctureWord : pushingPath.punctureWord.Inverse,
             pushingPath.ConjugationPath(pushingPath.path.IndexOf(secondTime)),
             true
         );
@@ -579,7 +579,7 @@ public class PushingPath : IPatchedDrawnsformable
                 ).OrderBy(
                     tuple => ((EdgeCrossing) tuple.t).positionAlongEdge.Value * (reverse ? -1 : 1))
                 .Select(tuple => 
-                        (((EdgeCrossing) tuple.t).rightToLeft != reverse ? punctureWord : punctureWord.Inverse())
+                        (((EdgeCrossing) tuple.t).rightToLeft != reverse ? punctureWord : punctureWord.Inverse)
                         .Conjugate(ConjugationPath(tuple.i), true)
                     );
     }

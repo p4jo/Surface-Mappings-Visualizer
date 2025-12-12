@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using QuikGraph;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 using MenuEdge = QuikGraph.TaggedEdge<FibredSurfaceMenu.MenuVertex, string>;
 
@@ -38,7 +39,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     [SerializeField] private TMP_Text errorText;
     [SerializeField] private TMP_Text graphStatusText;
     [SerializeField] private ToggleGroup toggleGroup;
-
+    [SerializeField] private UnityEvent<FibredSurface> OnFibredSurfaceChanged;
     private readonly AdjacencyGraph<MenuVertex, MenuEdge> fibredSurfaces = new();
     public FibredSurface FibredSurface => currentVertex?.fibredSurface;
     
@@ -49,19 +50,22 @@ public class FibredSurfaceMenu : MonoBehaviour
     public void Initialize(FibredSurface fibredSurface, SurfaceMenu surfaceMenu)
     {
         this.surfaceMenu = surfaceMenu;
-
+        OnFibredSurfaceChanged.AddListener(surfaceMenu.curveEditor.UpdateDropdown);
         MenuVertex vertex = new MenuVertex(fibredSurface, null);
         fibredSurface.OnError += HandleError; // handle errors in the fibred surface
         fibredSurfaces.AddVertex(vertex);
         
         currentVertex = vertex;
+        OnFibredSurfaceChanged.Invoke(fibredSurface);
         UpdateUI();
     }
+
 
     private void UpdateSelectedSurface(MenuVertex newVertex)
     {        
         ClearUI();
         this.currentVertex = newVertex;
+        OnFibredSurfaceChanged.Invoke(newVertex.fibredSurface);
         UpdateUI();
     }
 
@@ -299,12 +303,30 @@ public class FibredSurfaceMenu : MonoBehaviour
             UpdateSelectedSurface(parent);
     }
 
-    public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace) => 
-        UpdateGraphMap(FibredSurface.ParseMap(text), reset, mode);
+    public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
+    {
+        try
+        {
+            UpdateGraphMap(FibredSurface.ParseMap(text), reset, mode);
+        }
+        catch (Exception e)
+        {
+            HandleError(e.Message);
+        }
+    }
 
     public void UpdateGraphMap(IReadOnlyDictionary<string, string> map, bool reset = false,
-        GraphMapUpdateMode mode = GraphMapUpdateMode.Replace) =>
-        UpdateGraphMap(FibredSurface.ParseMap(map), reset, mode);
+        GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
+    {
+        try
+        {
+            UpdateGraphMap(FibredSurface.ParseMap(map), reset, mode);
+        }
+        catch (Exception e)
+        {
+            HandleError(e.Message);
+        }
+    }
 
     public void UpdateGraphMap(IReadOnlyDictionary<Strip, EdgePath> map, bool reset = false,
         GraphMapUpdateMode mode = GraphMapUpdateMode.Replace, bool selectFibredSurface = false)

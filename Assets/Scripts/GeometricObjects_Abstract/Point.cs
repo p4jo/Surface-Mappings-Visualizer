@@ -22,16 +22,22 @@ public abstract partial class Point : IEquatable<Point>, ITransformable<Point>
                     otherPosition => otherPosition.ApproximatelyEquals(position)
                 ));
     
-    public (int, int, float) ClosestPositionIndices(Point other)
+    public (int, int, float) ClosestPositionIndices(Point other, GeodesicSurface surface = null)
     {
-        var (n, dist) = Positions.CartesianProduct(other.Positions)
-            .ArgMinIndex(positions => (positions.Item1 - positions.Item2).sqrMagnitude);
+        var (n, dist) = Positions.CartesianProduct(other.Positions).ArgMinIndex(
+                surface != null
+                    ? positions => surface.DistanceSquared(positions.Item1, positions.Item2)
+                    : positions => (positions.Item1 - positions.Item2).sqrMagnitude
+            );
         int count = other.Positions.Count();
         return (n / count, n % count, dist);
     }
 
-    public virtual ((Vector3, Vector3), float) ClosestPosition(Point other) =>
-        Positions.CartesianProduct(other.Positions).ArgMin(positions => (positions.Item1 - positions.Item2).sqrMagnitude);
+    public virtual ((Vector3, Vector3), float) ClosestPosition(Point other, GeodesicSurface surface = null) =>
+        Positions.CartesianProduct(other.Positions).ArgMin(
+            surface != null
+                ? positions => surface.DistanceSquared(positions.Item1, positions.Item2)
+                : positions => (positions.Item1 - positions.Item2).sqrMagnitude);
 
     /// <summary>
     /// This is not really useful at the moment, as secondary positions are not used in curves (is the number of positions constant along the curve ...?)
@@ -67,6 +73,10 @@ public partial class BasicPoint : Point
             Color = Color
         };
     }
+
+    public override string ToString() => Position.z.ApproximateEquals(0)
+        ? $"({Position.x:0.00}, {Position.y:0.00})"
+        : $"({Position.x:0.00}, {Position.y:0.00}, {Position.z:0.00})";
 
     public static implicit operator BasicPoint(Vector3 v) => new(v);
     public static implicit operator BasicPoint(Vector2 v) => new(v);
@@ -274,4 +284,6 @@ public partial class ModelSurfaceBoundaryPoint : Point, IModelSurfacePoint
         side == this.side ? this : new(side, side.curve.GetClosestPoint(this));
 
     public ModelSurfaceBoundaryPoint SwitchSide() => new(side.other, t);
+
+    public override string ToString() => $"{side.Name}({t:0.00})";
 }

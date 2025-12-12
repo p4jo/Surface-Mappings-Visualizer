@@ -74,6 +74,7 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
         }
 
         var starOrdered = FibredSurface.StarOrdered(this).ToArray();
+        if (starOrdered.Length == 0) return ColorfulName;
         var firstGate = gates.First(gate => gate.Edges.Contains(starOrdered[^1]));
         var starOrderedShifted = starOrdered.CyclicShift(edge => !firstGate.Edges.Contains(edge));
 

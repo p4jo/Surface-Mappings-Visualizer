@@ -82,20 +82,26 @@ public class HyperbolicPlane : Plane
         return new HyperbolicGeodesicSegment(startVelocity, length, surface ?? this, name, diskModel);
     }
 
-    public override float DistanceSquared(Point startPoint, Point endPoint)
+    public override float Distance(Point startPoint, Point endPoint)
     {
-        return startPoint.Positions.CartesianProduct(endPoint.Positions).ArgMin(DistanceSquared).Item2;
-        float DistanceSquared((Vector3, Vector3) vectors)
+        return startPoint.Positions.CartesianProduct(endPoint.Positions).ArgMin(Distance).Item2;
+        float Distance((Vector3, Vector3) vectors)
         {
             var (u, v) = vectors;
             if (diskModel)
                 return (float) Math.Acosh(1 + 2 * (u - v).sqrMagnitude / (1 - u.sqrMagnitude) / (1 - v.sqrMagnitude));
             var vBar = new Vector3(v.x, -v.y);
-            return 2 * (float) Math.Atanh((u - v).sqrMagnitude / (u - vBar).sqrMagnitude);
+            return 2 * (float) Math.Atanh((u - v).magnitude / (u - vBar).magnitude);
         }
     }
-    
-    
+
+    public override float DistanceSquared(Point startPoint, Point endPoint)
+    {
+        var distance = Distance(startPoint, endPoint);
+        return distance * distance;
+    }
+
+
     public static Complex Möbius(Complex z, Complex a, Complex b, Complex c, Complex d) => (a * z + b) / (c * z + d);
     public static Complex MöbiusDerivative(Complex z, Complex a, Complex b, Complex c, Complex d) => (a * d - b * c) / ((c * z + d) * (c * z + d));
     
@@ -142,6 +148,37 @@ public class HyperbolicPlane : Plane
         },
          "Poincaré Disk to Klein Disk"
     );
+
+
+    public override (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2)
+    {
+        if (geodesic1 is not HyperbolicGeodesicSegment line1 || geodesic2 is not HyperbolicGeodesicSegment line2)
+            return null;
+        var a = (line1.δ * line2.α - line1.β * line2.γ);
+        var b = (line1.δ * line2.β - line1.β * line2.δ);
+        var c = (-line1.γ * line2.α + line1.α * line2.γ);
+        var d = (-line1.γ * line2.β + line1.α * line2.δ);
+        
+        // φ = (a b \\ c d) = A^-1 * B ∈ GL+(2,R) where line1 = A * γ_0 and line2 = B * γ_0 for the standard geodesic γ_0(t) = i e^t in the half plane model
+        // Then the intersection is at t1, t2 with φ(i e^t2) = i e^t1
+        
+        var det = a * d - b * c;
+        var expOfTwiceT2 = - b * d / (a * c);
+        if (Math.Abs(expOfTwiceT2.Imaginary) > 1e-6 * expOfTwiceT2.Magnitude) throw new Exception($@"The Möbius transformation between the two geodesics {line1} and {line2} is not (a multiple of) a real matrix: ({a}, {b} \\ {c}, {d})");
+        if (expOfTwiceT2.Real <= 0 || !double.IsFinite(expOfTwiceT2.Real)) return null; // no intersection
+        var t2 = 0.5 * Math.Log(expOfTwiceT2.Real);
+        var intersectionPointImaginaryPart = det * Math.Exp(t2) / (c * c * expOfTwiceT2.Real + d * d);  
+        if (Math.Abs(intersectionPointImaginaryPart.Imaginary) > 1e-6 * intersectionPointImaginaryPart.Magnitude) throw new Exception($@"The Möbius transformation between the two geodesics {line1} and {line2} is not (a multiple of) a real matrix: ({a}, {b} \\ {c}, {d})");
+        
+        var t1 = (float) Math.Log(intersectionPointImaginaryPart.Real);
+        if (t1 < -1e-6f || t1 > line1.Length + 1e-6f || t2 < -1e-6f || t2 > line2.Length + 1e-6f) return null;
+        if (t1 < 0) t1 = 0;
+        if (t2 < 0) t2 = 0;
+        if (t1 > line1.Length) t1 = line1.Length;
+        if (t2 > line2.Length) t2 = line2.Length;
+        return (t1, (float) t2);
+    }
+
 }
 
 public class EuclideanPlane : Plane
@@ -155,6 +192,28 @@ public class EuclideanPlane : Plane
         => new FlatGeodesicSegment(tangentVector, length, surface ?? this, name);
 
     public override float DistanceSquared(Point startPoint, Point endPoint) => startPoint.DistanceSquared(endPoint); // this minimizes over the positions
+
+    const float intersectionTolerance = 1e-6f;
+    public override (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2)
+    {
+        if (geodesic1 is not FlatGeodesicSegment line1 || geodesic2 is not FlatGeodesicSegment line2)
+            return null;
+        var (p,v) = line1.StartVelocity;
+        var (q,w) = line2.StartVelocity;
+        var P = p.Position;
+        var Q = q.Position;
+        var det = v.x * w.y - v.y * w.x;
+        if (Mathf.Abs(det) == 0f) return null; // parallel lines
+        // solve P + t1 v = Q + t2 w <=> (-v | w) (t1 t2)^T = Q - P <=> (t1 t2)^T = (-v | w)^-1 (Q - P)
+        var t1 = (w.y * (Q.x - P.x) - w.x * (Q.y - P.y)) / det;
+        var t2 = (v.y * (Q.x - P.x) - v.x * (Q.y - P.y)) / det;
+        if (t1 < -intersectionTolerance || t1 > line1.Length + intersectionTolerance || t2 < intersectionTolerance || t2 > line2.Length + intersectionTolerance) return null;
+        if (t1 < 0) t1 = 0;
+        if (t2 < 0) t2 = 0;
+        if (t1 > line1.Length) t1 = line1.Length;
+        if (t2 > line2.Length) t2 = line2.Length;
+        return (t1, t2);
+    }
 
     public static Homeomorphism Isometry(TangentVector lineStartVelocity, TangentVector line2StartVelocity, ModelSurface source, ModelSurface target)
     {

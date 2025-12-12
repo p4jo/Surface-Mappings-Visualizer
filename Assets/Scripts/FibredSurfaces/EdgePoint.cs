@@ -187,10 +187,12 @@ public class Inefficiency: EdgePoint
              }
 
              if (AlwaysFoldAllEdgesWithShortSharedInitialSegment) // this is the way the algorithm is described in [BH]
+                #pragma warning disable CS0162 // Unreachable code detected
              {
                  edgesToFold = (from e in FibredSurface.Star(aOld!.Source) where Equals(e.Dg, a) select e).OrderBy(s => s.Name).ToList<Strip>();
                  initialSegmentToFold = Strip.SharedInitialSegment(edgesToFold);
              }
+                #pragma warning restore CS0162
              else // this is how it is handled in the first example in [BH]. This is "cooler" since the initial segment is longer.
              {
                  initialSegmentToFold = Strip.SharedInitialSegment(new List<Strip> {aOld, bOld});
@@ -218,7 +220,7 @@ public class Inefficiency: EdgePoint
          for (int i = 1; i <= order; i++)
          {
              text.Append(" -> ...");
-             text.AppendJoin(" ", before.EdgePath.TakeLast(3).Select(e => colorful ? e.ColorfulName : e.Name));
+             text.AppendJoin(" ", before.EdgePath.Take(3).Reverse().Select(e => colorful ? e.Reversed().ColorfulName : e.Reversed().Name));
              text.Append("|");
              text.AppendJoin(" ", after.EdgePath.Take(3).Select(e => colorful ? e.ColorfulName : e.Name));
              text.Append("...");

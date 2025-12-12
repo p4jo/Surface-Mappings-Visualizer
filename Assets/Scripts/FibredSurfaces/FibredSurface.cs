@@ -51,7 +51,6 @@ public class FibredSurface : IPatchedDrawnsformable
         this.graph = graph;
         this.surface = surface;
         this.peripheralSubgraph = peripheralSubgraph ?? new FibredGraph(true);
-        Initialize(); // when the FibredSurface is created with empty graph and the graph is edited later, this has to be called afterwards 
     }
 
     public FibredSurface(IList<(Curve, string, string, string)> edgeDescriptions, GeodesicSurface surface,
@@ -111,7 +110,6 @@ public class FibredSurface : IPatchedDrawnsformable
         peripheralSubgraph.AddVerticesAndEdgeRange(
             Strips.Where(e => peripheralEdgesSet.Contains(e.Name) )
         );
-        Initialize();
     }
 
     public string Name { get; set; }
@@ -252,7 +250,7 @@ public class FibredSurface : IPatchedDrawnsformable
             case GraphMapUpdateMode.Postcompose:
                 var fullDict = new Dictionary<Strip, EdgePath>(enteredMap);
                 foreach (var (edge, image) in enteredMap) 
-                    fullDict[edge.Reversed()] = image.Inverse();
+                    fullDict[edge.Reversed()] = image.Inverse;
                 foreach (var edge in Strips) 
                     edge.EdgePath = edge.EdgePath.Replace(e => fullDict[e]);
                 break;
@@ -402,7 +400,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 description: "Remove an inefficiency.",
                 buttons: new[] { "Remove at once", "Remove in steps", "Remove in fine steps" }
             );
-        if (!isTrainTrack && !ignoreBeingReducible)
+        if (!isTrainTrack /*&& !ignoreBeingReducible*/)
             return new AlgorithmSuggestion(
                 options: new (object, string)[] { },
                 description: "The algorithm is finished. The graph map is a train track map and we can thus turn the fibred surface into a train track.",
@@ -1181,7 +1179,7 @@ public class FibredSurface : IPatchedDrawnsformable
             source: enlargedJunction,
             orderIndexStart: removeStrip.OrderIndexEnd,
             curve: removeStrip.Curve.Reversed().Concatenate(keptStrip.Curve),
-            edgePath: removeStrip.EdgePath.Inverse().Concat(keptStrip.EdgePath)
+            edgePath: removeStrip.EdgePath.Inverse.Concat(keptStrip.EdgePath)
         );
         newStrip.Color = keptStrip.Color;
 
@@ -1789,7 +1787,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 break;
         }
 
-        if (splitEdge is OrderedStrip { reverse: true })
+        if (splitEdge is ReverseStrip)
         {
             // in this case, the firstSegment and secondSegment are also reversed OrderedStrips
             firstSegment.Name = secondSegmentName.ToUpper();
@@ -1859,7 +1857,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
         var initialStripSegments = new List<Strip>(strips.Count);
         var edgesWithAcceptableColors = new List<Strip>(strips.Count);
-        var terminalStripSegments = new Dictionary<string, Strip>(strips.Count);
+        var renameSegments = new Dictionary<string, Strip>(strips.Count);
         var arclengthParametrization = (from strip in strips select 
             (   strip.Curve,
                 GeodesicSurface.ArclengthFromTime(strip.Curve),
@@ -1892,17 +1890,15 @@ public class FibredSurface : IPatchedDrawnsformable
             var (firstSegment, secondSegment) = SplitEdge(splitEdgePoint, updateEdgePoints, splitTime);
             
             initialStripSegments.Add(firstSegment);
-            terminalStripSegments[edge.Name.ToLower().TrimEnd('2')] = secondSegment;
-            // TODO: Bug. if the original is called e1 then this is a wrong renaming, both will be called e1!!
-            // We could give better names, for example actually parsing e{i} where i is a number.
+            var preferredName = edge.Name.ToLower().TrimEnd('2');
+            if (!Strips.Any(e => e.Name == preferredName))
+                renameSegments[preferredName] = secondSegment;
         }
 
         // give the remaining segments the original names. 
-        // We do this here so that if we split an edge and its reverse the middle part gets the same name as the original edge.
-        foreach (var (name, secondSegment) in terminalStripSegments)
-        {
+        // We do this here so that, if we split an edge and its reverse, the middle part gets the same name as the original edge.
+        foreach (var (name, secondSegment) in renameSegments) 
             secondSegment.UnderlyingEdge.Name = name;
-        }
 
 
         foreach (var yieldedString in FoldEdgesInSteps(initialStripSegments, updateEdgePoints, edgesWithAcceptableColors: edgesWithAcceptableColors))
@@ -2289,11 +2285,6 @@ public class FibredSurface : IPatchedDrawnsformable
 
     private HashSet<string> usedEdgeNames;
 
-    public void Initialize()
-    {
-        UpdateUsedEdgeNames();
-    }
-
     private void UpdateUsedEdgeNames()
     {
         usedEdgeNames = graph.Edges.Select(edge => edge.Name).Concat(
@@ -2311,7 +2302,7 @@ public class FibredSurface : IPatchedDrawnsformable
     public string NextEdgeNameGreek() {
         UpdateUsedEdgeNames();
         return edgeNames.Concat(from i in Enumerable.Range(1, 1000) select $"ε{i}").First(
-            name => !usedEdgeNames.Contains(name) && name[0] >= 'z'
+            name => !usedEdgeNames.Contains(name) && name[0] > 'z'
         );
     }
 
@@ -2438,7 +2429,7 @@ public class FibredSurface : IPatchedDrawnsformable
         var rightEigenvector = eigenvalueDecomposition.EigenVectors.Inverse().Row(columnIndex);
         if (rightEigenvector[0] < 0) rightEigenvector = rightEigenvector.Negate();
 
-        eigenvector *= 1 / eigenvector.GeometricMean();
+        eigenvector *= λ / eigenvector.GeometricMean();
         var relativeLengths = ((IEnumerable<double>)rightEigenvector).Enumerate().Select(tuple =>
         {
             var (i, length) = tuple;

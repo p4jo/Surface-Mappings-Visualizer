@@ -144,6 +144,8 @@ public static class Gate
             var gatesFromPreviousEdgeCycles = gates.Count;
             foreach (var (edge, cycleDistance) in edgeCycle.attractedEdges)
             {
+                if (edge == null)
+                    continue; // null edges do not contribute to gates
                 var gate = gates.Skip(gatesFromPreviousEdgeCycles).FirstOrDefault( gate =>
                     identifier(edge.Source).Equals(gate.junctionIdentifier) &&
                     (cycleDistance - gate.cycleDistance) % edgeCycle.order == 0

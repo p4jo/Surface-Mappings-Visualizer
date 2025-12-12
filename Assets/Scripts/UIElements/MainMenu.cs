@@ -27,7 +27,7 @@ public class MainMenu: MonoBehaviour
         switch (exampleName)
         {
             case "Embedded Torus":
-                Initialize("g=1,#", showDeckTransformations);
+                Initialize("g=1,#", showDeckTransformations, true);
                 break;
             case "Bestvina Handel example 6.1.":
                 Initialize("g=2,p=1,P=0", showDeckTransformations, true);
@@ -154,7 +154,7 @@ public class MainMenu: MonoBehaviour
         
            
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
-        var surfaceMenu = gameObject.GetComponent<SurfaceMenu>();
+        var surfaceMenu = gameObject.GetComponentInChildren<SurfaceMenu>();
         surfaceMenu.Initialize(surface, canvas, cameraManager, this); 
         surfaceMenu.StuffShown += OnStuffShown;
         surfaceMenu.StuffDeleted += OnStuffDeleted;

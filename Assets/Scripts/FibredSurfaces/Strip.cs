@@ -44,18 +44,6 @@ public abstract class Strip: IEdge<Junction>, IDrawable
     
     public abstract Strip Reversed();
 
-    public override bool Equals(object other) =>
-        other switch
-        {
-            OrderedStrip orderedStrip => orderedStrip.Equals(this),
-            UnorientedStrip otherStrip => ReferenceEquals(this, otherStrip),
-                // Source == otherStrip.Source && Target == otherStrip.Target &&
-                // Curve.Equals(otherStrip.Curve) && EdgePath.SequenceEqual(otherStrip.EdgePath),
-            //  this actually *should* be ReferenceEquals, shouldn't it? Parallel edges might be considered equal. (well no, because of the saved curve). However, the "UnorderedStrip"s should not be doubled. ALSO, THIS CAUSES A STACKOVERFLOW (self-reference in SequenceEqual)
-            _ => false
-        };
-    
-
     public EdgePoint this[int i] => new(this, i);
 
     public override string ToString() => $"{Name}: {Source} -> {Target} with g({Name}) = {EdgePath.ToString(250, 10)}";
@@ -157,8 +145,8 @@ public class UnorientedStrip : Strip
         }
     }
 
-    private OrderedStrip reversed;
-    public override Strip Reversed() => reversed ??= new OrderedStrip(this, true);
+    private ReverseStrip reversed;
+    public override Strip Reversed() => reversed ??= new ReverseStrip(this);
 
     public override Strip Copy(FibredSurface fibredSurface = null, Curve curve = null, Junction source = null,
         Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null)
@@ -178,27 +166,30 @@ public class UnorientedStrip : Strip
     }
 }
 
-public class OrderedStrip: Strip
+public class ReverseStrip: Strip
 {
+    public override UnorientedStrip UnderlyingEdge { get; }
+    
     public override Curve Curve
     {
-        get => reverse ? UnderlyingEdge.Curve.Reversed() : UnderlyingEdge.Curve;
+        get => UnderlyingEdge.Curve.Reversed();
         set
         {
-            var underlyingCurve = reverse ? value.Reversed() : value; 
-            if (underlyingCurve.Name.EndsWith("'")) 
-                underlyingCurve.Name = underlyingCurve.Name[..^1];
+            var name = Name;
+            var underlyingCurve = value.Reversed(); 
+            // if (underlyingCurve.Name.EndsWith("'")) 
+            //     underlyingCurve.Name = underlyingCurve.Name[..^1];
             UnderlyingEdge.Curve = underlyingCurve;
+            Name = name;
         }
     }
 
-    public override UnorientedStrip UnderlyingEdge { get; }
     public override string Name
     {
-        get => reverse ? UnderlyingEdge.Name.ToUpper() : UnderlyingEdge.Name;
+        get => UnderlyingEdge.Name.ToUpper();
         set
         {
-            if (reverse && value.Any(char.IsLower)) Debug.LogError("A reverse strip should have an uppercase Name!");
+            if (value.Any(char.IsLower)) Debug.LogError("A reverse strip should have an uppercase Name!");
             UnderlyingEdge.Name = value.ToLower();
         }
     }
@@ -211,41 +202,28 @@ public class OrderedStrip: Strip
 
     // "<s>" + UnderlyingEdge.Name + "</s>"   (strikethrough in RichText; workaround for overbar; use for fancy display?)
     // For the moment, we just use the name of the underlying edge in UPPERCASE.
-    
-    /// <summary>
-    /// actually this should never be false.
-    /// </summary>
-    public readonly bool reverse; 
 
-    public OrderedStrip(UnorientedStrip underlyingEdge, bool reverse): base(underlyingEdge.fibredSurface)
+    public ReverseStrip(UnorientedStrip underlyingEdge): base(underlyingEdge.fibredSurface)
     {
         this.UnderlyingEdge = underlyingEdge;
-        this.reverse = reverse;
     }
 
     public override Junction Source
     {
-        get => reverse ? UnderlyingEdge.Target : UnderlyingEdge.Source;
-        set
-        {
-            if (reverse) UnderlyingEdge.Target = value;
-            else UnderlyingEdge.Source = value;
-        }
+        get => UnderlyingEdge.Target;
+        set => UnderlyingEdge.Target = value;
     }
 
     public override Junction Target
     {
-        get => reverse ? UnderlyingEdge.Source : UnderlyingEdge.Target;
-        set {
-            if (reverse) UnderlyingEdge.Source = value;
-            else UnderlyingEdge.Target = value;
-        }
+        get => UnderlyingEdge.Source;
+        set => UnderlyingEdge.Source = value;
     }
 
     public override EdgePath EdgePath
     {
-        get => reverse ? UnderlyingEdge.EdgePath.Inverse() : UnderlyingEdge.EdgePath;
-        set => UnderlyingEdge.EdgePath = reverse ? value.Inverse() : value;
+        get => UnderlyingEdge.EdgePath.Inverse;
+        set => UnderlyingEdge.EdgePath = value.Inverse;
     }
 
     public override float OrderIndexStart
@@ -260,28 +238,18 @@ public class OrderedStrip: Strip
         set => UnderlyingEdge.OrderIndexStart = value;
     }
 
-    public override Strip Reversed() => reverse ? UnderlyingEdge : new OrderedStrip(UnderlyingEdge, true);
-
-    public override bool Equals(object obj) =>
-        obj switch
-        {
-            OrderedStrip other => reverse == other.reverse && UnderlyingEdge.Equals(other.UnderlyingEdge),
-            UnorientedStrip otherStrip => !reverse && UnderlyingEdge.Equals(otherStrip),
-            _ => false
-        };
+    public override Strip Reversed() => UnderlyingEdge;
 
     public override Strip Copy(FibredSurface fibredSurface = null, Curve curve = null,
         Junction source = null, Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null)
     {
-        if (!reverse) return UnderlyingEdge.CopyUnoriented(fibredSurface, curve, source, target, edgePath, name);
-        
         return UnderlyingEdge.CopyUnoriented(
             fibredSurface: fibredSurface,
             curve: curve?.Reversed(),
             source: target,
             target: source,
-            edgePath: edgePath?.Inverse(),
-            name: name,
+            edgePath: edgePath?.Inverse,
+            name: name?.ToLower(),
             orderIndexStart: orderIndexEnd,
             orderIndexEnd: orderIndexStart
         ).Reversed();
