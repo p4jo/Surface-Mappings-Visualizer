@@ -67,6 +67,17 @@ public static class EnumerableHelpers
         return (res.Item1, -res.Item2);
     }
 
+    public static int FirstIndex<T>(this IEnumerable<T> enumerable, Func<T, bool> selector)
+    {
+        var index = 0;
+        foreach (var t in enumerable)
+        {
+            if (selector(t))
+                return index;
+            index++;
+        }
+        return -1;
+    }
 
     public static IEnumerable<(T, T2)> CartesianProduct<T, T2>(this IEnumerable<T> enumerable, IEnumerable<T2> other)
     {

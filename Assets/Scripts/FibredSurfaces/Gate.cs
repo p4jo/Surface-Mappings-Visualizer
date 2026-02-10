@@ -133,7 +133,9 @@ public class Gate<T>
 public static class Gate
 {
     public static List<Gate<Junction>> FindGates(UndirectedGraph<Junction, UnorientedStrip> graph) => FindGates(graph.Edges.ToList(), junction => junction);
-
+   
+    public static List<Gate<T>> FindGates<T>(UndirectedGraph<Junction, UnorientedStrip> graph, Func<Junction, T> identifier) where T : IEquatable<T>
+        => FindGates(graph.Edges.ToList(), identifier);
     
     public static List<Gate<T>> FindGates<T>(IReadOnlyCollection<Strip> edges, Func<Junction, T> identifier) where T : IEquatable<T>
     {

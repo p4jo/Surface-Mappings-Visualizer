@@ -72,5 +72,12 @@ public static class StringHelpers
             < 1e12 => (d * 1e-9).ToString("G3") + "G",
             _ => d.ToString("G3")
         };
-
+    public static string ToOrdinal(this int i) => i switch
+    {
+        11 or 12 or 13 => i + "th",
+        _ when i % 10 == 1 => i + "st",
+        _ when i % 10 == 2 => i + "nd",
+        _ when i % 10 == 3 => i + "rd",
+        _ => i + "th"
+    };
 }

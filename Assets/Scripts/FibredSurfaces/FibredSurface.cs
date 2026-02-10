@@ -271,7 +271,7 @@ public class FibredSurface : IPatchedDrawnsformable
         public AlgorithmSuggestion(string description)
         {
             this.description = description;
-            this.buttons = new[] { "Continue" };
+            this.buttons = new[] { generalSubroutineContinueButton };
             this.options = Array.Empty<(object, string)>();
         }
         
@@ -295,6 +295,26 @@ public class FibredSurface : IPatchedDrawnsformable
             this.buttons = buttons as IReadOnlyCollection<string> ?? buttons.ToArray();
             this.allowMultipleSelection = allowMultipleSelection;
         }
+
+        public const string peripheralInefficiencyButton = "Fold Selected";
+        public const string generalSubroutineContinueButton = "Continue";
+        public const string collapseInvariantSubforestContinueButton = "Contract component";
+        public const string trainTrackButton = "Convert to train track";
+        public const string subforestAtOnceButton = "Collapse at once";
+        public const string subforestInStepsButton = "Collapse in steps";
+        public const string valence1Button = "Remove valence-one junction";
+        public const string inefficiencyAtOnceButton = "Remove at once";
+        public const string inefficiencyInStepsButton = "Remove in steps";
+        public const string inefficiencyInFineStepsButton = "Remove in fine steps";
+        public const string foldMoveButton = "Move";
+        public const string foldMoveAltButton = "Move, but ignore the edge along which we move";
+        public const string tightenSelectedButton = "Tighten selected";
+        public const string tightenAllButton = "Tighten all";
+        public const string absorbPAtOnceButton = "Absorb at once";
+        public const string absorbPInStepsButton = "Absorb in steps";
+        public const string valence2SelectedButton = "Remove Selected";
+        public const string valence2AllButton = "Remove All";
+        public const string ignoreReducibleButton = "Continue anyways";
     }
 
     IEnumerator<AlgorithmSuggestion> currentAlgorithmRun;
@@ -302,109 +322,52 @@ public class FibredSurface : IPatchedDrawnsformable
     string selectedButtonDuringAlgorithmPause; // this is to communicate with the currentAlgorithmicRun.
     public AlgorithmSuggestion NextSuggestion()
     {
-        if (currentAlgorithmRun != null)
-            return currentAlgorithmRun.Current;
         // todo? add a set of ITransformables to highlight with each option?
         // todo? OnHover?
-        var a = GetInvariantSubforests().ToArray();
-        if (a.Length > 0)
-            return new AlgorithmSuggestion(
-                options: from subforest in a
-                    select (
-                        subforest.Edges.Select(e => e.Name) as object,
-                        string.Join(", ", subforest.Edges.Select(e => e.ColorfulName))
-                    ), 
-                description: "Collapse an invariant subforest.", 
-                buttons: new[] { "Collapse at once", "Collapse in steps" }
-            );
-        var b = GetLoosePositions().ToArray();
-        if (b.Length > 0)
-        {
-            return new AlgorithmSuggestion(
-                options: 
-                    from loosePosition in b
-                    select (loosePosition.Item1.Name as object, PullTightString(loosePosition)), 
-                description: "Pull tight at one or more edges.",
-                buttons: new[] { "Tighten All", "Tighten Selected" }, 
-                allowMultipleSelection: true
-            );
-        }
         
-        var c = GetValenceOneJunctions().ToArray(); 
-        // shouldn't happen at this point (tight & no invariant subforests => no valence-one junctions)
-        if (c.Length > 0)
-            return new AlgorithmSuggestion(
-                options: from v in c select (v.Name as object, v.ColorfulName),
-                description: "Remove a valence-one junction. WHAT THE HECK?", buttons: new[] { "Valence-1 Removal" },
-                allowMultipleSelection: true
-            );
+        if (currentAlgorithmRun != null)
+            return currentAlgorithmRun.Current;
         
-        if (AbsorbIntoPeriphery(true))
-            return new AlgorithmSuggestion(
-                options: new (object, string)[] {
-                    (null,
-                        GetMaximalPeripheralSubgraph().Edges.Select(e =>
-                            peripheralSubgraph.ContainsEdge(e)
-                                ? e.ColorfulName
-                                : $"<b>{e.ColorfulName}</b>"
-                        ).ToCommaSeparatedString()
-                    )
-                }, // todo? Display Q?
-                description: "Absorb into periphery.", 
-                buttons: new[] { "Absorb" }
-            );
+        var nextSuggestion = InvariantSubforestsSuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+        
+        nextSuggestion = TighteningSuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+        
+        nextSuggestion = ValenceOneJunctionsSuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+        
+        nextSuggestion = AbsorbIntoPeripherySuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+        
         if (!ignoreBeingReducible)
         {
-            var cd = PreservedSubgraph_Reducibility();
-            if (cd != null)
-                return new AlgorithmSuggestion(
-                    options: new (object, string)[] { },
-                    description: "The map is reducible because there is an invariant essential subgraph, with edges "
-                         + cd.Select(e =>
-                                 peripheralSubgraph.ContainsEdge(e)
-                                     ? e.ColorfulName
-                                     : $"<b>{e.ColorfulName}</b>")
-                             .ToCommaSeparatedString()
-                         + ".\nYou can continue with the algorithm, but it will not necessarily terminate.", 
-                    // todo? Find a "reduction" in the sense of the definition - being a boundary word of the preserved subgraph?
-                    buttons: new[] { "Continue anyways" }
-                );
+            nextSuggestion = ReducibilitySuggestion();
+            if (nextSuggestion != null)
+                return nextSuggestion;
         }
 
-        var d = GetValenceTwoJunctions().ToArray();
-        if (d.Length > 0)
-            return new AlgorithmSuggestion(
-                options: from v in d select (v.Name as object, v.ToColorfulString()),
-                description: "Remove a valence-two junction.", 
-                buttons: new[] { "Remove Selected", "Remove All" },
-                allowMultipleSelection: true
-            );
-        var e = GetPeripheralInefficiencies().ToArray();
-        if (e.Length > 0)
-            return new AlgorithmSuggestion(
-                options: from l in e
-                    // l is a list of edges with the same Dg and this Dg(l) is in the periphery.
-                    select (l.Select(edge => edge.Name) as object,
-                            l.Select(edge => edge.ColorfulName).ToCommaSeparatedString() +
-                            $" are all mapped to {l.First()!.Dg!.ColorfulName} ∈ P."
-                        ),
-                description: "Fold initial segments of edges that map to edges in the pre-periphery.",
-                buttons: new[] { "Fold Selected" }
-            );
-        var f = GetInefficiencies().ToArray();
-        if (f.Length > 0)
-            return new AlgorithmSuggestion(
-                options: from inefficiency in f.OrderBy(inefficiency =>
-                    inefficiency.order + (inefficiency.FullFold ? 0 : 0.5f))
-                    select (inefficiency.ToSerializationString() as object, inefficiency.ToColorfulString()),
-                description: "Remove an inefficiency.",
-                buttons: new[] { "Remove at once", "Remove in steps", "Remove in fine steps" }
-            );
+        nextSuggestion = ValenceTwoSuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+        
+        nextSuggestion = RemovePeripheralInefficiencySuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+        
+        nextSuggestion = RemoveInefficiencySuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+        
         if (!isTrainTrack /*&& !ignoreBeingReducible*/)
             return new AlgorithmSuggestion(
                 options: new (object, string)[] { },
                 description: "The algorithm is finished. The graph map is a train track map and we can thus turn the fibred surface into a train track.",
-                buttons: new[] { "Turn into Train Track" }
+                buttons: new[] { AlgorithmSuggestion.trainTrackButton }
             );
                     
         return new AlgorithmSuggestion(
@@ -415,113 +378,16 @@ public class FibredSurface : IPatchedDrawnsformable
     }
 
     private bool ignoreBeingReducible;
-    private bool isTrainTrack = false; 
+    private bool isTrainTrack = false;
     public void ApplySuggestion(IEnumerable<object> suggestion, string button)
     {
         switch (button)
         {
-            case "Collapse at once":
-                if (suggestion.FirstOrDefault() is not IEnumerable<string> subforestEdges)
-                    break;
-                var localAlgorithmicRun = CollapseInvariantSubforest(subforestEdges);
-                while (localAlgorithmicRun.MoveNext())
-                { } // run until the end
-                break;
-            case "Collapse in steps":
-                if (suggestion.FirstOrDefault() is not IEnumerable<string> subforestEdges2)
-                    break;
-                // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
-                
-                
-                currentAlgorithmRun = CollapseInvariantSubforest(subforestEdges2);
-                if (!currentAlgorithmRun.MoveNext()) 
-                    currentAlgorithmRun = null; // if it had just one step 
-
-                break;
-            case "Tighten Selected":
-                foreach (var o in suggestion)
-                {
-                    if (o is not string name)
-                    {
-                        Debug.LogError($"Weird type of suggestion for Tighten Selected: {o}");
-                        continue;
-                    }
-                    PullTightAll(name);
-                }
-                break;
-            case "Tighten All":
-                PullTightAll();
-                break;
-            case "Valence-1 Removal":
-                foreach (var o in suggestion)
-                    if (o is string name)
-                        RemoveValenceOneJunction(graph.Vertices.First(v => v.Name == name));    
-                    else
-                        Debug.LogError($"Weird type of suggestion for Valence-1 Removal: {o}");
-                break;
-            case "Absorb":
-                AbsorbIntoPeriphery();
-                break;
-            case "Remove Selected": // valence 2 junctions
-                foreach (var o in suggestion.ToArray())
-                {
-                    if (o is string name)
-                        RemoveValenceTwoJunction(graph.Vertices.First(v => v.Name == name), null);
-                    else
-                        Debug.LogError($"Weird type of suggestion for Remove Selected Valence-2 Vertex: {o}");
-                    
-                    // at some point there might be invariant subforests!
-                    if (GetInvariantSubforests().Any())
-                        break;
-                }
-
-                break;
-            case "Remove All": // valence 2 junctions
-                var maxSteps = graph.VertexCount;
-                for (int i = 0; i < maxSteps; i++)
-                {
-                    var junction = GetValenceTwoJunctions().FirstOrDefault();
-                    // at some point there might be invariant subforests!
-                    if (GetInvariantSubforests().Any())
-                        break;
-                    
-                    if (junction == null) break;
-                    RemoveValenceTwoJunction(junction);
-                }
-
-                break;
-            case "Fold Selected": // peripheral inefficiencies
-                var firstOption = suggestion.FirstOrDefault();
-                if (firstOption is not IEnumerable<string> edges)
-                {
-                    Debug.LogError($"Weird type of option for Fold Selected: {firstOption}");
-                    break;
-                }
-                var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
-                var edgesToFold = edges.Select(name => edgeDict[name]).ToArray();
-                RemovePeripheralInefficiency(edgesToFold); // todo!
-                break;
-            case "Remove at once": // inefficiency
-                var inefficiency = ExtractInefficiencyFromSuggestion();                
-                var algorithmicList = RemoveInefficiencyInSteps(inefficiency, fineSteps: false);
-                while (algorithmicList.MoveNext())
-                { }
-                break;
-            case "Remove in steps": // inefficiency
-                inefficiency = ExtractInefficiencyFromSuggestion();
-                currentAlgorithmRun = RemoveInefficiencyInSteps(inefficiency, fineSteps: false);
-                if (!currentAlgorithmRun.MoveNext()) 
-                    currentAlgorithmRun = null; // if it had just one step (degree zero, so shouldn't happen)
-                break;
-            case "Remove in fine steps": // inefficiency
-                inefficiency = ExtractInefficiencyFromSuggestion();
-                currentAlgorithmRun = RemoveInefficiencyInSteps(inefficiency, fineSteps: true);
-                if (!currentAlgorithmRun.MoveNext()) 
-                    currentAlgorithmRun = null; // if it had just one step (degree zero, so shouldn't happen)
-                break;
-            case "Move":
-            case "Move, but ignore the edge along which we move": // continue the algorithmic steps started with "Remove in steps"
-            case "Continue":
+            case AlgorithmSuggestion.foldMoveButton:
+            case AlgorithmSuggestion.foldMoveAltButton: // continue the algorithmic steps started with AlgorithmSuggestion.inefficiencyInStepsButton
+            case AlgorithmSuggestion.generalSubroutineContinueButton:
+            case AlgorithmSuggestion.collapseInvariantSubforestContinueButton:
+            // TODO: Add the ones for collapsing into Q
                 if (currentAlgorithmRun == null)
                     throw new ArgumentException("There is no current algorithmic list to continue.");
 
@@ -535,10 +401,128 @@ public class FibredSurface : IPatchedDrawnsformable
                 selectedOptionsDuringAlgorithmPause = null;
                 selectedButtonDuringAlgorithmPause = null;
                 break;
-            case "Continue anyways":
+            case AlgorithmSuggestion.subforestAtOnceButton:
+                if (suggestion.FirstOrDefault() is not IEnumerable<string> subforestEdges)
+                    break;
+                using (var localAlgorithmicRun = CollapseInvariantSubforest(subforestEdges))
+                {
+                    while (localAlgorithmicRun.MoveNext())
+                    { } // run until the end
+                }
+
+                break;
+            case AlgorithmSuggestion.subforestInStepsButton:
+                if (suggestion.FirstOrDefault() is not IEnumerable<string> subforestEdges2)
+                    break;
+                // only select one subforest at a time because they might intersect and then the other subforests wouldn't be inside the new graph anymore.
+                
+                
+                currentAlgorithmRun = CollapseInvariantSubforest(subforestEdges2);
+                if (!currentAlgorithmRun.MoveNext())
+                {
+                    currentAlgorithmRun.Dispose();
+                    currentAlgorithmRun = null; // if it had just one step 
+                }
+
+                break;
+            case AlgorithmSuggestion.tightenSelectedButton:
+                foreach (var o in suggestion)
+                {
+                    if (o is not string name)
+                    {
+                        Debug.LogError($"Weird type of suggestion for Tighten Selected: {o}");
+                        continue;
+                    }
+                    PullTightAll(name);
+                }
+                break;
+            case AlgorithmSuggestion.tightenAllButton:
+                PullTightAll();
+                break;
+            case AlgorithmSuggestion.valence1Button:
+                foreach (var o in suggestion)
+                    if (o is string name)
+                        RemoveValenceOneJunction(graph.Vertices.First(v => v.Name == name));    
+                    else
+                        Debug.LogError($"Weird type of suggestion for Valence-1 Removal: {o}");
+                break;
+            case AlgorithmSuggestion.absorbPAtOnceButton:
+                if (suggestion.FirstOrDefault() is not FibredGraph QwithoutP)
+                    break;
+                foreach (var _ in AbsorbIntoPeriphery(QwithoutP))
+                {} // run until the end
+                break;
+            case AlgorithmSuggestion.absorbPInStepsButton:
+                if (suggestion.FirstOrDefault() is not FibredGraph QwithoutP2)
+                    break;
+                currentAlgorithmRun = AbsorbIntoPeriphery(QwithoutP2).GetEnumerator();
+                if (!currentAlgorithmRun.MoveNext())
+                {
+                    currentAlgorithmRun.Dispose();
+                    currentAlgorithmRun = null; // if it had just one step 
+                }
+                break;
+            case AlgorithmSuggestion.valence2SelectedButton: // valence 2 junctions
+                foreach (var o in suggestion.ToArray())
+                {
+                    if (o is string name)
+                        RemoveValenceTwoJunction(graph.Vertices.First(v => v.Name == name), null);
+                    else
+                        Debug.LogError($"Weird type of suggestion for Remove Selected Valence-2 Vertex: {o}");
+                    
+                    // at some point there might be invariant subforests!
+                    if (GetInvariantSubforests().Any())
+                        break;
+                }
+
+                break;
+            case AlgorithmSuggestion.valence2AllButton: // valence 2 junctions
+                var maxSteps = graph.VertexCount;
+                for (int i = 0; i < maxSteps; i++)
+                {
+                    var junction = GetValenceTwoJunctions().FirstOrDefault();
+                    // at some point there might be invariant subforests!
+                    if (GetInvariantSubforests().Any())
+                        break;
+                    
+                    if (junction == null) break;
+                    RemoveValenceTwoJunction(junction);
+                }
+
+                break;
+            case AlgorithmSuggestion.peripheralInefficiencyButton: // peripheral inefficiencies
+                var firstOption = suggestion.FirstOrDefault();
+                if (firstOption is not IEnumerable<string> edges)
+                {
+                    Debug.LogError($"Weird type of option for Fold Selected: {firstOption}");
+                    break;
+                }
+                var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
+                var edgesToFold = edges.Select(name => edgeDict[name]).ToArray();
+                RemovePeripheralInefficiency(edgesToFold); // todo!
+                break;
+            case AlgorithmSuggestion.inefficiencyAtOnceButton: 
+                var inefficiency = ExtractInefficiencyFromSuggestion();                
+                var algorithmicList = RemoveInefficiencyInSteps(inefficiency, fineSteps: false);
+                while (algorithmicList.MoveNext())
+                { }
+                break;
+            case AlgorithmSuggestion.inefficiencyInStepsButton: 
+                inefficiency = ExtractInefficiencyFromSuggestion();
+                currentAlgorithmRun = RemoveInefficiencyInSteps(inefficiency, fineSteps: false);
+                if (!currentAlgorithmRun.MoveNext()) 
+                    currentAlgorithmRun = null; // if it had just one step (degree zero, so shouldn't happen)
+                break;
+            case AlgorithmSuggestion.inefficiencyInFineStepsButton:
+                inefficiency = ExtractInefficiencyFromSuggestion();
+                currentAlgorithmRun = RemoveInefficiencyInSteps(inefficiency, fineSteps: true);
+                if (!currentAlgorithmRun.MoveNext()) 
+                    currentAlgorithmRun = null; // if it had just one step (degree zero, so shouldn't happen)
+                break;
+            case AlgorithmSuggestion.ignoreReducibleButton:
                 ignoreBeingReducible = true;
                 break;
-            case "Turn into Train Track":
+            case AlgorithmSuggestion.trainTrackButton:
                 ConvertToTrainTrack();
                 isTrainTrack = true;
                 break;
@@ -783,7 +767,7 @@ public class FibredSurface : IPatchedDrawnsformable
     /// of another element of connectedSet (unless k = #star).
     /// So, if connectedSet is not actually connected, then the result will not set-equal to connectedSet.
     /// </summary>
-    private IEnumerable<Strip> SortConnectedSetInStar(List<Strip> sortedStar, ICollection<Strip> connectedSet)
+    private IEnumerable<T> SortConnectedSet<T>(List<T> sortedStar, ICollection<T> connectedSet)
     {
         int startIndex = sortedStar.FindIndex(connectedSet.Contains);
         // this should be the index in the cyclic order where the connected set starts
@@ -792,9 +776,18 @@ public class FibredSurface : IPatchedDrawnsformable
         // if the connected set is all of the star, then this is -1 + 1 = 0.
         return sortedStar.CyclicShift(startIndex).Take(connectedSet.Count);
     }
+    private IEnumerable<T> SortConnectedSet<T>(List<T> sortedStar, ICollection<T> connectedSet, out int startIndex)
+    {
+        startIndex = sortedStar.FindIndex(connectedSet.Contains);
+        // this should be the index in the cyclic order where the connected set starts
+        if (startIndex == -1) HandleInconsistentBehavior("The connected set is not in the star.");
+        if (startIndex == 0) startIndex = sortedStar.FindLastIndex(e => !connectedSet.Contains(e)) + 1;
+        // if the connected set is all of the star, then this is -1 + 1 = 0.
+        return sortedStar.CyclicShift(startIndex).Take(connectedSet.Count);
+    }
     
-    bool IsConnectedSet(List<Strip> sortedStar, ICollection<Strip> connectedSet) => 
-        SortConnectedSetInStar(sortedStar, connectedSet).All(connectedSet.Contains);
+    bool IsConnectedSet<T>(List<T> sortedStar, ICollection<T> connectedSet) => 
+        SortConnectedSet(sortedStar, connectedSet).All(connectedSet.Contains);
 
     /// <summary>
     /// The smallest invariant subgraph containing this edge.
@@ -826,6 +819,9 @@ public class FibredSurface : IPatchedDrawnsformable
         return orbit;
     }
     
+    /// <summary>
+    /// The boundary words, following at the right. I.e. the orbits of the map e -> σ(e.Reversed()), where σ is the cyclic order that goes counter-clockwise. 
+    /// </summary>
     public IEnumerable<EdgePath> BoundaryWords()
     {
         var visited = new HashSet<Strip>();
@@ -842,8 +838,11 @@ public class FibredSurface : IPatchedDrawnsformable
             visited.UnionWith(boundaryWord);
             yield return boundaryWord;
         }
+        
     }
-
+    /// <summary>
+    /// The boundary word starting with strip, following at the right. I.e. the orbit of the map e -> σ(e.Reversed()), where σ is the cyclic order that goes counter-clockwise. 
+    /// </summary>
     public static EdgePath BoundaryWord(Strip strip)
     {
         var stars = new Dictionary<Junction, List<Strip>>(
@@ -905,6 +904,21 @@ public class FibredSurface : IPatchedDrawnsformable
 
         // todo? See if a union of two subforests is a subforest. If so, we can merge them.
         return subforests.Values;
+    }
+
+    public AlgorithmSuggestion InvariantSubforestsSuggestion()
+    {
+        var a = GetInvariantSubforests();
+        if (a.Count == 0) return null;
+        return new AlgorithmSuggestion(
+            options: from subforest in a
+            select (
+                subforest.Edges.Select(e => e.Name) as object,
+                string.Join(", ", subforest.Edges.Select(e => e.ColorfulName))
+            ), 
+            description: "Collapse an invariant subforest.", 
+            buttons: new[] { AlgorithmSuggestion.subforestAtOnceButton, AlgorithmSuggestion.subforestInStepsButton }
+        );
     }
 
     /// <summary>
@@ -977,7 +991,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
     public IEnumerator<AlgorithmSuggestion> CollapseInvariantSubforest(FibredGraph subforest)
     {
-        var subforestEdges = Enumerable.ToHashSet(subforest.Edges);
+        var subforestEdges = subforest.Edges.ToHashSet();
 
         var componentList = subforest.ComponentGraphs(out var componentDict);
 
@@ -1000,7 +1014,7 @@ public class FibredSurface : IPatchedDrawnsformable
                     )
                     select (v.Name as object, v.ColorfulName),
                 description: $"Pull component {{{component.Edges.ToCommaSeparatedString(e => e.ColorfulName)}}} towards vertex",
-                buttons: new[] { "Continue" }    
+                buttons: new[] { AlgorithmSuggestion.collapseInvariantSubforestContinueButton }    
             ); 
             // this pauses execution and asks the user by giving an algorithm suggestion (unless they chose to skip these in-between steps)
             var selectedOption = selectedOptionsDuringAlgorithmPause?.FirstOrDefault();
@@ -1016,11 +1030,9 @@ public class FibredSurface : IPatchedDrawnsformable
             if (!component.IsUndirectedAcyclicGraph())
                 // would probably give a terrible infinite loop in PullTowardsCenter
                 throw new InvalidOperationException(
-                    "The component is not a subforest. This should not happen as we only call this on invariant subforests.");
+                    "The component is not a tree. This should not happen as we only call this on invariant subforests.");
 
             PullTowardsCenter(newVertex, null, 1f);
-            // TODO: Feature. Also make this as a algorithm with substeps and let user choose the center vertex (and understand the movement).
-            // the choice is also sometimes not optimal
 
             // Moves the source of the strip along the strip (removing it) and returns the cyclic order. This is done recursively, edge for edge, so that the strips are parallel but not at the same place.
             IEnumerable<Strip> PullTowardsCenter(Junction junction, Strip stripToCenter, float orderIndexWidth)
@@ -1109,12 +1121,28 @@ public class FibredSurface : IPatchedDrawnsformable
         }
     }
 
+
     #endregion
 
     #region Valence one and two junctions
 
     public IEnumerable<Junction> GetValenceOneJunctions() =>
         from vertex in graph.Vertices where Star(vertex).Count() == 1 select vertex;
+    
+    
+    public AlgorithmSuggestion ValenceOneJunctionsSuggestion()
+    {
+        var options = (
+            from v in GetValenceOneJunctions()
+            select (v.Name as object, v.ColorfulName)
+        ).ToArray(); 
+        if (options.Length == 0) return null;
+        return new AlgorithmSuggestion(
+            options: options,
+            description: "Remove a valence-one junction. WHAT THE HECK?", buttons: new[] { AlgorithmSuggestion.valence1Button },
+            allowMultipleSelection: true
+        );
+    }
 
     public void RemoveValenceOneJunction(Junction junction)
     {
@@ -1137,6 +1165,18 @@ public class FibredSurface : IPatchedDrawnsformable
         let star = Star(vertex)
         where star.Count() == 2 && !star.First().Equals(star.Last().Reversed()) // no self-edge
         select vertex;
+
+    public AlgorithmSuggestion ValenceTwoSuggestion()
+    {
+        var valenceTwoJunctions = GetValenceTwoJunctions().ToArray();
+        if (valenceTwoJunctions.Length <= 0) return null;
+        return new AlgorithmSuggestion(
+            options: from v in valenceTwoJunctions select (v.Name as object, v.ToColorfulString()),
+            description: "Remove a valence-two junction.", 
+            buttons: new[] { AlgorithmSuggestion.valence2SelectedButton, AlgorithmSuggestion.valence2AllButton },
+            allowMultipleSelection: true
+        );
+    }
 
     /// <summary>
     /// Removes a valence two junction by keeping one of the two strips and make it replace the concatenation of the two strips.
@@ -1221,6 +1261,21 @@ public class FibredSurface : IPatchedDrawnsformable
         var backTracks = GetBackTracks(strip).ToArray();
         var extremalVertices = GetExtremalVertices(strip).ToArray();
         return (strip, backTracks, extremalVertices);
+    }
+
+    public AlgorithmSuggestion TighteningSuggestion()
+    {
+        var options = (
+            from loosePosition in GetLoosePositions()
+            select (loosePosition.Item1.Name as object, PullTightString(loosePosition))
+        ).ToArray();
+        if (options.Length == 0) return null;
+        return new AlgorithmSuggestion(
+            options, 
+            description: "Pull tight at one or more edges.",
+            buttons: new[] { AlgorithmSuggestion.tightenAllButton, AlgorithmSuggestion.tightenSelectedButton }, 
+            allowMultipleSelection: true
+        );
     }
 
     private static string PullTightString((Strip, EdgePoint[], Junction[]) loosePositions) =>
@@ -1524,7 +1579,14 @@ public class FibredSurface : IPatchedDrawnsformable
 
     
     const float baseShiftStrength = 0.07f;
-    public void MoveJunction(Junction v, Curve curve, float length, Strip e = null, bool ignoreGivenEdge = false, bool movingAlongGivenEdge = true) 
+
+    public enum MoveJunctionShiftType
+    {
+        ToTheRight,
+        ToTheLeft,
+        Symmetric
+    }
+    public void MoveJunction(Junction v, Curve curve, float length, Strip e = null, bool ignoreGivenEdge = false, bool movingAlongGivenEdge = true, MoveJunctionShiftType shiftType = MoveJunctionShiftType.Symmetric) 
     {
         v.Patches = new []{ curve[length] };
         
@@ -1542,7 +1604,13 @@ public class FibredSurface : IPatchedDrawnsformable
         for (var i = 0; i < star.Count; i++)
         {
             var edge = star[i];
-            var shiftStrength = ((star.Count - 1f) / 2f - i) * shift;
+
+            var shiftStrength = shift * shiftType switch
+            {   
+                MoveJunctionShiftType.ToTheRight => i / 2f,
+                MoveJunctionShiftType.ToTheLeft => -i / 2f,
+                MoveJunctionShiftType.Symmetric => (star.Count - 1f) / 2f - i
+            };
             var shiftedCurve = shiftStrength != 0 ?
                 new ShiftedCurve(precompositionCurve, shiftStrength, ShiftedCurve.ShiftType.SymmetricFixedEndpoints)
                 : precompositionCurve;
@@ -1581,7 +1649,7 @@ public class FibredSurface : IPatchedDrawnsformable
 
         var star = StarOrdered(edges[0].Source).ToList();
 
-        var edgesOrdered = SortConnectedSetInStar(star, edges).ToList();
+        var edgesOrdered = SortConnectedSet(star, edges).ToList();
         if (!edges.All(edgesOrdered.Contains))
             throw new($"Edges to fold are not connected in the cyclic order: {string.Join(", ", edges)}");
         
@@ -1605,7 +1673,7 @@ public class FibredSurface : IPatchedDrawnsformable
             options: from m in movementsOrdered 
                 select (m as object, m.ToString()),
                 // for the other steps (see fold inefficiencies) we changed it so that this doesn't contain actual references to Strips, but a  SerializationString, so that the FibredSurface can be copied, but this step is only ever applied on this uncopied Surface itself. This means we cannot undo and choose something different.
-            buttons: new[] { "Move", "Move, but ignore the edge along which we move" }
+            buttons: new[] { AlgorithmSuggestion.foldMoveButton, AlgorithmSuggestion.foldMoveAltButton }
         ); 
         if (selectedOptionsDuringAlgorithmPause?.FirstOrDefault() is not MovementForFolding selectedMovement) 
             selectedMovement = movementsOrdered[0];
@@ -1618,7 +1686,7 @@ public class FibredSurface : IPatchedDrawnsformable
         var targetVerticesToFold =
             (from edge in edges select edge.Target).Distinct().ToArray(); // has the correct order
         
-        selectedMovement.MoveVerticesForFolding(ignoreGivenEdges: selectedButtonDuringAlgorithmPause == "Move, but ignore the edge along which we move" || selectedButtonDuringAlgorithmPause == null);
+        selectedMovement.MoveVerticesForFolding(ignoreGivenEdges: selectedButtonDuringAlgorithmPause == AlgorithmSuggestion.foldMoveAltButton || selectedButtonDuringAlgorithmPause == null);
         
 
         var remainingEdge = selectedMovement.preferredEdge;
@@ -1673,7 +1741,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 var localStar = StarOrdered(vertex).ToList();
                 var outerEdges = localStar.ToHashSet();
                 outerEdges.ExceptWith(from e in edges select e.Reversed());
-                var outerEdgesSorted = SortConnectedSetInStar(localStar, outerEdges);
+                var outerEdgesSorted = SortConnectedSet(localStar, outerEdges);
                 foreach (var edge in outerEdgesSorted)
                 {
                     yield return edge;
@@ -1959,6 +2027,19 @@ public class FibredSurface : IPatchedDrawnsformable
         // }
     }
 
+    AlgorithmSuggestion RemoveInefficiencySuggestion()
+    {
+        var f = GetInefficiencies().ToArray();
+        if (f.Length == 0) return null;
+        return new AlgorithmSuggestion(
+            options: from inefficiency in f.OrderBy(inefficiency =>
+                inefficiency.order + (inefficiency.FullFold ? 0 : 0.5f))
+                select (inefficiency.ToSerializationString() as object, inefficiency.ToColorfulString()),
+            description: "Remove an inefficiency.",
+            buttons: new[] { AlgorithmSuggestion.inefficiencyAtOnceButton, AlgorithmSuggestion.inefficiencyInStepsButton, AlgorithmSuggestion.inefficiencyInFineStepsButton }
+        );
+    }
+
     [CanBeNull]
     public Inefficiency CheckEfficiency(EdgePoint edgePoint, List<Gate<Junction>> gates)
     {
@@ -2083,111 +2164,428 @@ public class FibredSurface : IPatchedDrawnsformable
         return Q;
     }
 
-
-    public bool AbsorbIntoPeriphery(bool testDry = false)
+    public AlgorithmSuggestion AbsorbIntoPeripherySuggestion()
     {
         var Q = GetMaximalPeripheralSubgraph();
-        if (testDry && (
-                Q.Edges.Any(edge => !peripheralSubgraph.ContainsEdge(edge))
-                || Q.Vertices.Any(v => Star(v).Count() <= 2)
-            )) return true;
-
+        var valenceTwoVertices = Q.Vertices.Where(v => Star(v).Count() <= 2).ToArray();
         var starQ = SubgraphStar(Q).ToList();
-        foreach (var strip in starQ)
+        
+        Q.RemoveEdges(peripheralSubgraph.Edges);
+        StringBuilder sb = new ();
+        if (Q.EdgeCount > 0)
         {
-            if (testDry && Q.ContainsEdge(strip.Dg!.UnderlyingEdge)) return true;
-            int skipIndex = strip.EdgePath.TakeWhile(e => Q.Edges.Contains(e)).Count();
-            strip.EdgePath = strip.EdgePath.Skip(skipIndex);
-            if (strip.Dg == null) throw new($"The strip {strip} has been absorbed into the periphery.");
+            var trees = Q.ComponentGraphs();
+            // todo? we could sort these by component of P that they attach to. Is not really priority, mostly there will be only very few trees, often only one edge in total.
+            sb.Append("Q = P \u22c3 {");
+            sb.AppendJoin("} \u22c3 {",
+                from tree in trees
+                where tree.EdgeCount > 0
+                select tree.Edges.ToCommaSeparatedString(e => e.ColorfulName)
+            );
+            sb.Append("} deformation retracts to P");
         }
 
-        if (testDry) return false;
-        // todo: feature, don't change everything if not necessary to make it maximal, for example if all edges already leave Q immediately, then Q is already a circle graph, isn't it?
-        var components = Q.ComponentGraphs(out var componentDict);
-        var gates = Gate.FindGates(starQ, vertex => componentDict[vertex]);
-        // todo? Display the peripheral gates?
-        var newJunctions = new List<Junction>();
-        var stars = (from component in components select SubgraphStarOrdered(component).ToList()).ToList(); // todo: bug. not ordered correctly (not starting right after the peripheral loop!)
-        foreach (var gate in gates)
+        if (valenceTwoVertices.Length > 0)
         {
-            var gateInOrder = SortConnectedSetInStar(stars[gate.junctionIdentifier], gate.Edges).ToList();
-            var positions = from edge in gateInOrder select edge.Curve.StartPosition;
-            // give each gate γ the fr(γ) from joining the fr(e) for e in the gate along the boundary of <Q>.
-            // todo: currently this does not follow the boundary of <Q>.
-            string name = NextVertexName();
-            var newJunction = new Junction(this, surface.GetPathFromWaypoints(positions, name), name, color: NextVertexColor()); // image set below // TODO: Bug, feature. what if there only one vertex in here? What if two edges in different gates start at the same vertex? 
-            newJunctions.Add(newJunction);
-            var orderIndex = 0;
-            foreach (var edge in gateInOrder)
+            sb.Append(Q.EdgeCount > 0 ? " and " : "P ");
+            sb.Append("has valence two vertices: ");
+            sb.AppendJoin(", ", valenceTwoVertices.Select(v => v.ColorfulName));
+        }
+        
+        var nonMaximalStrips = starQ.Where(strip => Q.ContainsEdge(strip.Dg!.UnderlyingEdge)).ToList();
+        if (nonMaximalStrips.Count > 0)
+        {
+            if (sb.Length > 0) sb.Append(".\n");
+            string qName = (Q.EdgeCount > 0 ? "Q" : "P");
+            sb.Append($"The following edges in Star({qName}) start with edges in {qName}: ");
+            sb.AppendJoin(", ", nonMaximalStrips.Select(e => e.ColorfulName));
+        }
+
+        return new AlgorithmSuggestion(
+            description: "Absorb into the periphery",
+            options: new[] { ((object)Q, sb.ToString()) }, 
+            buttons: new[] { AlgorithmSuggestion.absorbPAtOnceButton, AlgorithmSuggestion.absorbPInStepsButton }
+        );
+    }
+
+    public IEnumerable<AlgorithmSuggestion> AbsorbIntoPeriphery(FibredGraph QwithoutP)
+    {
+
+        // var trees = QwithoutP.ComponentGraphs(out var componentDict);
+        
+        // collapse the trees exactly like collapsing subforests!!
+        using var enumerator = CollapseInvariantSubforest(QwithoutP);
+        while (enumerator.MoveNext())
+            yield return enumerator.Current;
+        
+        
+        var oldPeripheralEdges = peripheralSubgraph.Edges.ToHashSet();
+        var oldPeripheralVertices = peripheralSubgraph.Vertices.ToHashSet();
+        
+        var peripheralBoundaryWords = BoundaryWords().Where(w =>
+            w.All(e => oldPeripheralEdges.Contains(e.UnderlyingEdge))
+        ).ToArray();
+        
+        var previousEdgeOld = new Dictionary<Junction, Strip>(graph.VertexCount); 
+        var nextEdgeOld = new Dictionary<Junction, Strip>(graph.VertexCount);
+        
+        var componentDict = new Dictionary<Junction, int>();
+        for (int i = 0; i < peripheralBoundaryWords.Length; i++)
+        {
+            var lastEdge = peripheralBoundaryWords[i].LastOrDefault();
+            foreach (var e in peripheralBoundaryWords[i])
             {
-                edge.Source = newJunction; // adds the new junctions to the graph
-                edge.OrderIndexStart = orderIndex++;
+                componentDict[e.Source] = i;
+                previousEdgeOld[e.Source] = lastEdge.Reversed();
+                nextEdgeOld[e.Source] = e;
+                lastEdge = e;
+            }
+        }
+        var gates = Gate.FindGates(graph, vertex => componentDict.GetValueOrDefault(vertex, -1)); // this groups together gates from different vertices outside of P, but we don't care about them anyways.
+        // takes a St(Q) edge and gives the original linear order of the star of its source vertex (component of Q \ P)
+        var linearStars = new Dictionary<Strip, List<Strip>>(graph.EdgeCount); 
+        var gatesOrderedByComponent = new List<List<Gate<int>>>(peripheralBoundaryWords.Length);
+        
+        var componentStars = new List<List<Strip>>(peripheralBoundaryWords.Length);
+        var newVertices = new Dictionary<Gate<int>, Junction>(gates.Count);
+        var nextEdgeNew = new Dictionary<Junction, UnorientedStrip>(gates.Count);
+        var previousEdgeNew = new Dictionary<Junction, Strip>(gates.Count);
+        // var sampleStarEdgesInGates = new Dictionary<Junction, Strip>(peripheralBoundaryWords.Length); // to construct the map on the new vertices
+        for (int i = 0; i < peripheralBoundaryWords.Length; i++)
+        {
+            var newComponentVertices = new List<Junction>(gates.Count);
+            var component = peripheralBoundaryWords[i].Inverse; // so that it runs around counterclockwise, matching the cyclic order.
+            var componentVertices = new List<Junction>();
+            var starC = new List<Strip>();
+            foreach (var e in component)
+            {
+                var v = e.Source;
+                var star = StarOrdered(v, e).Skip(2).ToList();
+                // since the component is the boundary word, c = boundaryWord.Inverse = ... rev(e_{k+1}) | rev(e_{k}) ..., the cyclic order here is by def. of the boundary word: rev(e_k), e_{k+1}, a, ... , z and we will add a...z. e = rev(e_{k})
+                linearStars[e] = star;
+                if (star.Count > 2)
+                    componentVertices.Add(v);
+                starC.AddRange(star);
+            } 
+            componentStars.Add(starC);
+            var gatesC = gates.Where(gate => gate.junctionIdentifier == i)
+                .OrderBy(gate => starC.IndexOf(gate.Edges.First())).ToList();
+            gatesOrderedByComponent.Add(gatesC);
+            var usedJunctions = new List<float>();
+            var usedOldJunctions = new List<int>();
+            foreach (var gate in gatesC)
+            {
+                var gateInOrder = SortConnectedSet(starC, gate.Edges).ToList();
+                if (!gateInOrder.ToHashSet().SetEquals(gate.Edges)) 
+                    throw new Exception($"The peripheral gate {gate} is not connected in the cyclic order of the star of the peripheral subgraph (after collapsing the trees of Q\\P into their components).");
+
+                var verticesOfGate = SortConnectedSet(componentVertices, gateInOrder.Select(e => e.Source).ToHashSet(),
+                    out int indexOffset).ToList();
+                
+                float Badness(float k) => gateInOrder.Sum(e => Mathf.Abs(verticesOfGate.IndexOf(e.Source) - (k - indexOffset))); // same as the distance in componentVertices, but handles the wraparound better.
+                
+                var movements = new List<(float, (object, string))>();
+                var startIndex = Math.Min(usedOldJunctions.Count > 0 ? usedOldJunctions[^1] : int.MaxValue, indexOffset);
+                    // we have to ignore the first few vertices if the last gate was already moved there, because we have to maintain the cyclic order
+                var stopIndex = Math.Max((usedOldJunctions.Count > 0 ? usedOldJunctions[0] : int.MinValue) + componentVertices.Count, indexOffset + verticesOfGate.Count - 1);
+                for (int k = startIndex; k <= stopIndex; k++)
+                {
+                    var kN = k % componentVertices.Count;
+                    var badness = Badness(k);
+                    var v = componentVertices[kN];
+                    if (!usedOldJunctions.Contains(kN))
+                        movements.Add((badness, (k, $"{k.ToOrdinal()} vertex {v.ColorfulName}. Movement has to be over {badness} edges.")));
+                    else
+                    {
+                        if (k == startIndex)
+                        {
+                            var nextHigherIndex = 0.5f;
+                            while (usedJunctions.Contains(kN + nextHigherIndex)) nextHigherIndex /= 2;
+                            badness = Badness(k + nextHigherIndex);
+                            movements.Add((badness, (kN + nextHigherIndex,
+                                $"ε = {nextHigherIndex} after the {(k - indexOffset).ToOrdinal()} vertex {v.ColorfulName}. Movement has to be over {badness} edges.")));
+                        }
+                        else if (k == stopIndex)
+                        {
+                            var nextLowerIndex = 0.5f;
+                            while (usedJunctions.Contains(kN - nextLowerIndex)) nextLowerIndex /= 2;
+                            badness = Badness(k - nextLowerIndex);
+                            movements.Add((badness, (kN - nextLowerIndex,
+                                $"ε = {nextLowerIndex} before the {(k - indexOffset).ToOrdinal()} vertex {v.ColorfulName}. Movement has to be over {badness} edges.")));
+                        }
+                        else
+                        {
+                            throw new Exception(
+                                "Weird behavior: It seems there was a junction used when creating the gate's vertices in the free part, i.e. not in order.");
+                        }
+                    }
+                }
+                
+                yield return new AlgorithmSuggestion(
+                    description:
+                    $"Create new vertex for {gate} in the star of the component P_{i} = {component.ToColorfulString(150, 10)}. The vertices along the gate are {verticesOfGate.ToCommaSeparatedString(j => j.ToColorfulString())}. Move the origin of the edges along P_{i} to one of the selected vertices (or to an intermediate position)",
+                    options: movements.OrderBy(m => m.Item1).Select(m => m.Item2),
+                    buttons: new[] { AlgorithmSuggestion.generalSubroutineContinueButton }
+                ); 
+                
+                var selection = selectedOptionsDuringAlgorithmPause?.FirstOrDefault() ?? movements.FirstOrDefault().Item1;
+                if (selection is not float vertexIndex)
+                    throw new InvalidOperationException($"Selected vertex {selection} is not a valid option for the new vertex of the gate {gate} in the absorption into the periphery.");
+                
+                var vertexIndexInt = Mathf.RoundToInt(vertexIndex);
+                bool isInt = Math.Abs(vertexIndex - vertexIndexInt) < 1e-8;
+                if (isInt) vertexIndex = vertexIndexInt;
+                usedJunctions.Add(vertexIndex);
+                if (isInt) usedOldJunctions.Add(vertexIndexInt);
+                
+                Junction newJunction = isInt ? 
+                    verticesOfGate[vertexIndexInt % verticesOfGate.Count] : // reuse old junction
+                    new Junction(this, verticesOfGate[0].Position, NextVertexName(), color: NextVertexColor()); // create new junction
+                    
+                for (var oldIndex = 0; oldIndex < verticesOfGate.Count; oldIndex++)
+                {
+                    var junction = verticesOfGate[oldIndex];
+                    Junction temporaryJunctionForMovement;
+                    if (oldIndex == 0 && !isInt)
+                    {
+                        temporaryJunctionForMovement = newJunction; 
+                    }
+                    else
+                    {
+                        temporaryJunctionForMovement = new Junction(this, junction.Position,
+                            $"temporary junction {vertexIndex}", color: Color.black);
+                    }
+
+                    foreach (var strip in gateInOrder)
+                    {
+                        if (strip.Source == junction)
+                            strip.Source = temporaryJunctionForMovement;
+                    }
+
+                    var movementDistance = (vertexIndex - oldIndex); // integer if isInt
+                    var componentToMoveAlong = component;
+                    var moveJunctionShiftType = MoveJunctionShiftType.ToTheRight; // shift to the outside, component is counterclockwise
+                    if (movementDistance < 0)
+                    {
+                        componentToMoveAlong = componentToMoveAlong.Inverse; 
+                        movementDistance = -movementDistance;
+                        moveJunctionShiftType = MoveJunctionShiftType.ToTheLeft;
+                    }
+
+                    var movementDistanceFractionalReverse = Mathf.CeilToInt(movementDistance) - movementDistance; // 0 if integer, otherwise the distance to the next integer
+                    
+
+                    var movementEdges = componentToMoveAlong.Concat(componentToMoveAlong)
+                        .SkipWhile(e => e.Source != junction).Take(Mathf.CeilToInt(movementDistance));
+                    var movementCurves = movementEdges.Select(e => e.Curve).ToList();
+                    var movementCurve = new ConcatenatedCurve(movementCurves);
+                    
+                    var movementCurveLength = movementCurve.Length - movementCurves[^1].Length * movementDistanceFractionalReverse;
+                    
+                    if (movementDistance != 0)
+                        MoveJunction(temporaryJunctionForMovement, movementCurve, movementCurveLength, shiftType: moveJunctionShiftType);
+
+                    for (var orderIndex = 0; orderIndex < gateInOrder.Count; orderIndex++)
+                    {
+                        var strip = gateInOrder[orderIndex];
+                        if (strip.Source == temporaryJunctionForMovement)
+                            strip.Source = newJunction;
+                        strip.OrderIndexStart = orderIndex;
+                    }
+                    
+                    if (oldIndex != 0 || isInt)
+                        graph.RemoveVertex(temporaryJunctionForMovement);
+                }
+
+                newComponentVertices.Add(newJunction);
+                newVertices[gate] = newJunction;
+            }
+            
+            foreach (var e in component)
+            {
+                graph.RemoveEdge(e.UnderlyingEdge);
+                peripheralSubgraph.RemoveEdge(e.UnderlyingEdge);
+                if (!newComponentVertices.Contains(e.Source))
+                    graph.RemoveVertex(e.Source);
+            }
+
+            var lastPosition = usedJunctions[^1];
+            var lastJunction = newComponentVertices[^1];
+            for (int j = 0; j < usedJunctions.Count; j++)
+            {
+                var currentPosition = usedJunctions[j];
+                var currentJunction = newComponentVertices[j];
+
+                int lastPosInt = Mathf.FloorToInt(lastPosition);
+                var lastPosFrac = lastPosition - lastPosInt;
+                int currentPosInt = Mathf.CeilToInt(currentPosition);
+                var currentPosFracRev = currentPosInt - currentPosition;
+                var movementEdges = component.Concat(component).Skip(lastPosInt).Take(currentPosInt - lastPosInt);
+                var movementCurves = movementEdges.Select(e => e.Curve).ToList();
+                var movementCurve = new ConcatenatedCurve(movementCurves);
+
+                var movementCurveStart = movementCurves[0].Length * lastPosFrac;
+                var movementCurveEnd = movementCurve.Length - movementCurves[^1].Length * currentPosFracRev;
+
+                
+                var newCurve = movementCurve.Restrict(movementCurveStart, movementCurveEnd).Reversed(); // we invert again, so that the boundary word will contain all of these in the right direction.
+                var newEdge = new UnorientedStrip(newCurve, currentJunction, lastJunction, EdgePath.Empty, this, orderIndexStart: -1, orderIndexEnd: graph.EdgeCount, newColor: true, newName: true, addToGraph: true);
+                peripheralSubgraph.AddVerticesAndEdge(newEdge.UnderlyingEdge);
+                nextEdgeNew[currentJunction] = newEdge;
+                previousEdgeNew[lastJunction] = newEdge.Reversed();
+
+                lastPosition = currentPosition;
+                lastJunction = currentJunction;
+            }
+            
+        }
+        
+        // assign g on P'
+        foreach (var (gate, junction) in newVertices)
+        {
+            var imageGate = gates.First(g => g.Edges.Contains(gate.Edges.First().Dg));
+            junction.image = newVertices[imageGate];
+            
+            nextEdgeNew[junction].EdgePath = new NormalEdgePath(
+                nextEdgeNew[junction.image]
+            ); 
+            if (nextEdgeNew[junction.image].Target != nextEdgeNew[junction].Target.image)
+                throw new Exception($"The new graph map does not seem to act as a graph automorphism on the new peripheral graph.");
+            
+            foreach (var strip in gate.Edges)
+            {
+                int stripIndex = strip.EdgePath.TakeWhile(e => !oldPeripheralEdges.Contains(e)).Count();
+                if (stripIndex == strip.EdgePath.Count)
+                    throw new Exception($"The strip {strip} only contains Q edges but is not absorbed into the periphery. This should not happen.");
+                if (stripIndex > 0)
+                    strip.EdgePath = strip.EdgePath.Skip(stripIndex); // here we remove the beginning part of the edge paths of edges starting in Q that might be wrong from the collapseInvariantSubforest move (because it was not actually invariant). The vertices whose image is not well-defined are all removed as well.
             }
         }
 
-        // graph.AddVertexRange(newJunctions);
-        List<UnorientedStrip> newEdges = new();
-        foreach (var star in stars)
+        // isotope junctions mapping into Q
+        foreach (var junction in graph.Vertices)
         {
-            List<Junction> newJunctionsInOrder = new();
-            foreach (var edge in star)
+            if (!oldPeripheralVertices.Contains(junction.image)) continue;
+            var previousEdge = previousEdgeOld[junction];
+            var nextEdge = nextEdgeOld[junction];
+            Dictionary<Strip, int> gateIndices = new Dictionary<Strip, int>();
+
+            var star = Star(junction);
+            
+            foreach (var strip in star)
             {
-                var newJunction = edge.Source; // this is the junction corresponding to the gate of the edge
-                var lastJunction = newJunctionsInOrder.LastOrDefault();
-                if (newJunction == lastJunction) continue;
-
-
-                var Dg = edge.Dg;
-                var Dg_gate = Enumerable.Range(0, gates.Count).First(j => gates[j].Edges.Contains(Dg));
-                newJunction.image = newJunctions[Dg_gate];
-
-                newJunctionsInOrder.Add(newJunction);
+                if (strip.Dg == previousEdge)
+                    gateIndices[strip] = gates.Count; // just some high number
+                else if (strip.Dg == nextEdge)
+                    gateIndices[strip] = -1; // just some low number
+                else
+                {
+                    var gate = GetGate(strip.Dg);
+                    var component = gate.junctionIdentifier;
+                    gateIndices[strip] = gatesOrderedByComponent[component].IndexOf(gate);
+                }
             }
 
-            if (newJunctionsInOrder[^1] !=
-                newJunctionsInOrder[0]) // this happens if the iteration above started in the middle of a gate.
-                newJunctionsInOrder.Add(newJunctionsInOrder[0]);
+            var (j, badness) = Enumerable.Range(0, gates.Count).ArgMin(j => Badness(j));
+            junction.image = newVertices[gates[j]];
+            var a = gates[j].Edges.First();
 
-            for (var index = 0; index < newJunctionsInOrder.Count - 1; index++)
+            foreach (var strip in star)
             {
-                var junction = newJunctionsInOrder[index];
-                var nextJunction = newJunctionsInOrder[index + 1];
-                var junctionEndPosition = (junction.Patches.First() as Curve).EndPosition;
-                var nextJunctionStartPosition = (nextJunction.Patches.First() as Curve).StartPosition;
-
-                var newEdge = new UnorientedStrip(
-                    curve: surface.GetGeodesic(
-                        start: junctionEndPosition,
-                        end: nextJunctionStartPosition, ""),
-                    source: junction,
-                    target: nextJunction,
-                    edgePath: EdgePath.Empty, // we can only add these once we created them all
-                    fibredSurface: this,
-                    orderIndexStart: Star(junction).Max(e => e.OrderIndexStart) + 0.5f,
-                    orderIndexEnd: Star(nextJunction).Min(e => e.OrderIndexStart) - 0.5f, // still > -1!
-                    newColor: true,
-                    newName: true,
-                    addToGraph: true
+                var originalPathInP = strip.EdgePath.TakeWhile(e => oldPeripheralEdges.Contains(e)).ToArray();
+                strip.EdgePath = GetEdgePath(a, strip.Dg, originalPathInP).Concat(
+                    strip.EdgePath.Skip(originalPathInP.Length)
                 );
-                newEdges.Add(newEdge);
+            }
+
+            continue;
+
+            int Badness(int j) => gateIndices.Values.Sum(i => Math.Abs(j - i));
+        }
+
+        var newPeripheralVertices = newVertices.Values.ToHashSet();
+        // define g on edge interior points mapping to Q
+        foreach (var strip in graph.Edges)
+        {
+            var edgePath = strip.EdgePath.ToList();
+            for (int i = 1; i < edgePath.Count; i++) // should not be able to start or end in old vertices / edges anymore.
+            {
+                if (!newPeripheralVertices.Contains(edgePath[i].Source)) continue;
+                var originalPathInP = new List<Strip>();
+                while (oldPeripheralEdges.Contains(edgePath[i]))
+                {
+                    originalPathInP.Add(edgePath[i]);
+                    edgePath.RemoveAt(i);
+                }
+
+                var intermediateEdgePath = GetEdgePath(edgePath[i - 1].Reversed(), edgePath[i], originalPathInP);
+                edgePath.InsertRange(i, intermediateEdgePath);
+                i += intermediateEdgePath.Count; // edgePath[i] is still the previous edgePath[i].
+            }
+
+        }
+
+        yield break;
+
+        Gate<int> GetGate(Strip edge) => gates.FirstOrDefault(g => g.Edges.Contains(edge));
+
+        EdgePath GetEdgePath(Strip a, Strip b, IEnumerable<Strip> originalPathInP)
+        {
+            bool clockwise;
+            var tightPathInP = CancelBacktracking(originalPathInP);
+            if (tightPathInP.Count > 0)
+            {
+                Junction v = a.Source;
+                var previousEdge = previousEdgeOld[v];
+                var nextEdge = nextEdgeOld[v];
+                if (tightPathInP[0] == previousEdge)
+                    clockwise = false;
+                else if (tightPathInP[0] == nextEdge)
+                    clockwise = true;
+                else
+                    throw new Exception($"The original path in P should start with either the previous or the next edge of the vertex where we are attaching the new edge, but it starts with {tightPathInP[0]} instead of {previousEdge} or {nextEdge}.");
+            }
+            else
+            {
+                var linearOrder = linearStars[a];
+                int indexA = linearOrder.IndexOf(a);
+                int indexB = linearOrder.IndexOf(b);
+                if (indexA == -1 || indexB == -1)
+                    throw new Exception($"Both edges should be in the star of the vertex where we are attaching the new edge, but {a} is at index {indexA} and {b} is at index {indexB} in the linear order of the star.");
+                clockwise = indexA > indexB;
+            }
+
+            return new NormalEdgePath(FollowAroundP(GetGate(a), GetGate(b), clockwise));
+        }
+
+        List<Strip> CancelBacktracking(IEnumerable<Strip> edgePath)
+        {
+            List<Strip> result = new List<Strip>();
+            foreach (var e in edgePath)
+            {
+                if (result.Count > 0 && result[^1].Equals(e.Reversed()))
+                    result.RemoveAt(result.Count - 1);
+                else
+                    result.Add(e);
+            }
+            return result;
+        }
+
+        IEnumerable<Strip> FollowAroundP(Gate<int> startGate, Gate<int> targetGate, bool clockwise)
+        {
+            var startJunction = newVertices[startGate];
+            var targetJunction = newVertices[targetGate];
+            int overflowCounter = 0;
+            while (!Equals(startJunction, targetJunction))
+            {
+                var nextEdge = clockwise ? nextEdgeNew[startJunction] : previousEdgeNew[startJunction];
+                yield return nextEdge;
+                startJunction = nextEdge.Target;
+                overflowCounter++;
+                if (overflowCounter > graph.VertexCount)
+                    throw new Exception($"We seem to be going in circles when following around the periphery from {startGate} to {targetGate}. This should not happen.");
             }
         }
-
-        foreach (var strip in newEdges)
-        {
-            var imageOfSource = strip.Source.image;
-            var imageOfEdge = newEdges.First(e => e.Source == imageOfSource);
-            if (imageOfEdge.Target != strip.Target.image)
-                throw new(
-                    "The new graph map does not seem to act as a graph automorphism on the new peripheral graph.");
-            strip.EdgePath = new NormalEdgePath( imageOfEdge );
-        }
-
-        // graph.RemoveEdges(Q.Edges);
-        foreach (var oldJunction in Q.Vertices)
-            graph.RemoveVertex(
-                oldJunction); // also removes Q's edges (the star edges should not be adjacent to (the old) Q anymore)
-        return true;
     }
 
     #endregion
@@ -2208,6 +2606,22 @@ public class FibredSurface : IPatchedDrawnsformable
         }
     }
 
+    public AlgorithmSuggestion RemovePeripheralInefficiencySuggestion()
+    {
+        var e = GetPeripheralInefficiencies().ToArray();
+        if (e.Length == 0) return null;
+        return new AlgorithmSuggestion(
+            options: from l in e
+            // l is a list of edges with the same Dg and this Dg(l) is in the periphery.
+            select (l.Select(edge => edge.Name) as object,
+                    l.Select(edge => edge.ColorfulName).ToCommaSeparatedString() +
+                    $" are all mapped to {l.First()!.Dg!.ColorfulName} ∈ P."
+                ),
+            description: "Fold initial segments of edges that map to edges in the pre-periphery.",
+            buttons: new[] { AlgorithmSuggestion.peripheralInefficiencyButton }
+        );
+    }
+
     public IEnumerable<AlgorithmSuggestion> RemovePeripheralInefficiency(IReadOnlyList<Strip> foldableEdges) => 
         FoldInitialSegmentInSteps(foldableEdges); 
 
@@ -2217,18 +2631,21 @@ public class FibredSurface : IPatchedDrawnsformable
 
     private List<HashSet<UnorientedStrip>> PrePeripheralDegrees()
     {
-        var degrees = new List<HashSet<UnorientedStrip>>();
-        degrees.Add(peripheralSubgraph.Edges.ToHashSet());
+        var degrees = new List<HashSet<UnorientedStrip>> { peripheralSubgraph.Edges.ToHashSet() };
         var remainingEdges = Strips.ToHashSet();
         remainingEdges.ExceptWith(degrees[0]);
         for (int i = 1; i <= 2 * graph.EdgeCount; i++) // should never reach this limit
         {
-            var P_i = (from strip in remainingEdges
-                where strip.EdgePath.All(edge => degrees[i - 1].Contains(edge.UnderlyingEdge))
+            var P_i = (
+                from strip in remainingEdges
+                where strip.EdgePath.All(
+                    edge => !remainingEdges.Contains(edge.UnderlyingEdge) // i.e. contained in some lower P_j
+                )
                 select strip).ToHashSet();
+            if (P_i.Count == 0) break;
             degrees.Add(P_i);
             remainingEdges.ExceptWith(P_i);
-            if (P_i.Count == 0) break;
+            if (remainingEdges.Count == 0) break;
         }
 
         return degrees;
@@ -2401,6 +2818,24 @@ public class FibredSurface : IPatchedDrawnsformable
         return null; 
     }
 
+    public AlgorithmSuggestion ReducibilitySuggestion()
+    {
+        var cd = PreservedSubgraph_Reducibility();
+        if (cd == null) return null;
+        return new AlgorithmSuggestion(
+            options: new (object, string)[] { },
+            description: "The map is reducible because there is an invariant essential subgraph, with edges "
+                         + cd.Select(e =>
+                                 peripheralSubgraph.ContainsEdge(e)
+                                     ? e.ColorfulName
+                                     : $"<b>{e.ColorfulName}</b>")
+                             .ToCommaSeparatedString()
+                         + ".\nYou can continue with the algorithm, but it will not necessarily terminate.", 
+            // todo? Find a "reduction" in the sense of the definition - being a boundary word of the preserved subgraph?
+            buttons: new[] { AlgorithmSuggestion.ignoreReducibleButton }
+        );
+    }
+
     /// <summary>
     /// Finds the left and right eigenvectors of the essential transition matrix M_H associated to the Frobenius-Perron eigenvalue (growth) λ.
     /// </summary>
@@ -2495,7 +2930,7 @@ public class FibredSurface : IPatchedDrawnsformable
                 var gateJunction = new Junction(this, gatePoint,
                     $"gate {{{gate.Edges.Select(e => e.Name).ToCommaSeparatedString()}}} @ {junction.Name}", color: gate.junctionIdentifier.Color);
                 gateJunctions[gate] = gateJunction;
-                foreach (var (index, strip) in SortConnectedSetInStar(star, gate.Edges).Enumerate())
+                foreach (var (index, strip) in SortConnectedSet(star, gate.Edges).Enumerate())
                 {
                     strip.Source = gateJunction; // this adds the new junctions to the graph
                     strip.OrderIndexStart = index;
