@@ -23,5 +23,7 @@ public class ModelSurfaceVisualizer : SurfaceVisualizer
         background.localPosition = new Vector3(center.x, center.y, 0);
         
         gameObject.name = surface.Name;
+        
+        // todo: move the initialization of model curves here
     }
 }

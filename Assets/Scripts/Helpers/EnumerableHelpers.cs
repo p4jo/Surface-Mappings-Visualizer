@@ -36,6 +36,9 @@ public static class EnumerableHelpers
         return (argMin, min);
     }
 
+    /// <summary>
+    /// Returns the index of the first element minimizing the selector, together with the minimum value. If the enumerable is empty, returns (-1, float.MaxValue).
+    /// </summary>
     public static (int, float) ArgMinIndex<T>(this IEnumerable<T> enumerable, Func<T, float> selector) 
     {
         var min = float.MaxValue;
@@ -61,6 +64,9 @@ public static class EnumerableHelpers
         return (res.Item1, -res.Item2);
     }
     
+    /// <summary>
+    /// Returns the index of the first element maximizing the selector, together with the maximum value. If the enumerable is empty, returns (-1, float.MinValue).
+    /// </summary>
     public static (int, float) ArgMaxIndex<T>(this IEnumerable<T> enumerable, Func<T, float> selector)
     {
         var res = enumerable.ArgMinIndex(t => -selector(t));
@@ -78,6 +84,19 @@ public static class EnumerableHelpers
         }
         return -1;
     }
+
+    public static IEnumerable<T> UniqueOrdered<T>(this IEnumerable<T> enumerable) => enumerable.Where(new HashSet<T>().Add);  
+    // the Add method belongs to the one HashSet created and stays the same. It returns true whenever the element can be added.
+    // This is not the same as enumerable.Where(t => new HashSet<T>().Add(t)) which creates a new HashSet for each element and thus always returns true.
+    // this seems to be exactly (up to HashSet -> Set) the implementation of Distinct(). But why does the description of Distinct() say that the result is not ordered?
+    // {
+    //     var hashSet = new HashSet<T>();
+    //     foreach (var t in enumerable)
+    //     {
+    //         if (hashSet.Add(t))
+    //             yield return t;
+    //     }
+    // }
 
     public static IEnumerable<(T, T2)> CartesianProduct<T, T2>(this IEnumerable<T> enumerable, IEnumerable<T2> other)
     {
@@ -291,6 +310,7 @@ public static class EnumerableHelpers
         }
         return count > 0 ? Math.Pow(product, 1.0 / count) : 0.0;
     }
+    
 }
 
 

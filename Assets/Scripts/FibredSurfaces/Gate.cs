@@ -10,34 +10,24 @@ public class EdgeCycle
     /// <summary>
     /// The first order elements are the edges in the cycle.
     /// </summary>
-    public List<(Strip, int)> attractedEdges = new();
+    public Dictionary<Strip, int> attractedEdges = new();
 
     public EdgeCycle(Strip edge, int order)
     {
         this.order = order;
-        attractedEdges.Add((edge, 0)); // this is the basepoint of the cycle
+        attractedEdges[edge] = 0; // this is the basepoint of the cycle
         for (int i = order - 1; i > 0; i--)
         {
             edge = edge?.Dg;
-            attractedEdges.Add((edge, i));
+            attractedEdges[edge] = i;
         }
     }
 
     /// <summary>
     /// Checks if the edge is known to be attracted into the cycle and returns the distance to the basepoint of the cycle (or -1 if it is not in the cycle).
     /// </summary>
-    public int CycleIndexOf(Strip edge)
-    {
-        try
-        {
-            return attractedEdges.First(stripDistancePair => Equals(stripDistancePair.Item1, edge)).Item2;
-        }
-        catch
-        {
-            return -1;
-        }
-    }
-    
+    public int CycleIndexOf(Strip edge) => attractedEdges.TryGetValue(edge, out var distance) ? distance : -1;
+
     /// <summary>
     /// The edgeCycle.attratcedEdges (for edgeCycle in edgeCycles) forms a partition of the set of oriented edges.  
     /// </summary>
@@ -57,8 +47,8 @@ public class EdgeCycle
                 if (l >= 0)
                 {
                     for (int m = 0; m < i; m++)
-                        if (edgeCycle.CycleIndexOf(orbit[m]) == -1)
-                            edgeCycle.attractedEdges.Add((orbit[m], l + i - m));
+                        if (!edgeCycle.attractedEdges.ContainsKey(orbit[m]))
+                            edgeCycle.attractedEdges[orbit[m]] = l + i - m;
                         else
                             Debug.LogWarning("This should not happen. An edge is already in an edge cycle, but isn't?");
                     break;
@@ -84,8 +74,8 @@ public class EdgeCycle
                 edgeCycles.Add(edgeCycle); // this assigns the Dg∞ to the cycle
 
                 for (int m = 0; m < j; m++)
-                    if (edgeCycle.CycleIndexOf(orbit[m]) == -1)
-                        edgeCycle.attractedEdges.Add((orbit[m], j - m));
+                    if (!edgeCycle.attractedEdges.ContainsKey(orbit[m]))
+                        edgeCycle.attractedEdges[orbit[m]] = j - m;
                     else
                         Debug.LogWarning("This should not happen. An edge is already in an edge cycle, but isn't?");
 
@@ -116,7 +106,7 @@ public class Gate<T>
     /// <summary>
     /// The edges in the star of the vertex that form the gate, i.e. that get mapped to the same edge under Dg^k for some k.
     /// </summary>
-    public readonly List<Strip> Edges;
+    public List<Strip> Edges;
 
     public readonly int cycleDistance;
 

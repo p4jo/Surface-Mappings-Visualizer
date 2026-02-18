@@ -21,8 +21,9 @@ public struct SurfaceParameter
     {
         int genus = 1, punctures = 0, peripheralPunctures = 0;
         bool connectedSumEmbedding = false;
-        foreach (var s in str.Split(','))
+        foreach (var st in str.Split(','))
         {
+            var s = st.Replace(" ", ""); // remove whitespace
             if (s.StartsWith("g=") && int.TryParse(s[2..], out var g))
                 genus = g;
             if (s.StartsWith("p=") && int.TryParse(s[2..], out var p))
@@ -67,15 +68,15 @@ public static class SurfaceGenerator
 
 
     /// <summary>
-    /// Creates a spine for the surface by adding a vertex at (0, 0, 0) and connecting it to the midpoints of the sides of the surface. This currently doesn't work for surfaces with punctures, or for surfaces with non-convex polygons.
+    /// Creates an ideal hyperbolic model surface with corresponding dual spine and lassos around punctures, also added at ideal vertices 
     /// </summary>
     /// <param name="names">The names for the strips. If not provided this will be the last character of the side name.</param>
     /// <param name="reverse">Whether to reverse the strip. If not provided, this will be false for all strips.
     /// This decides if the drawn spine curve goes towards the "primary" side of the surface (saved in surface.sides), or the "other" side (side.other).
     /// </param>
-    /// <param name="peripheralPunctures">This is the number of punctures around which to add a peripheral loop. For example, if you want to study a point push, this should be all punctures. Selects the cusps with the least amount of sides touching it first.</param>
+    /// <param name="peripheralPunctures">This is the number of punctures around which to add a peripheral loop. Selects the cusps with the least amount of sides touching it first.</param>
     public static FibredSurface SpineForSurface(int genus, int punctures, int peripheralPunctures, string name = null, IEnumerable<string> labels = null, IEnumerable<Color> colors = null, IDictionary<string, string> names = null,
-        IDictionary<string, bool> reverse = null)
+        IDictionary<string, bool> reverse = null, IEnumerable<string> punctureNames = null)
     {
         if (punctures < 0)
             throw new ArgumentException("Can't have a negative number of punctures.");
@@ -99,7 +100,7 @@ public static class SurfaceGenerator
         
         var surface = GenerateGeodesicSurface(genus, punctures, name, labels, colors);
         var graph = new FibredGraph();
-        var peripheralSubgraph = new FibredGraph();
+        var peripheralSubgraph = new HashSet<UnorientedStrip>();
         var fibredSurface = new FibredSurface(graph, surface, peripheralSubgraph);
 
         switch (genus, punctures)
@@ -143,7 +144,7 @@ public static class SurfaceGenerator
                 
                 foreach (var side in modelSurface.sides)
                 {
-                    if (char.IsDigit(side.Name[^1]))
+                    if (char.IsDigit(side.Name[^1]) || genus == 0)
                         continue; // todo? This means that it is one of the later sides in CuspsSideParameters that is added to the "normal" side to add cusps
                     var point = side[side.Length / 2];
                     var (point1, point2) = point.Positions;
@@ -161,24 +162,23 @@ public static class SurfaceGenerator
                     edge.EdgePath = new NormalEdgePath(edge);
                 }
                 
-                foreach (var cusp in peripheralCusps)
+                punctureNames ??= Enumerable.Range(0, 20).Select(i => ((char)('α' + i)).ToString()).Concat(Enumerable.Range(0, int.MaxValue).Select(i => "ρ" + i));
+                foreach (var (cusp, cuspName) in peripheralCusps.Zip(punctureNames, (c, n) => (c, n)))
                 {
-                    var peripheralCurve = cusp.GeodesicCircleAround(0.33f * cusp.boundaryCurves.First().curve.Length, true).Reversed();
+                    var peripheralCurve = cusp.GeodesicCircleAround(0.33f * cusp.boundaryCurves.First().curve.Length, true);
 
-                    var junction = new Junction(fibredSurface, peripheralCurve.StartPosition);
+                    var junction = new Junction(fibredSurface, peripheralCurve.StartPosition, fibredSurface.NextVertexName()); // name:$"v{cuspName}"
                     junction.image = junction;
                     
-                    var curveToJunction = modelSurface.GetBasicGeodesic(centerPoint, peripheralCurve.StartPosition, $"{junction.Name}1");
+                    var curveToJunction = modelSurface.GetBasicGeodesic(centerPoint, peripheralCurve.StartPosition, "random curve name");
                     
-                    peripheralCurve.Name = $"{junction.Name}0";
-                    // junction.Name = $"{junction.Name}.";
-                    
-                    var edgeToJunction = new UnorientedStrip(curveToJunction, centerJunction, junction, EdgePath.Empty, fibredSurface, curveToJunction.StartVelocity.vector.Angle(), 0, newColor: true, addToGraph: true);
+                    var edgeToJunction = new UnorientedStrip(curveToJunction, centerJunction, junction, EdgePath.Empty, fibredSurface, curveToJunction.StartVelocity.vector.Angle(), 0, newColor: true, addToGraph: true, newName: true);
                     edgeToJunction.EdgePath = new NormalEdgePath(edgeToJunction);
                     
-                    var peripheralEdge = new UnorientedStrip(peripheralCurve, junction, junction, EdgePath.Empty, fibredSurface, 2, 1, addToGraph: true, newColor: true);
+                    peripheralCurve.Name = cuspName;
+                    var peripheralEdge = new UnorientedStrip(peripheralCurve, junction, junction, EdgePath.Empty, fibredSurface, 1, 2, addToGraph: true, newColor: true);
                     peripheralEdge.EdgePath = new NormalEdgePath(peripheralEdge);
-                    peripheralSubgraph.AddVerticesAndEdge(peripheralEdge);
+                    peripheralSubgraph.Add(peripheralEdge);
                     
                     junction.Color = peripheralEdge.Color;
                 }

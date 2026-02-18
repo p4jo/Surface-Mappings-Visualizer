@@ -97,10 +97,8 @@ public class FibredSurfaceMenu : MonoBehaviour
         }
         
         graphStatusText.text = FibredSurface.GraphString();
-        if (suggestionCoroutine != null)
-        {
+        if (suggestionCoroutine != null) 
             StopCoroutine(suggestionCoroutine);
-        }
         suggestionCoroutine = LoadSuggestionLate();
         StartCoroutine(suggestionCoroutine);
 
@@ -110,8 +108,9 @@ public class FibredSurfaceMenu : MonoBehaviour
     
     private void HandleError(string message)
     {
-        Debug.LogError(message);
-        StopCoroutine(suggestionCoroutine);
+        Debug.LogError(message);     
+        if (suggestionCoroutine != null)
+            StopCoroutine(suggestionCoroutine);
         errorText.text += message + "\n";
         StartCoroutine(ClearErrorText());
         return;

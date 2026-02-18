@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
@@ -29,7 +30,7 @@ public class MainMenu: MonoBehaviour
             case "Embedded Torus":
                 Initialize("g=1,#", showDeckTransformations, true);
                 break;
-            case "Bestvina Handel example 6.1.":
+            case "Bestvina-Handel example 6.1.":
                 Initialize("g=2,p=1,P=0", showDeckTransformations, true);
                 var c = fibredSurface.Strips.First(strip => strip.Name == "c");
                 var d = fibredSurface.Strips.First(strip => strip.Name == "d");
@@ -43,6 +44,34 @@ public class MainMenu: MonoBehaviour
                     ["b"] = "a c d B a b c d B",
                     ["c"] = "c c d B",
                     ["d"] = "b c d B"
+                });
+                break;
+            case "Bestvina-Handel example 6.2.":
+                Initialize("g=0, p=4, P=3", showDeckTransformations, true);
+                
+                var aa = fibredSurface.Strips.First(strip => strip.Name == "a");
+                var bb = fibredSurface.Strips.First(strip => strip.Name == "b");
+                var cc = fibredSurface.Strips.First(strip => strip.Name == "c");
+                var α = fibredSurface.Strips.First(strip => strip.Name == "α");
+                var β = fibredSurface.Strips.First(strip => strip.Name == "β");
+                var γ = fibredSurface.Strips.First(strip => strip.Name == "γ");
+                α.Name = "γ";
+                γ.Name = "α";
+                aa.Name = "c";
+                cc.Name = "a";
+                
+                
+                // collapse the invariant subforest corresponding to b
+                var algorithmSuggestion = fibredSurface.NextSuggestion();
+                fibredSurface.ApplySuggestion(new [] {
+                      algorithmSuggestion.options.First(option => option.Item2.Contains(bb.ColorfulName)).Item1
+                    },
+                algorithmSuggestion.buttons.FirstOrDefault()
+                );
+                fibredSurfaceMenu.UpdateGraphMap(new Dictionary<string, string>
+                {
+                    ["a"] = "β c γ C a",
+                    ["c"] = "β c γ C a α A c Γ C β c γ C a α A c Γ",
                 });
                 break;
             case "Point Push example":
@@ -98,10 +127,8 @@ public class MainMenu: MonoBehaviour
         AbstractSurface abstractSurface;
         (abstractSurface, fibredSurface) = SurfaceGenerator.CreateSurface(parameters);
         
-        Initialize(abstractSurface, showDeckTransformations);
+        Initialize(abstractSurface, showDeckTransformations, asynchronous: false, OnDone: initializeFibredSurfaceMenu ? () => InitializeFibredSurfaceMenu(fibredSurface) : (Action) null);
 
-        if (initializeFibredSurfaceMenu)
-            InitializeFibredSurfaceMenu(fibredSurface);
     }
     
     private void InitializeFibredSurfaceMenu(FibredSurface fibredSurface)
@@ -114,18 +141,29 @@ public class MainMenu: MonoBehaviour
     }
 
 
-    private void Initialize(AbstractSurface surface, bool addDeckTransformations = true)
+    private void Initialize(AbstractSurface surface, bool addDeckTransformations = true, bool asynchronous = false,
+        Action OnDone = null)
     {
-        
+        var initializeCoroutine = InitializeCoroutine(surface, addDeckTransformations, OnDone);
+        if (asynchronous)
+            StartCoroutine(initializeCoroutine);
+        else
+            while (initializeCoroutine.MoveNext()) {}
+    }
+    
+    private IEnumerator InitializeCoroutine(AbstractSurface surface, bool addDeckTransformations, Action onDone)
+    {
         if (addDeckTransformations && surface.drawingSurfaces.Values.FirstOrDefault(
                 surf => surf is ModelSurface 
             ) is ModelSurface primaryModelSurface)
         {
-            foreach (var side in primaryModelSurface.AllSideCurves) 
+            foreach (var side in primaryModelSurface.AllSideCurves)
+            {
                 surface.AddHomeomorphism(
                     side.DeckTransformation(),
                     drawTargetInSameWindowAsSource: true
                 );
+            }
             
             // var modelChange = modelSurface.SwitchHyperbolicModel();
             // if (modelChange != null)
@@ -155,7 +193,11 @@ public class MainMenu: MonoBehaviour
            
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
         var surfaceMenu = gameObject.GetComponentInChildren<SurfaceMenu>();
-        surfaceMenu.Initialize(surface, canvas, cameraManager, this); 
+        
+        var coroutine = surfaceMenu.InitializeCoroutine(surface, canvas, cameraManager, this);
+        while (coroutine.MoveNext()) 
+            yield return null;
+        
         surfaceMenu.StuffShown += OnStuffShown;
         surfaceMenu.StuffDeleted += OnStuffDeleted;
         surfaceMenus.Add(surfaceMenu);
@@ -164,7 +206,17 @@ public class MainMenu: MonoBehaviour
             ) is ModelSurface primaryModelSurface1)
         {
             foreach (ModelSurfaceSide side in primaryModelSurface1.sides)
+            {
                 surfaceMenu.Display(side, primaryModelSurface1.Name, preview: false, propagateToDrawingSurfaces: true);
+                yield return null; 
+                // todo
+            }
+
+            foreach (var puncture in primaryModelSurface1.punctures)
+            {
+                // todo: Feature: Add styles for displayed points. Here: style: cross, colors all different or so? 
+                // Only for punctures that are not vertices?
+            }
         }
         // foreach (var (surfaceName, drawingSurface) in surface.drawingSurfaces)
         // {
@@ -183,6 +235,8 @@ public class MainMenu: MonoBehaviour
         //     }
         //
         // }
+
+        onDone?.Invoke();
     }
 
     private void OnStuffShown(IDrawnsformable stuff, string surface)

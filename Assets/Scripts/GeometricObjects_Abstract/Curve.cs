@@ -66,7 +66,7 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     /// </summary>
     private float GetClosestTimeInternal(int iterations, Point point, float start, float end, int slices)
     {
-        // TODO: Performance. This is responsible for most of the time when the program freezes.
+        // TODO: Performance. This is responsible for most of the time when the program freezes. DistanceSquared optimizes over all positions, this creates extra overhead
         if (start >= end)
             throw new ArgumentException("Start time must be before the end time");
         while (--iterations >= 0)

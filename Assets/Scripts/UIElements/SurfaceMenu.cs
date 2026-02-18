@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
@@ -65,7 +66,18 @@ public class SurfaceMenu: MonoBehaviour
         curveEditor.CurveUpdated += UpdateCurve;
     }
 
-    public void Initialize(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager, MainMenu mainMenu)
+    public void Initialize(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager,
+        MainMenu mainMenu, bool asynchronous = false)
+    {
+        var initializeCoroutine = InitializeCoroutine(surface, canvas, cameraManager, mainMenu);
+        if (asynchronous)
+            StartCoroutine(initializeCoroutine);
+        else 
+            while (initializeCoroutine.MoveNext())
+            {}
+    }
+
+    public IEnumerator InitializeCoroutine(AbstractSurface surface, RectTransform canvas, CameraManager cameraManager, MainMenu mainMenu)
     {
         this.canvas = canvas;
         this.surface = surface;
@@ -89,26 +101,31 @@ public class SurfaceMenu: MonoBehaviour
                     var parametricSurfaceVisualizer = 
                         surfaceVisualizerGameObject.GetComponentInChildren<ParametricSurfaceVisualizer>();
                     
-                    parametricSurfaceVisualizer.Initialize(parametricSurface);
+                    var coroutine = parametricSurfaceVisualizer.InitializeCoroutine(parametricSurface);
+                    while (coroutine.MoveNext())
+                        yield return null;
                     surfaceVisualizer = parametricSurfaceVisualizer;
                     break;
                 }
                 // case Plane:
-                case GeodesicSurface { is2D: true } modelSurface: // or Plane
+                case ModelSurface: // or Plane
                 {
                     surfaceVisualizerGameObject = Instantiate(modelSurfaceVisualizerPrefab); // no parent                   
 
                     var modelSurfaceVisualizer = 
                         surfaceVisualizerGameObject.GetComponentInChildren<ModelSurfaceVisualizer>();
                     
-                    modelSurfaceVisualizer.Initialize(drawingSurface);
+                    modelSurfaceVisualizer.Initialize(drawingSurface); 
                     surfaceVisualizer = modelSurfaceVisualizer;
                     break;
                 }
                 // case Sphere:
                 default:
                     throw new NotImplementedException(); // fine
+                
+                
             }
+            yield return null; 
             if (showOwnWindow && this.geodesicSurface is null && drawingSurface is GeodesicSurface geodesicSurface)
                 this.geodesicSurface = geodesicSurface;
             
@@ -137,10 +154,10 @@ public class SurfaceMenu: MonoBehaviour
                 // This will be displayed in the same window (with the same camera) as the surface with name surface.windowAssignment[drawingSurface.Name]
                 kamera.gameObject.SetActive(false);
                 kamera = windowKameras[windowName];
-                surfaceVisualizer.camera = kamera.Cam;
                 kamera.MinimalPosition = VectorHelpers.Min(drawingSurface.MinimalPosition, kamera.MinimalPosition);
                 kamera.MaximalPosition = VectorHelpers.Max(drawingSurface.MaximalPosition, kamera.MaximalPosition);
             }
+            surfaceVisualizer.camera = kamera.Cam;
 
             float orthographicSize = kamera.Cam.orthographicSize;
             float orthographicNormalization= 1f / orthographicSize / orthographicSize;
@@ -178,9 +195,21 @@ public class SurfaceMenu: MonoBehaviour
         
     }
 
-    public void Initialize(SurfaceMenu lastMenu, Dictionary<string, Homeomorphism> automorphisms)
+    public void Initialize(SurfaceMenu lastMenu, Dictionary<string, Homeomorphism> automorphisms, bool asynchronous = false)
     {
-        Initialize(lastMenu.surface, lastMenu.canvas, lastMenu.cameraManager, lastMenu.mainMenu);
+        var initializeCoroutine = InitializeCoroutine(lastMenu, automorphisms);
+        if (asynchronous)
+            StartCoroutine(initializeCoroutine);
+        else 
+            while (initializeCoroutine.MoveNext())
+            {}
+    }
+
+    public IEnumerator InitializeCoroutine(SurfaceMenu lastMenu, Dictionary<string, Homeomorphism> automorphisms)
+    {
+        var initializeCoroutine = InitializeCoroutine(lastMenu.surface, lastMenu.canvas, lastMenu.cameraManager, lastMenu.mainMenu);
+        while (initializeCoroutine.MoveNext())
+            yield return null;
         lastMenu.nextMenu = this;
         lastMenu.forwardHomeos = automorphisms;
         this.lastMenu = lastMenu;
@@ -192,6 +221,7 @@ public class SurfaceMenu: MonoBehaviour
         {
             Display(drawnStuff, drawingSurfaceName, preview: false, propagateBackwards: false, propagateToDrawingSurfaces: false);
             // currentStuffShown should contain drawnStuff once for every DrawingSurface (transformed)! 
+            yield return null;
         }
     }
 

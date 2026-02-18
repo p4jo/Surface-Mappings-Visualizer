@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using MathMesh;
 using UnityEngine.Serialization;
@@ -10,7 +11,17 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
     [SerializeField] private GameObject meshPrefab;
 
 
-    public void Initialize(ParametricSurface parametricSurface)
+    public void Initialize(ParametricSurface parametricSurface, bool asynchronous = true, Camera camera = null)
+    {
+        base.Initialize(camera);
+        var initCoroutine = InitializeCoroutine(parametricSurface);
+        if (asynchronous)
+            StartCoroutine(initCoroutine);
+        else
+            while (initCoroutine.MoveNext()) { }
+    }
+    
+    public IEnumerator InitializeCoroutine(ParametricSurface parametricSurface)
     {
         this.parametricSurface = parametricSurface;
         foreach (var rect in parametricSurface.chartRects)
@@ -22,7 +33,7 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
             generator.CurrentSurface = new SurfaceData(
                 parametricSurface.Name, 
                 0, 
-                new []{generator.u.x, generator.u.y, generator.v.x, generator.v.y},
+                new []{ generator.u.x, generator.u.y, generator.v.x, generator.v.y },
                 func: floats => parametricSurface.embedding.f(new Vector3(floats[0], floats[1]))
             );
             // generator.doubleSided = false;
@@ -33,6 +44,7 @@ public class ParametricSurfaceVisualizer : SurfaceVisualizer
 
             gameObject.GetComponent<MeshCollider>().sharedMesh = generator.mesh;
             gameObject.GetComponent<TooltipTarget>().Initialize(this, transformForHitCoordsToLocal: transform);
+            yield return null;
         }
     }
 }

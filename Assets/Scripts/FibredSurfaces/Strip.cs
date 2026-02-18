@@ -121,7 +121,10 @@ public class UnorientedStrip : Strip
         get => source;
         set { 
             graph.RemoveEdge(UnderlyingEdge);
-            source = value;
+            source = value; 
+            // TODO: BUG in QuikGraph: Directly after this line, fibredSurface.peripheralSubgraph.ContainsEdge(e) != fibredSurface.peripheralSubgraph.Edges.Contains(e) !!
+            // This is not the case if the target is changed instead, even though the code is identical. I cannot figure out a MWE.
+            // Doesn't matter, this was undefined behavior anyways, because we only update the vertices for the graph (here), but not the subgraph.
             graph.AddVerticesAndEdge(UnderlyingEdge);
         }
     }
