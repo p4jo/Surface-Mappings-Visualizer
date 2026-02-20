@@ -72,6 +72,20 @@ public abstract class EdgePath : IReadOnlyList<Strip>
     }
 
     protected internal abstract bool TryGetElementAt(ref int i, out Strip result);
+    
+    public virtual EdgePath Image => new NestedEdgePath(from strip in this select strip.EdgePath);
+    
+    public virtual EdgePath CancelBacktracking() {
+        List<Strip> result = new List<Strip>();
+        foreach (var e in this)
+        {
+            if (result.Count > 0 && result[^1].Equals(e.Reversed()))
+                result.RemoveAt(result.Count - 1);
+            else
+                result.Add(e);
+        }    
+        return new NormalEdgePath(result);
+    }
 
     public static EdgePath FromString(string text, IEnumerable<UnorientedStrip> strips,
         IEnumerable<NamedEdgePath> definitionList = null)

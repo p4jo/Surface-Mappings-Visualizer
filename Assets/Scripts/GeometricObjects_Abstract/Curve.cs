@@ -1,16 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
-using JetBrains.Annotations;
 using UnityEngine;
 using Vector3 = UnityEngine.Vector3;
 
 
-public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformable in other part.
+public abstract partial class Curve : ITransformable<Curve> // even IDrawnsformable in other part.
 {
     public abstract string Name { get; set; }
-    
+
     public abstract float Length { get; }
 
     public virtual Point StartPosition => ValueAt(0);
@@ -26,7 +24,8 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
         get
         {
             if (Surface is not ModelSurface modelSurface)
-                yield break; // shouldn't happen unless VisualJumpTimes is already empty (atm this could happen in TransformedCurve, but there it doesn't matter)
+                yield
+                    break; // shouldn't happen unless VisualJumpTimes is already empty (atm this could happen in TransformedCurve, but there it doesn't matter)
             foreach (float t in VisualJumpTimes)
             {
                 if (this[t] is ModelSurfaceBoundaryPoint boundaryPoint)
@@ -35,9 +34,10 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
                 {
                     var pt1 = modelSurface.ClampPoint(this[t - 1e-4f], 1e-3f);
                     var pt2 = modelSurface.ClampPoint(this[t + 1e-4f], 1e-3f);
-                    if (pt1 is ModelSurfaceBoundaryPoint p1 && pt2 is ModelSurfaceBoundaryPoint p2 && p1.side == p2.side.other)
+                    if (pt1 is ModelSurfaceBoundaryPoint p1 && pt2 is ModelSurfaceBoundaryPoint p2 &&
+                        p1.side == p2.side.other)
                         yield return (t, p1);
-                    else 
+                    else
                         Debug.LogWarning("Something went wrong with the visual jump points in ConcatenatedCurve");
                 }
             }
@@ -53,7 +53,7 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
 
     public abstract Point ValueAt(float t);
     public abstract TangentVector DerivativeAt(float t);
-    
+
     public virtual Curve Concatenate(Curve curve) => new ConcatenatedCurve(new Curve[] { this, curve });
 
     protected Curve reverseCurve;
@@ -91,7 +91,7 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
             start = Mathf.Clamp(closestTime - tick, start, end);
             end = Mathf.Clamp(closestTime + tick, start, end);
         }
-        
+
         float startDist = point.DistanceSquared(ValueAt(start));
         float endDist = point.DistanceSquared(ValueAt(end));
         if (startDist < endDist) return start;
@@ -100,10 +100,12 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     }
 
     private const int GetClosestPointIterations = 4;
-    public virtual float GetClosestPoint(Vector3 point) => 
+
+    public virtual float GetClosestPoint(Vector3 point) =>
         GetClosestTimeInternal(GetClosestPointIterations, point, 0, Length, 10);
 
-    public virtual Curve ApplyHomeomorphism(Homeomorphism homeomorphism) => homeomorphism.isIdentity ? this : new TransformedCurve(this, homeomorphism);
+    public virtual Curve ApplyHomeomorphism(Homeomorphism homeomorphism) =>
+        homeomorphism.isIdentity ? this : new TransformedCurve(this, homeomorphism);
 
     /// <summary>
     /// A right-handed basis at the point on the curve at time t, with the tangent vector as the first vector and the normal vector of the surface as the third vector. Thus, the second vector points "to the right" of the curve.
@@ -116,14 +118,14 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
             point,
             new Matrix3x3(
                 tangent,
-                Vector3.Cross(basis.c, tangent), 
+                Vector3.Cross(basis.c, tangent),
                 basis.c
             )
         );
     }
 
     protected const float restrictTolerance = 0.0001f;
-    
+
     /// <summary>
     /// Restrict the curve to a subinterval. This is computed with a tolerance: If start > -ε and end &lt; Length + ε and start &lt; end + ε, the restriction is valid. Else, an ArgumentOutOfRangeException is thrown.
     /// If start &lt; ε and end > Length - ε, the original curve is returned.
@@ -136,10 +138,11 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
     {
         var stop = end ?? Length;
         if (start < -restrictTolerance || stop > Length + restrictTolerance || start > stop + restrictTolerance)
-            throw new ArgumentOutOfRangeException($"Invalid restriction in curve {this}: {start} to {end} for length {Length}");
-        if (stop > Length) 
+            throw new ArgumentOutOfRangeException(
+                $"Invalid restriction in curve {this}: {start} to {end} for length {Length}");
+        if (stop > Length)
             stop = Length;
-        if (start < 0) 
+        if (start < 0)
             start = 0;
         if (start < restrictTolerance && stop > Length - restrictTolerance)
             return this;
@@ -153,10 +156,10 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
         var newCurve = Restrict(cutoff);
         var end = newCurve.StartVelocity;
         var interpolatingSegment = new SplineSegment(
-            newStartVector, 
+            newStartVector,
             end,
-            cutoff, 
-            Surface, 
+            cutoff,
+            Surface,
             Name + " adjusted start vector"
         );
         var result = interpolatingSegment.Concatenate(newCurve);
@@ -164,571 +167,4 @@ public abstract partial class Curve: ITransformable<Curve> // even IDrawnsformab
         result.Name = Name;
         return result;
     }
-
-}
-
-public partial class TransformedCurve : Curve
-{
-    private readonly Curve curve;
-    private readonly Homeomorphism homeomorphism;
-
-    public TransformedCurve(Curve curve, Homeomorphism homeomorphism)
-    {
-        this.curve = curve;
-        this.homeomorphism = homeomorphism;
-        // if (curve.Surface != homeomorphism.source)
-        //     throw new Exception("Homeomorphism does not match surface");
-    }
-
-    [CanBeNull] private string _name;
-    public override string Name
-    {
-        get => _name ?? curve.Name + " --> " + homeomorphism.target.Name;
-        set => _name = value;
-    }
-
-    public override float Length => curve.Length;
-    public override Point EndPosition => curve.EndPosition.ApplyHomeomorphism(homeomorphism);
-    public override Point StartPosition => curve.StartPosition.ApplyHomeomorphism(homeomorphism);
-    public override TangentVector EndVelocity => curve.EndVelocity.ApplyHomeomorphism(homeomorphism); 
-    public override TangentVector StartVelocity => curve.StartVelocity.ApplyHomeomorphism(homeomorphism);
-    public override Surface Surface => homeomorphism.target;
-
-    public override IEnumerable<float> VisualJumpTimes => curve.VisualJumpTimes;
-    // TODO: Feature / Bug. Implement this! If this maps to a model surface, we need to check for visual jumps in the transformed curve!
-    // If this maps to a parametrized surface, from a model surface, we could forget these
-
-    public override Point ValueAt(float t) => curve.ValueAt(t).ApplyHomeomorphism(homeomorphism);
-
-    public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t).ApplyHomeomorphism(homeomorphism);
-    
-    public override TangentSpace BasisAt(float t) => curve.BasisAt(t).ApplyHomeomorphism(homeomorphism);
-    
-    public override Curve Copy() => new TransformedCurve(curve.Copy(), homeomorphism) { Name = Name, Color = Color } ;
-
-    public override Curve Reversed() => reverseCurve ??= new TransformedCurve(curve.Reversed(), homeomorphism) { Color = Color, reverseCurve = this };
-
-    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism) =>
-        new TransformedCurve(curve, homeomorphism * this.homeomorphism);
-}
-
-public partial class ConcatenatedCurve : Curve
-{
-    private readonly Curve[] segments;
-    private List<ConcatenationSingularPoint> nonDifferentiablePoints;
-
-
-    public override string Name { get; set; }
-
-    public override Surface Surface => segments.First().Surface;
-
-    public override float Length { get; }
-
-    public override IEnumerable<float> VisualJumpTimes => (
-            from singularPoint in NonDifferentiablePoints
-            where singularPoint.visualJump
-            select singularPoint.time
-        ).Concat(
-            from segment in segments
-            from t in segment.VisualJumpTimes
-            select t + segments.TakeWhile(s => s != segment).Sum(s => s.Length)
-        ).OrderBy(t => t);
-    
-    public override IEnumerable<(float, ModelSurfaceBoundaryPoint)> VisualJumpPoints { 
-        get {
-            return SingularPointsOfConcatenation().Concat(
-                from segment in segments
-                from t in segment.VisualJumpPoints
-                select (t.Item1 + segments.TakeWhile(s => s != segment).Sum(s => s.Length), t.Item2)
-            ).OrderBy(t => t.Item1);
-
-            IEnumerable<(float, ModelSurfaceBoundaryPoint)> SingularPointsOfConcatenation()
-            {
-                if (Surface is not ModelSurface modelSurface)
-                    yield
-                        break; // shouldn't happen unless VisualJumpTimes is already empty (atm this could happen in TransformedCurve, but there it doesn't matter)
-                foreach (var singularPoint in NonDifferentiablePoints)
-                {
-                    if (!singularPoint.visualJump) continue;
-                    if (singularPoint.incomingCurve.EndPosition is ModelSurfaceBoundaryPoint boundaryPoint)
-                        yield return (singularPoint.time, boundaryPoint);
-                    else
-                    {
-                        if (singularPoint.outgoingCurve.StartPosition is ModelSurfaceBoundaryPoint boundaryPoint2)
-                            yield return (singularPoint.time, boundaryPoint2.SwitchSide());
-                        else
-                        {
-                            // todo: Performance. Can we avoid the expensive calls to ClampPoint?
-                            var pt1 = modelSurface.ClampPoint(singularPoint.incomingCurve.EndPosition, 1e-2f);
-                            var pt2 = modelSurface.ClampPoint(singularPoint.outgoingCurve.StartPosition, 1e-2f);
-                            if (pt1 is ModelSurfaceBoundaryPoint p1 && pt2 is ModelSurfaceBoundaryPoint p2 &&
-                                p1.side == p2.side.other)
-                                yield return (singularPoint.time, p1);
-                            else
-                                Debug.LogWarning(
-                                    "Something went wrong with the visual jump points in ConcatenatedCurve");
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private List<ConcatenationSingularPoint> NonDifferentiablePoints => nonDifferentiablePoints ??= CalculateSingularPoints(segments);
-
-    public ConcatenatedCurve(IEnumerable<Curve> curves, string name = null, bool smoothed = false)
-    {
-        if (smoothed)
-            curves = Smoothed(curves);
-        
-        segments = curves.SelectMany(
-            curve => curve is ConcatenatedCurve concatenatedCurve ? concatenatedCurve.segments : new []{ curve }
-        ).ToArray();
-        if (segments.Any(segment => segment.Length == 0))
-            Debug.LogWarning("One of the segments of the concatenated curve has zero length.");
-        float length = (from segment in segments select segment.Length).Sum();
-        if (length == 0) 
-            throw new Exception("Length of curve is zero");
-        Length = length;
-        
-        Name = name ?? string.Join(" -> ", from segment in segments select segment.Name);
-    }
-
-    /// <summary>
-    /// ATM, this assumes that the curves are in 2D subspace! 
-    /// </summary>
-    /// <param name="segments"></param>
-    /// <returns></returns>
-    /// <exception cref="Exception"></exception>
-    static List<Curve> Smoothed(IEnumerable<Curve> segments)
-    {
-        var curves = segments.ToList();
-        
-        var singularPoints = CalculateSingularPoints(curves, ignoreSubConcatenatedCurves: true).Where(sp => sp.angleJump).ToList();
-
-        List<int> singularIndices = singularPoints.Select(singularPoint => curves.IndexOf(singularPoint.incomingCurve)).ToList();
-        if (singularIndices.Any(index => index == -1))
-            throw new Exception("Something went wrong");
-
-        for (int i = 0; i < singularPoints.Count; i++)
-        {
-            var singularPoint = singularPoints[i];
-            
-            var incomingCurve = singularPoint.incomingCurve;
-            var outgoingCurve = singularPoint.outgoingCurve;
-            
-            var index = singularIndices[i] + 2 * i;
-            // curves[index] == incomingCurve or a last segment of it.
-            if (curves[index + 1] != outgoingCurve)
-                throw new Exception("Something went wrong");
-
-            var inVector = incomingCurve.EndVelocity.VectorAtPositionIndex(singularPoint.incomingPosIndex);
-            var outVector = outgoingCurve.StartVelocity.VectorAtPositionIndex(singularPoint.outgoingPosIndex);
-            
-            
-            var (incomingCurveByArclengthFunction, incomingArclength) = GeodesicSurface.TimeFromArclengthParametrization(incomingCurve.Reversed());
-            var (outgoingCurveByArclengthFunction, outgoingArclength) = GeodesicSurface.TimeFromArclengthParametrization(outgoingCurve);
-            inVector *= incomingCurveByArclengthFunction(0).Item2; // dc/ds = dc/dt * dt/ds
-            outVector *= outgoingCurveByArclengthFunction(0).Item2;
-            
-            var inAngle = inVector.Angle();
-            var outAngle = outVector.Angle();
-            var angle = (inAngle + outAngle) / 2;
-            if (MathF.Abs(inAngle - outAngle) > MathF.PI)
-                angle += MathF.PI;
-            var length = MathF.Pow(inVector.sqrMagnitude * outVector.sqrMagnitude, 0.25f);
-            
-            
-            var incomingDeductedArclength = 0.3f * incomingArclength * (1 - MathF.Exp(-length / incomingArclength / 0.3f));
-            var outgoingDeductedArclength = 0.3f * outgoingArclength * (1 - MathF.Exp(-length / outgoingArclength / 0.3f));
-
-            var incomingDeductedLength = incomingCurveByArclengthFunction(incomingDeductedArclength).Item1;
-            var outgoingDeductedLength = outgoingCurveByArclengthFunction(outgoingDeductedArclength).Item1;
-            var restrictedIncomingCurve = curves[index] = incomingCurve.Restrict(0, incomingCurve.Length - incomingDeductedLength);
-            var restrictedOutgoingCurve = curves[index + 1] = outgoingCurve.Restrict(outgoingDeductedLength);
-            
-            var startOfFirstInterpolated = incomingCurveByArclengthFunction(incomingDeductedArclength).Item2 * restrictedIncomingCurve.EndVelocity; // dc/ds = dc/dt * dt/ds
-            var endOfLastInterpolated = outgoingCurveByArclengthFunction(outgoingDeductedArclength).Item2 * restrictedOutgoingCurve.StartVelocity;
-            
-            var centerVector = Complex.FromPolarCoordinates(length, angle).ToVector3(); 
-            // centerVector is the abstract vector in the shared tangent space (corresponding to the incomingPosIndex'th position of incomingCurve and the outgoingPosIndex'th position of outgoingCurve)
-            var ingoingCenterVector = new TangentVector(incomingCurve.EndPosition, incomingCurve.EndPosition.PassThrough(singularPoint.incomingPosIndex, 0, centerVector));  
-            var outgoingCenterVector = new TangentVector(outgoingCurve.StartPosition, outgoingCurve.StartPosition.PassThrough(singularPoint.outgoingPosIndex, 0, centerVector));
-
-            var firstInterpolated = new SplineSegment(
-                startOfFirstInterpolated, ingoingCenterVector, incomingDeductedArclength,  incomingCurve.Surface,  incomingCurve.Name + " interp. segment"             
-            );
-
-            var secondInterpolated = new SplineSegment(
-                outgoingCenterVector, endOfLastInterpolated, outgoingDeductedArclength, outgoingCurve.Surface, outgoingCurve.Name + " interp. segment"
-            );
-            
-            curves.Insert(index + 1, firstInterpolated);
-            curves.Insert(index + 2, secondInterpolated);
-        }
-
-        return curves; 
-    }
-
-    public ConcatenatedCurve Smoothed() => new(segments, Name + " smoothed", smoothed: true) { Color = Color };
-
-    public override Point EndPosition => segments.Last().EndPosition;
-    public override Point StartPosition => segments.First().StartPosition;
-    public override TangentVector EndVelocity => segments.Last().EndVelocity;
-    public override TangentVector StartVelocity => segments.First().StartVelocity;
-
-    public override Point ValueAt(float t)
-    {
-        if (t >= Length) // bc. Length % Length = 0 ...
-            return EndPosition;
-        t %= Length;
-        foreach (var segment in segments)
-        {
-            if (t < segment.Length)
-                return segment.ValueAt(t);
-            t -= segment.Length;
-        }
-
-        throw new Exception("What the heck");
-    }
-
-    public override TangentVector DerivativeAt(float t)
-    {
-        t %= Length;
-        foreach (var segment in segments)
-        {
-            if (t < segment.Length)
-                return segment.DerivativeAt(t);
-            t -= segment.Length;
-        }
-
-        throw new Exception("What the heck");
-    }
-
-    public override Curve Reversed() => reverseCurve ??= new ConcatenatedCurve(from segment in segments.Reverse() select segment.Reversed(), Name.EndsWith("'") ? Name : Name + "'") { Color = Color, reverseCurve = this };
-
-    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
-    {
-        if (homeomorphism.isIdentity)
-            return this;
-        return new ConcatenatedCurve(from segment in segments select segment.ApplyHomeomorphism(homeomorphism),
-            Name + " --> " + homeomorphism.target.Name
-        ) { Color = Color };
-    }
-
-    public override Curve Copy() => new ConcatenatedCurve(from segment in segments select segment.Copy(), Name) { Color = Color };
-
-
-    private static List<ConcatenationSingularPoint> CalculateSingularPoints(IReadOnlyList<Curve> segments, bool expectClosedCurve = false, bool ignoreSubConcatenatedCurves = false)
-    {
-        List<ConcatenationSingularPoint> res = new(); 
-        var timeA = 0f;
-        Curve curve, nextCurve;
-        for (int i = 0; i < segments.Count; i++)
-        {
-            curve = segments[i];
-            if (!ignoreSubConcatenatedCurves && curve is ConcatenatedCurve curveAsConcat)
-                res.AddRange(from internalJumpPoint in curveAsConcat.NonDifferentiablePoints select internalJumpPoint.ApplyTimeOffset(timeA));
-            if (i < segments.Count - 1)
-                nextCurve = segments[i + 1];
-            else if (expectClosedCurve)
-                nextCurve = segments[0];
-            else
-                break;
-            timeA += curve.Length; // todo: Bug. this seems to not work correctly in some cases (the time is the 0.1f*Length off in the smoothed curves) and this compounds.
-            
-            var (herePosIndex, therePosIndex, distanceSquared) = curve.EndPosition.ClosestPositionIndices(nextCurve.StartPosition, curve.Surface as GeodesicSurface);
-            // if (!curve.EndPosition.Equals(nextCurve.StartPosition))
-            bool angleJump = !curve.EndVelocity.VectorAtPositionIndex(herePosIndex).ApproximatelyEquals(
-                nextCurve.StartVelocity.VectorAtPositionIndex(therePosIndex));
-            bool actualJump = distanceSquared > 1e-3f;
-            // if distance is too large, this means, these points are actually different; even considering multiple positions.
-            // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might be far apart (converging to the different positions).
-            bool visualJump = curve.Surface is ModelSurface modelSurface &&
-                              modelSurface.ClampPoint(curve.EndPosition, 1e-3f) is ModelSurfaceBoundaryPoint;
-            // bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
-            if (visualJump && (curve.EndPosition is not ModelSurfaceBoundaryPoint || 
-                nextCurve.StartPosition is not ModelSurfaceBoundaryPoint))
-            {
-                Debug.LogWarning($"Visual jump between {curve.Name} and {nextCurve.Name} but these are not saved with boundary points as endpoints.");
-            }
-            if (actualJump || angleJump || visualJump)
-            {
-                // todo: Performance. Save the corresponding model surface boundary points in case of a visual jump. This might (or might not) improve performance in the calls to VisualJumpPoints, which is called in the property FibredSurface.MovementForFolding.Badness which is supposed to be completely combinatorial (i.e. without calls to GetClosestPoint or similar geometric functions). 
-                res.Add(new ConcatenationSingularPoint
-                {
-                    incomingCurve = curve,
-                    outgoingCurve = nextCurve, 
-                    incomingPosIndex = herePosIndex,
-                    outgoingPosIndex = therePosIndex,
-                    visualJump = visualJump,
-                    actualJump = actualJump,
-                    angleJump = angleJump,
-                    time = timeA
-                }); // save angle?
-            }
-
-        }
-        return res;
-    }
-
-    public override Curve Restrict(float start, float? end = null)
-    { 
-        var stop = end ?? Length;
-        if (start < -restrictTolerance || stop > Length + restrictTolerance || start > stop + restrictTolerance)
-            throw new ArgumentOutOfRangeException($"Invalid restriction in curve {this}: {start} to {end} for length {Length}");
-        if (stop > Length) 
-            stop = Length;
-        if (start < 0) 
-            start = 0;
-        if (start < restrictTolerance && stop > Length - restrictTolerance)
-            return this;
-        
-        
-        var movedStartTime = start;
-        var movedEndTime = stop;
-        int startSegmentIndex = -1, endSegmentIndex = segments.Length;
-        for (int i = 0; i < segments.Length; i++)
-        {
-            var segmentLength = segments[i].Length;
-            if (movedStartTime <= segmentLength - restrictTolerance)
-            {
-                startSegmentIndex = i;
-                break;
-            }
-
-            movedStartTime -= segmentLength; // > - restrictTolerance
-        }
-
-        for (int i = 0; i < segments.Length; i++)
-        {
-            var segmentLength = segments[i].Length;
-            if (movedEndTime <= segmentLength + restrictTolerance)
-            {
-                endSegmentIndex = i;
-                break;
-            }
-
-            movedEndTime -= segmentLength; // > restrictTolerance
-        }
-        if (startSegmentIndex == endSegmentIndex)
-        {
-            var restrictedSegment = segments[startSegmentIndex].Restrict(movedStartTime, movedEndTime);
-            restrictedSegment.Color = Color;
-            return restrictedSegment;
-        }
-
-        if (startSegmentIndex == -1) // start - sum(segmentsLength) > 0, i.e. start > Length - (calculation error from movedStartTime), so probably start == Length
-        {
-            var restrictedSegment = segments[^1].Restrict(segments[^1].Length);
-            restrictedSegment.Color = Color;
-            return restrictedSegment; // will do the same and return the standing path.
-        }
-
-        var firstSegment = segments[startSegmentIndex].Restrict(movedStartTime);
-        var curves = segments[(startSegmentIndex + 1)..endSegmentIndex].Prepend(firstSegment);
-        
-        if (endSegmentIndex < segments.Length) 
-            curves = curves.Append(
-                segments[endSegmentIndex].Restrict(0, movedEndTime)
-            );
-        return new ConcatenatedCurve(curves, Name + $"[{start:g2}, {end:g2}]") { Color = Color }; 
-        // else, the color of the restricted curve is the color of the first segment that remains after the restriction,
-        // which might not be the first segment of the original ConcatenatedCurve. Also the ConcatenatedCurve might have a changed color.
-    }
-}
-
-public partial class ReverseCurve : Curve
-{
-    private readonly Curve curve;
-
-    public ReverseCurve(Curve curve)
-    {
-        this.curve = curve;
-    }
-
-    [CanBeNull] private string _name;
-    public override string Name
-    {
-        get => _name ?? curve.Name + '\'';
-        set => _name = value;
-    }
-
-    public override float Length => curve.Length;
-    public override Point EndPosition => curve.StartPosition;
-    public override Point StartPosition => curve.EndPosition;
-    public override TangentVector EndVelocity => - curve.StartVelocity;
-    public override TangentVector StartVelocity => - curve.EndVelocity;
-    public override Surface Surface => curve.Surface;
-
-    public override IEnumerable<float> VisualJumpTimes => from t in curve.VisualJumpTimes select Length - t;
-
-    public override Point ValueAt(float t) => curve.ValueAt(Length - t);
-    public override TangentVector DerivativeAt(float t) => - curve.DerivativeAt(Length - t);
-
-    public override Curve Reversed() => curve;
-
-    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
-        => curve.ApplyHomeomorphism(homeomorphism).Reversed();
-
-    public override Curve Copy() => new ReverseCurve(curve.Copy()) { Color = Color }; // in case it was changed
-}
-
-public class RestrictedCurve : Curve
-{
-    
-    private readonly Curve curve;
-    private readonly float start;
-    private readonly float end;
-
-    public RestrictedCurve(Curve curve, float start, float end, string name = null)
-    {
-        if (start < 0 && start.ApproximateEquals(0))
-            start = 0;
-        if (end > curve.Length && end.ApproximateEquals(curve.Length))
-            end = curve.Length;
-        if (start > end && start.ApproximateEquals(end))
-            end = start;
-        if (start < 0 || end > curve.Length || start > end)
-            throw new Exception("Invalid restriction");
-        this.curve = curve;
-        this.start = start;
-        this.end = end;
-        _name = name;
-    }
-
-    [CanBeNull] private string _name;
-    public override string Name
-    {
-        get => _name ?? curve.Name + $"[{start:g2}, {end:g2}]";
-        set => _name = value;
-    }
-
-    public override float Length => end - start;
-    public override Point EndPosition => curve[end];
-    public override Point StartPosition => curve[start];
-    public override TangentVector EndVelocity => curve.DerivativeAt(end);
-    public override TangentVector StartVelocity => curve.DerivativeAt(start);
-    public override Surface Surface => curve.Surface;
-
-    public override IEnumerable<float> VisualJumpTimes => from t in curve.VisualJumpTimes where t > start && t < end select t - start;
-
-    protected override Color DefaultColor => curve.Color;
-
-    public override Point ValueAt(float t) => curve.ValueAt(t + start);
-    public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t + start);
-
-    public override Curve Reversed() => reverseCurve ??=
-        new RestrictedCurve(curve.Reversed(), curve.Length - end, curve.Length - start) { Name = Name.EndsWith("'") ? Name : Name + "'", Color = Color, reverseCurve = this };
-
-    public override Curve ApplyHomeomorphism(Homeomorphism homeomorphism)
-        => curve.ApplyHomeomorphism(homeomorphism).Restrict(start, end);
-
-    public override Curve Restrict(float start, float? end = null)
-    {
-        var stop = end ?? Length;
-        if (start < -restrictTolerance || stop > Length + restrictTolerance || start > stop + restrictTolerance)
-            throw new Exception($"Invalid restriction in curve {this}: {start} to {end} for length {Length}");
-        if (stop > Length) 
-            stop = Length;
-        if (start < 0) 
-            start = 0;
-        if (start < restrictTolerance && stop > Length - restrictTolerance)
-            return this;
-        return new RestrictedCurve(curve, this.start + start, this.start + (end ?? Length)) { Color = Color };
-    }
-
-    public override Curve Copy() =>
-        new RestrictedCurve(curve.Copy(), start, end)
-        { Name = Name, Color = Color };
-}
-
-
-public class BasicParametrizedCurve : Curve
-{
-    private readonly Func<float, Vector3> value;
-    private readonly Func<float, Vector3> derivative;
-    public BasicParametrizedCurve(string name, float length, Surface surface, Func<float, Vector3> value, Func<float, Vector3> derivative, IEnumerable<float> visualJumpTimes = null)
-    {
-        Length = length;
-        Surface = surface;
-        this.value = value;
-        this.derivative = derivative;
-        VisualJumpTimes = visualJumpTimes ?? Enumerable.Empty<float>();
-        Name = name;
-    }
-
-    public override string Name { get; set; }
-    public override float Length { get; }
-
-    public override Surface Surface { get; }
-    public override Point ValueAt(float t) => value(t);
-
-    public override TangentVector DerivativeAt(float t) => new TangentVector(value(t), derivative(t));
-    public override Curve Copy() => new BasicParametrizedCurve(Name, Length, Surface, value, derivative, VisualJumpTimes) { Color = Color };
-
-    public override IEnumerable<float> VisualJumpTimes { get; }
-}
-
-public class ParametrizedCurve : Curve
-{
-    
-    private readonly Func<float, TangentVector> tangent;
-    public ParametrizedCurve(string name, float length, Surface surface, Func<float, TangentVector> tangent,
-        IEnumerable<float> visualJumpTimes = null)
-    {
-        Length = length;
-        Surface = surface;
-        this.tangent = tangent;
-        Name = name;
-        VisualJumpTimes = visualJumpTimes ?? Enumerable.Empty<float>();
-    }
-
-    public override string Name { get; set; }
-    public override float Length { get; }
-
-    public override Surface Surface { get; }
-    public override Point ValueAt(float t) => tangent(t).point;
-
-    public override TangentVector DerivativeAt(float t) => tangent(t);
-    public override Curve Copy() => new ParametrizedCurve(Name, Length, Surface, tangent, VisualJumpTimes) { Color = Color };
-
-    public override IEnumerable<float> VisualJumpTimes { get; }
-}
-
-public class SplineSegment : InterpolatingCurve
-{
-    private Vector3 a, b, c, d;
-    public SplineSegment(TangentVector startVelocity, TangentVector endVelocity, float length, Surface surface, string name) : base(startVelocity, endVelocity, length, surface, name)
-    {
-        var (start, vStart) = length * startVelocity;
-        var (end, vEnd) = length * endVelocity;
-        c = vStart;
-        d = start.Position;
-        var δ = end.Position - d;
-        a = vEnd + c - 2 * δ;
-        b = - vEnd - 2 * c + 3 * δ; 
-    }
-
-    public override Point ValueAt(float t)
-    {
-        float s = t / Length;
-        float s2 = s * s;
-        float s3 = s2 * s;
-        return a * s3 + b * s2 + c * s + d;
-    }
-
-    public override TangentVector DerivativeAt(float t)
-    {
-        float s = t / Length;
-        float s2 = s * s;
-        float s3 = s2 * s;
-
-        var pos = a * s3 + b * s2 + c * s + d;
-        var velocity = a * (3 * s2) + b * (2 * s) + c;
-
-        return new TangentVector(pos, velocity / Length);
-    }
-
-    public override Curve Copy() => new SplineSegment(StartVelocity, EndVelocity, Length, Surface, Name) { Color = Color };
 }

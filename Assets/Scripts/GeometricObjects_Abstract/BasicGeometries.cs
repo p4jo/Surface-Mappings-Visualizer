@@ -82,20 +82,15 @@ public class HyperbolicPlane : Plane
         return new HyperbolicGeodesicSegment(startVelocity, length, surface ?? this, name, diskModel);
     }
 
-    public override float Distance(Point startPoint, Point endPoint)
+    public override float Distance(Vector3 u, Vector3 v)
     {
-        return startPoint.Positions.CartesianProduct(endPoint.Positions).ArgMin(Distance).Item2;
-        float Distance((Vector3, Vector3) vectors)
-        {
-            var (u, v) = vectors;
-            if (diskModel)
-                return (float) Math.Acosh(1 + 2 * (u - v).sqrMagnitude / (1 - u.sqrMagnitude) / (1 - v.sqrMagnitude));
-            var vBar = new Vector3(v.x, -v.y);
-            return 2 * (float) Math.Atanh((u - v).magnitude / (u - vBar).magnitude);
-        }
+        if (diskModel)
+            return (float) Math.Acosh(1 + 2 * (u - v).sqrMagnitude / (1 - u.sqrMagnitude) / (1 - v.sqrMagnitude));
+        var vBar = new Vector3(v.x, -v.y);
+        return 2 * (float) Math.Atanh((u - v).magnitude / (u - vBar).magnitude);
     }
 
-    public override float DistanceSquared(Point startPoint, Point endPoint)
+    public override float DistanceSquared(Vector3 startPoint, Vector3 endPoint)
     {
         var distance = Distance(startPoint, endPoint);
         return distance * distance;
@@ -191,7 +186,8 @@ public class EuclideanPlane : Plane
     public override Curve GetGeodesic(TangentVector tangentVector, float length, string name, GeodesicSurface surface = null)
         => new FlatGeodesicSegment(tangentVector, length, surface ?? this, name);
 
-    public override float DistanceSquared(Point startPoint, Point endPoint) => startPoint.DistanceSquared(endPoint); // this minimizes over the positions
+    public override float DistanceSquared(Vector3 startPoint, Vector3 endPoint) => (startPoint - endPoint).sqrMagnitude;
+    public override float Distance(Vector3 u, Vector3 v) => (u - v).magnitude;
 
     const float intersectionTolerance = 1e-6f;
     public override (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2)

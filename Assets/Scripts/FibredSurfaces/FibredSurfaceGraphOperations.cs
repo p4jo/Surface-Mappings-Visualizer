@@ -1,48 +1,61 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using QuikGraph;
 using UnityEngine;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
+using Random = UnityEngine.Random;
 
 public partial class FibredSurface
 {
     public string GraphString()
     {
-        var vertexString = graph.Vertices.ToLineSeparatedString(vertex => vertex.ToColorfulString(Gate.FindGates(graph)));
+        var sb = new StringBuilder();
+        sb.Append("<line-indent=-20>");
+        sb.AppendLine( graph.Vertices.ToLineSeparatedString(
+            vertex => vertex.ToColorfulString(Gate.FindGates(graph))
+        ));
         var stripsOrdered = StripsOrdered.ToList();
-        var edgeString = stripsOrdered.ToLineSeparatedString(edge => edge.ToColorfulString());
+        sb.AppendLine(stripsOrdered.ToLineSeparatedString(
+            edge => edge.ToColorfulString()
+        ));
         var boundaryWords = BoundaryWords().ToHashSet();
         var peripheralBoundaryWords = boundaryWords.Where(w => 
             w.All(e => peripheralSubgraph.Contains(e.UnderlyingEdge))
         ).ToHashSet();
         boundaryWords.ExceptWith(peripheralBoundaryWords);
-        var boundaryWordsText = new List<string> {
-            boundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10)),
-            peripheralBoundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10))
-        }.ToCommaSeparatedString("\nPeripheral: ");
+        sb.AppendLine("Boundary / puncture words (following to the right):");
+        if(peripheralBoundaryWords.Count > 0)
+            sb.AppendLine("Peripheral: " + peripheralBoundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10)));
+        sb.AppendLine("Essential: " + boundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10)));
+        
+        
         FrobeniusPerron(false, out var growthRate, out var widths, out var lengths, out var matrix);
         // var matrix = TransitionMatrix();
 
-        var VariableString = "";
         var variables = UsedNamedEdgePaths.Where(v => char.IsLower(v.name.First(char.IsLetter))).ToList();
         if (variables.Count > 0)
         {
-            VariableString = "\nVariables: " + variables.ToCommaSeparatedString(v => v.name + " = " + v.value.ToColorfulString(180, 10), "\n");
+            sb.Append("Variables: ");
+            sb.AppendJoin("\n", variables.Select(v => v.name + " = " + v.value.ToColorfulString(180, 10)));
         }
         stripsOrdered.Add(null); // for the "width" column and "length" row
-        
-        string graphString = $"<line-indent=-20>{vertexString}\n{edgeString}\nBoundary / puncture words (following to the right):\n{boundaryWordsText}{VariableString}\n{MatrixStrings().ToCommaSeparatedString("\n")}\nGrowth rate: {growthRate:g3}";
 
+        sb.AppendJoin('\n', MatrixStrings());
+        sb.AppendLine($"\nGrowth rate: {growthRate:g3}");
+        
         if (ignoreBeingReducible)
-            graphString += "\nType: Reducible";
+            sb.AppendLine("\nType: Reducible");
         else if (isTrainTrack)
             if (growthRate > 1 + 1e-6)
-                graphString += "\nType: Pseudo-Anosov";
+                sb.AppendLine("\nType: Pseudo-Anosov");
             else
-                graphString += "\nType: Finite-Order";
+                sb.AppendLine("\nType: Finite-Order");
 
-        return graphString;
+        sb.AppendLine(CheckIfBoundaryWordsOfSubgraphArePreserved(Strips.Where(_ => Random.value < 0.5), out _));
+        
+        return sb.ToString();
 
         IEnumerable<string> MatrixStrings()
         {
@@ -210,14 +223,12 @@ public partial class FibredSurface
     /// <summary>
     /// The boundary words, following at the right. I.e. the orbits of the map e -> σ(e.Reversed()), where σ is the cyclic order that goes counter-clockwise. 
     /// </summary>
-    public IEnumerable<EdgePath> BoundaryWords()
+    public IEnumerable<EdgePath> BoundaryWords(IEnumerable<UnorientedStrip> subgraphEdges = null)
     {
         var visited = new HashSet<Strip>();
-        var stars = new Dictionary<Junction, List<Strip>>(
-            from vertex in graph.Vertices
-            select new KeyValuePair<Junction, List<Strip>>(vertex, StarOrdered(vertex).ToList())
-        );
-        foreach (var strip in OrientedEdges)
+        var subgraphSet = subgraphEdges?.ToHashSet();
+        var stars = GetStars(graph, subgraphSet);
+        foreach (var strip in subgraphSet?.Concat(subgraphSet.Select(e => e.Reversed())) ?? OrientedEdges)
         {
             if (visited.Contains(strip))
                 continue;
@@ -231,13 +242,21 @@ public partial class FibredSurface
     /// <summary>
     /// The boundary word starting with strip, following at the right. I.e. the orbit of the map e -> σ(e.Reversed()), where σ is the cyclic order that goes counter-clockwise. 
     /// </summary>
-    public static EdgePath BoundaryWord(Strip strip)
+    public static EdgePath BoundaryWord(Strip strip, IEnumerable<UnorientedStrip> subgraphEdges = null)
     {
-        var stars = new Dictionary<Junction, List<Strip>>(
-            from vertex in strip.graph.Vertices
-            select new KeyValuePair<Junction, List<Strip>>(vertex, StarOrdered(vertex).ToList())
-        );
+        var subgraphEdgesSet = subgraphEdges?.ToHashSet();
+        if (subgraphEdges != null && !subgraphEdgesSet.Contains(strip.UnderlyingEdge))
+            throw new ArgumentException("The given strip is not in the subgraph.");
+        var stars = GetStars(strip.graph, subgraphEdgesSet);
         return BoundaryWord(strip, stars);
+    }
+    
+    private static IReadOnlyDictionary<Junction, List<Strip>> GetStars(FibredGraph graph, HashSet<UnorientedStrip> subgraphEdges = null)
+    {
+        if (subgraphEdges == null)
+            return graph.Vertices.ToDictionary(vertex => vertex, vertex => StarOrdered(vertex, graph: graph).ToList());
+        
+        return graph.Vertices.ToDictionary(vertex => vertex, vertex => StarOrdered(vertex, graph: graph).Where(e => subgraphEdges.Contains(e.UnderlyingEdge)).ToList());
     }
     
 
@@ -245,20 +264,52 @@ public partial class FibredSurface
     {
         var boundaryWord = new List<Strip>();
         Strip edge = strip;
+        int stopCondition = strip.graph.EdgeCount * 2; // just to stop infinite loop in case of inconsistent behavior
         do
         {
             boundaryWord.Add(edge);
-            edge = NextEdge(edge);
+            var star = stars[edge.Target];
+            int index = star.IndexOf(edge.Reversed());
+            if (index == -1)
+                throw new Exception($"The edge {edge.Reversed().ToColorfulString()} is not in the star {star.ToCommaSeparatedString(e => e.ColorfulName)} of its source {edge.Target.ToColorfulString()}. This should never happen, so something went wrong. This happened when trying to figure out the boundary word of {strip.ToColorfulString()}.");
+            edge = star[(index + 1) % star.Count];
+            if (--stopCondition < 0)
+                throw new Exception($"The boundary word {boundaryWord.ToCommaSeparatedString(" ")} didn't loop correctly. Stopped infinite loop");
         } while (!Equals(strip, edge));
 
         return new NormalEdgePath(boundaryWord);
-
-        Strip NextEdge(Strip edge)
+    }
+    
+    private string CheckIfBoundaryWordsOfSubgraphArePreserved(IEnumerable<UnorientedStrip> subgraphEdges, out bool arePreserved)
+    {
+        var subgraphEdgesSet = subgraphEdges.ToHashSet();
+        var sb = new StringBuilder();
+        arePreserved = true;
+        sb.AppendLine($"The boundary words of the subgraph {{{subgraphEdgesSet.ToCommaSeparatedString(e => e.ColorfulName)}}} are:");
+        List<EdgePath> boundaryWords = BoundaryWords(subgraphEdgesSet).ToList();
+        for (var index = 0; index < boundaryWords.Count; index++)
         {
-            var star = stars[edge.Target];
-            int index = star.IndexOf(edge.Reversed());
-            return star[(index + 1) % star.Count];
+            var boundaryWord = boundaryWords[index];
+            var image = boundaryWord.Image;
+            var isotopedImage = image.CancelBacktracking();
+            int j = boundaryWords.FindIndex(b => isotopedImage.CyclicShift(b.First()).SequenceEqual(b));
+
+            sb.Append($"b_{index} = {boundaryWord.ToColorfulString(180, 10)} with image {isotopedImage.ToColorfulString(250, 10)}");
+            if (isotopedImage.Count < image.Count)
+                sb.Append(" (after cancelling backtracking)");
+            if (j == -1)
+            {
+                sb.Append(", which is not cyclically equivalent to any boundary word, so it is <b><color=red>not preserved!</color></b>"); 
+                arePreserved = false;
+            }
+            else
+            {
+                sb.Append($" = b_{j}");
+            }
+            sb.Append('\n');
         }
+
+        return sb.ToString();
     }
 
 }

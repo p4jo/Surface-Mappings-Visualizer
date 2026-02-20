@@ -10,6 +10,7 @@ public partial class ModelSurfaceSide: Curve
     public int vertexIndex = -1;
     public ModelSurfaceSide other;
     private ModelSurfaceSide reverseSide;
+    
 
     public ModelSurfaceSide(Curve curve, bool rightIsInside)
     {
@@ -151,4 +152,11 @@ public partial class ModelSurfaceSide: Curve
         
     }
 
+    public float Rightness(Vector3 position) =>
+        curve switch
+        {
+            HyperbolicGeodesicSegment geodesic => geodesic.Rightness(position),
+            FlatGeodesicSegment line => line.Rightness(position),
+            _ => throw new NotImplementedException()
+        };
 }

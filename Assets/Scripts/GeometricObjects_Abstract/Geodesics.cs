@@ -4,43 +4,29 @@ using UnityEngine;
 using Math = System.Math;
 using Vector3 = UnityEngine.Vector3;
 
-public abstract class InterpolatingCurve: Curve
-{
-    protected InterpolatingCurve(TangentVector startVelocity, TangentVector endVelocity, float length, Surface surface, string name)
-    {
-        StartVelocity = startVelocity;
-        EndVelocity = endVelocity;
-        Length = length;
-        Surface = surface;
-        Name = name;
-    }
-    
-    protected InterpolatingCurve((TangentVector, TangentVector, float) data, Surface surface, string name)
-        : this(data.Item1, data.Item2, data.Item3, surface, name) { }
-    public override string Name { get; set; }
-    public override Point StartPosition => StartVelocity.point;
-    public override Point EndPosition => EndVelocity.point;
-    public override TangentVector StartVelocity { get; }
-    public override TangentVector EndVelocity { get; }
-    public override Surface Surface { get; }
-    public override float Length { get; }
-}
-
 public class FlatGeodesicSegment : InterpolatingCurve
 {
+    private readonly Vector3 normal; 
+
     public FlatGeodesicSegment(Point start, Point end, Surface surface, string name) : base(
-            ComputeData(start, end),
-            surface,
-            name
-        ) {  }
-    
+        ComputeData(start, end),
+        surface,
+        name
+    )
+    {
+        normal = Vector3.Cross(StartVelocity.vector, Vector3.forward);
+    }
+
     public FlatGeodesicSegment(TangentVector startVelocity, float length, Surface surface, string name) : base(
-            startVelocity,
-            new(startVelocity.point.Position + startVelocity.vector * length, startVelocity.vector),
-            length,
-            surface,
-            name
-        ) {  }
+        startVelocity,
+        new(startVelocity.point.Position + startVelocity.vector * length, startVelocity.vector),
+        length,
+        surface,
+        name
+    )
+    {
+        normal = Vector3.Cross(startVelocity.vector, Vector3.forward);
+    }
     
     private static (TangentVector, TangentVector, float) ComputeData(Point start, Point end)
     {
@@ -53,6 +39,8 @@ public class FlatGeodesicSegment : InterpolatingCurve
     public override Point ValueAt(float t) => StartPosition.Position + StartVelocity.vector * t;
     public override TangentVector DerivativeAt(float t) => new(ValueAt(t), StartVelocity.vector);
     public override Curve Copy() => new FlatGeodesicSegment(StartPosition, EndPosition, Surface, Name) {Color = Color};
+
+    public float Rightness(Vector3 position) => Vector3.Dot(position - StartPosition.Position, normal);
 }
 
 public class HyperbolicGeodesicSegment : Curve
@@ -268,6 +256,14 @@ public class HyperbolicGeodesicSegment : Curve
 
     public override Curve Reversed() => reverseCurve ??= new HyperbolicGeodesicSegment(EndPosition, StartPosition, Surface, Name.EndsWith("'") ? Name : Name + "'", diskModel) { Color = Color, reverseCurve = this };
     public override Curve Copy() => new HyperbolicGeodesicSegment(StartPosition, EndPosition, Surface, Name, diskModel) {Color = Color};
+
+
+    public float Rightness(Vector3 position)
+    {
+        var x = position.ToComplex();
+        var p = (δ * x - β) / (-γ * x + α); // Sends the point to the upper half-plane model, where the geodesic is the imaginary axis. 
+        return (float) p.Real;
+    }
 }
 
 public class SphericalGeodesicSegment : InterpolatingCurve
