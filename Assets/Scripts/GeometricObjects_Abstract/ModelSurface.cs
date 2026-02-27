@@ -155,9 +155,9 @@ public partial class ModelSurface : GeodesicSurface
             // increasing index means turning left
         }
 
-        MinimalPosition = new(polygonVertices.Min(pair => pair.Item1.x), polygonVertices.Min(pair => pair.Item1.y));
+        MinimalPosition = new(polygonVertices.Min(pair => pair.Item1.x), polygonVertices.Min(pair => pair.Item1.y)); // todo: This is not correct for hyperbolic sides, thus hovering is not detected over some surfaces!!
         MaximalPosition = new(polygonVertices.Max(pair => pair.Item1.x), polygonVertices.Max(pair => pair.Item1.y));
-        ;
+        
 
         while (true)
         {
@@ -264,6 +264,11 @@ public partial class ModelSurface : GeodesicSurface
                 select randomPuncture
             ).Take(punctures - this.punctures.Count)
         );
+
+        // if (geometryType is GeometryType.HyperbolicDisk or GeometryType.HyperbolicPlane)
+        // {
+        //     MinimalPosition = 
+        // }
     }
 
 
@@ -510,31 +515,37 @@ public partial class ModelSurface : GeodesicSurface
 
     private Point ClampPoint(Vector3? pos, float closenessThreshold, bool allowVertices)
     {
-        const float closenessFactor = 10f;
+        const float closenessFactor = 0.2f;
         if (pos == null) return null;
         var p = pos.Value;
-        var distances = AllSideCurves.ToDictionary(side => side,
-            side => side.Rightness(p) * (side.rightIsInside ? closenessFactor : -closenessFactor));
-        if (distances.Any(s => s.Value < 0))
-            return null; // this is outside, we can stop immediately
-        // var ((key, _), bestCloseness) = distances.ArgMin(x => x.Value);
-        var closeSides = distances.Keys.Where(x => distances[x] * distances[x] < closenessThreshold * closenessFactor)
+        var distances = new Dictionary<ModelSurfaceSide, float>();
+        foreach (var side in AllSideCurves)
+        {
+            var rightness = side.Rightness(p);
+            var closeness = rightness * (side.rightIsInside ? closenessFactor : -closenessFactor);
+            if (closeness < 0)
+                return null;
+            distances[side] = closeness * closeness;
+        }
+        Debug.Log("the point " + p + " is " + string.Join(", ", distances.Select(kv => $"{kv.Key.Name}: {kv.Value:g2}")) + " close to the sides");
+        
+        var closeSides = distances.Keys.Where(x => distances[x] < closenessThreshold)
             .ToList();
 
-        var res = new ModelSurfaceInteriorPoint(p);
         if (closeSides.Count == 0)
-            return res;
+            return new ModelSurfaceInteriorPoint(p);
 
-        foreach (var closestSide in closeSides)
-        {
-            float t = closestSide.GetClosestPoint(p);
-            if (t < closestSide.Length * 0.1f)
-                return vertices[closestSide.vertexIndex];
-            if (t > closestSide.Length * 0.9f)
-                return vertices[closestSide.ReverseModelSide().vertexIndex];
-        }
+        if (allowVertices)
+            foreach (var closestSide in closeSides)
+            {
+                float t = closestSide.GetClosestPoint(p);
+                if (t < closestSide.Length * 0.1f)
+                    return vertices[closestSide.vertexIndex];
+                if (t > closestSide.Length * 0.9f)
+                    return vertices[closestSide.ReverseModelSide().vertexIndex];
+            }
 
-        return res.ClosestBoundaryPoints(closeSides[0]);
+        return new ModelSurfaceInteriorPoint(p).ClosestBoundaryPoints(closeSides[0]);
     }
 
     /// <summary>
