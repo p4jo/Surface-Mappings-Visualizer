@@ -515,6 +515,7 @@ public partial class ModelSurface : GeodesicSurface
 
     private Point ClampPoint(Vector3? pos, float closenessThreshold, bool allowVertices)
     {
+        const float negativeTolerance = -1e-4f;
         const float closenessFactor = 0.2f;
         if (pos == null) return null;
         var p = pos.Value;
@@ -523,7 +524,7 @@ public partial class ModelSurface : GeodesicSurface
         {
             var rightness = side.Rightness(p);
             var closeness = rightness * (side.rightIsInside ? closenessFactor : -closenessFactor);
-            if (closeness < 0)
+            if (closeness < negativeTolerance)
                 return null;
             distances[side] = closeness * closeness;
         }

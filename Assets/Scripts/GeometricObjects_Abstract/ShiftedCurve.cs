@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-public class ShiftedCurve : Curve
+public partial class ShiftedCurve : Curve
 {
     private readonly Curve curve;
     private readonly Func<float, float> shift;
@@ -24,14 +24,11 @@ public class ShiftedCurve : Curve
 
     /// <summary>
     /// A curve that is shifted to the left using geodesics on the surface at every point of the curve.
-    /// These short geodesics start at curve[t] into the direction curve.BasisAt(t).B.Normalized with length shift(t).
+    /// These short geodesics start at curve[t] into the direction curve.BasisAt(t).B.Normalized with length shift(t), which is to the right.
     /// Shifted curves compound: If you shift a shifted curve, the shift is added to the original shift.
     /// </summary>
-    /// <param name="curve"></param>
-    /// <param name="shift"></param>
-    /// <param name="name"></param>
-    /// <exception cref="ArgumentException"></exception>
-    public ShiftedCurve(Curve curve, Func<float, float> shift, string name = null)
+    /// <exception cref="ArgumentException">To shift the curve, the underlying surface must be a GeodesicSurface.</exception>
+    private ShiftedCurve(Curve curve, Func<float, float> shift, string name = null)
     {
         if (curve.Surface is not GeodesicSurface) 
             throw new ArgumentException($"To shift the curve {curve}, the underlying surface must be a GeodesicSurface.");
@@ -49,24 +46,31 @@ public class ShiftedCurve : Curve
         this.Name = name ?? curve.Name + " shifted by " + shift(curve.Length / 2);
     }
 
-    public ShiftedCurve(Curve curve, float constant, ShiftType type = ShiftType.Uniform, string name = null) : 
+
+    /// <summary>
+    /// A curve that is shifted to the left using geodesics on the surface at every point of the curve.
+    /// These short geodesics start at curve[t] into the direction curve.BasisAt(t).B.Normalized with length shift(t), which is to the right.
+    /// Shifted curves compound: If you shift a shifted curve, the shift is added to the original shift.
+    /// </summary>
+    /// <exception cref="ArgumentException">To shift the curve, the underlying surface must be a GeodesicSurface.</exception>
+    public ShiftedCurve(Curve curve, float shift, ShiftType type = ShiftType.Uniform, string name = null) : 
         this(curve, shift: type switch
         {
-            ShiftType.Uniform =>  t => constant,
+            ShiftType.Uniform =>  t => shift,
             ShiftType.SymmetricFixedEndpoints => t =>
             {
                 var x = t / curve.Length;
-                return constant * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
+                return shift * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
             },
             ShiftType.FixedEndpoint => t =>
             {
                 var x = (1f + t / curve.Length) / 2f;
-                return constant * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
+                return shift * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
             },
             ShiftType.FixedStartpoint => t =>
             {
                 var x = (t / curve.Length) / 2f;
-                return constant * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
+                return shift * 1.69f * x / (0.15f + x) * (1f - x) / (1.15f - x);
             },
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
         }, name: name)

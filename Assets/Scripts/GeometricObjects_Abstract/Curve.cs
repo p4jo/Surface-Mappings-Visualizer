@@ -32,13 +32,17 @@ public abstract partial class Curve : ITransformable<Curve> // even IDrawnsforma
                     yield return (t, boundaryPoint);
                 else
                 {
-                    var pt1 = modelSurface.ClampPoint(this[t - 1e-4f], 1e-3f);
-                    var pt2 = modelSurface.ClampPoint(this[t + 1e-4f], 1e-3f);
-                    if (pt1 is ModelSurfaceBoundaryPoint p1 && pt2 is ModelSurfaceBoundaryPoint p2 &&
-                        p1.side == p2.side.other)
-                        yield return (t, p1);
-                    else
-                        Debug.LogWarning("Something went wrong with the visual jump points in ConcatenatedCurve");
+                    const float jumpTimeTolerance = 1e-3f;
+                    var pt1 = modelSurface.ClampPoint(this[t - jumpTimeTolerance], jumpTimeTolerance * 10);
+                    var pt2 = modelSurface.ClampPoint(this[t + jumpTimeTolerance], jumpTimeTolerance * 10);
+                    if (pt1 is not ModelSurfaceBoundaryPoint p1 || pt2 is not ModelSurfaceBoundaryPoint p2)
+                    {
+                        Debug.LogError($"In the curve {this} of type {GetType()}, the point at time {t}, {this[t]} is saved as a visual jump point, but the points just before and after are not clamped to model surface boundary points, but to {pt1} and {pt2} respectively!");
+                        continue;
+                    }
+                    if (p1.side != p2.side.other)
+                        Debug.LogWarning($"In the curve {this} of type {GetType()}, the point at time {t}, {this[t]} is saved as a visual jump point, but the points just before and after are not clamped to opposite side of the same model surface side, but {p1.side} and {p2.side}! This might be the case if the visual jump point is not calculated with enough precision.");
+                    yield return (t, p1);
                 }
             }
         }
@@ -47,7 +51,7 @@ public abstract partial class Curve : ITransformable<Curve> // even IDrawnsforma
     public virtual IEnumerable<(string, bool)> SideCrossingWord =>
         from p in VisualJumpPoints
         let side = p.Item2.side
-        select (side.Name, side.Surface is ModelSurface surface && !surface.sides.Contains(side));
+        select (((IDrawable) side).ColorfulName, side.Surface is ModelSurface surface && !surface.sides.Contains(side)); // this is a bit hacky. One should rather save this in form of the (inverse) marking into the strips, i.e. for each strip save the word in the "original" graph that its embedding isotopes to, which is equivalent to the Side crossing word, because the "original" graph is the dual of the model surface sides (not exactly -> todo) 
 
     public virtual Point this[float t] => ValueAt(t);
 

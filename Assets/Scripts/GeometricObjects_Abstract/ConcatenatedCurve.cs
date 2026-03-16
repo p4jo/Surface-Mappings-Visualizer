@@ -232,30 +232,24 @@ public partial class ConcatenatedCurve : Curve
 
     public override Point ValueAt(float t)
     {
-        if (t >= Length) // bc. Length % Length = 0 ...
-            return EndPosition;
-        t %= Length;
         foreach (var segment in segments)
         {
-            if (t < segment.Length)
+            if (t <= segment.Length)
                 return segment.ValueAt(t);
             t -= segment.Length;
         }
-
-        throw new Exception("What the heck");
+        return segments[^1].EndPosition;
     }
 
     public override TangentVector DerivativeAt(float t)
     {
-        t %= Length;
         foreach (var segment in segments)
         {
-            if (t < segment.Length)
+            if (t <= segment.Length)
                 return segment.DerivativeAt(t);
             t -= segment.Length;
         }
-
-        throw new Exception("What the heck");
+        return segments[^1].EndVelocity;
     }
 
     public override Curve Reversed() => reverseCurve ??=
@@ -293,8 +287,7 @@ public partial class ConcatenatedCurve : Curve
                 nextCurve = segments[0];
             else
                 break;
-            timeA += curve
-                .Length; // todo: Bug. this seems to not work correctly in some cases (the time is the 0.1f*Length off in the smoothed curves) and this compounds.
+            timeA += curve.Length; // todo: Bug. this seems to not work correctly in some cases (the time is the 0.1f*Length off in the smoothed curves) and this compounds.
 
             var baseGeodesicSurface = curve.Surface is ModelSurface modelSurface1
                 ? modelSurface1.GeometrySurface
@@ -307,8 +300,8 @@ public partial class ConcatenatedCurve : Curve
             bool actualJump = distanceSquared > 1e-3f;
             // if distance is too large, this means, these points are actually different; even considering multiple positions.
             // for drawing, if there are multiple positions at the concatenation point, we should be wary, because the different segments might be far apart (converging to the different positions).
-            bool visualJump = curve.Surface is ModelSurface modelSurface &&
-                              modelSurface.ClampPoint(curve.EndPosition, 1e-3f) is ModelSurfaceBoundaryPoint;
+            bool visualJump = curve.EndPosition is ModelSurfaceBoundaryPoint || 
+                              (curve.Surface as ModelSurface)?.ClampPoint(curve.EndPosition, 1e-3f) is ModelSurfaceBoundaryPoint;
             // bool visualJump = curve[curve.Length - 1e-6f].DistanceSquared(nextCurve[1e-6f]) > 1e-3f;
             if (visualJump && (curve.EndPosition is not ModelSurfaceBoundaryPoint ||
                                nextCurve.StartPosition is not ModelSurfaceBoundaryPoint))

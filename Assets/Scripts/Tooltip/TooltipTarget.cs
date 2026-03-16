@@ -64,20 +64,20 @@ public class TooltipTarget : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
         TooltipManager.Instance?.OnHoverEnd(tooltipThing);
     }
     
-    public TooltipContent GetTooltip() => tooltipThing.GetTooltip();
+    public TooltipContent GetTooltip() => tooltipThing?.GetTooltip() ?? default;
 
-    public void OnHover(Kamera activeKamera, Vector3 position) => tooltipThing.OnHover(activeKamera, 
+    public void OnHover(Kamera activeKamera, Vector3 position) => tooltipThing?.OnHover(activeKamera, 
         transformForHitCoordsToLocal != null ?
             transformForHitCoordsToLocal.InverseTransformPoint(position) :
             position
     );
 
-    public void OnHoverEnd() => tooltipThing.OnHoverEnd();
+    public void OnHoverEnd() => tooltipThing?.OnHoverEnd();
 
-    public void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) => tooltipThing.OnClick(activeKamera, 
+    public void OnClick(Kamera activeKamera, Vector3 position, int mouseButton) => tooltipThing?.OnClick(activeKamera, 
         transformForHitCoordsToLocal != null ?
             transformForHitCoordsToLocal.InverseTransformPoint(position) :
             position, mouseButton);
 
-    public float hoverTime => tooltipThing.hoverTime;
+    public float hoverTime => tooltipThing?.hoverTime ?? 0;
 }

@@ -45,6 +45,11 @@ public partial class ReverseCurve
     protected override Color DefaultColor => curve.Color;
 }
 
+public partial class ShiftedCurve
+{
+    protected override Color DefaultColor => curve.Color;
+}
+
 public partial class ConcatenatedCurve
 {
     protected override Color DefaultColor => segments.First().Color;

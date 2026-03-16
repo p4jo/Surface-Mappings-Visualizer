@@ -101,11 +101,15 @@ public class TooltipManager : MonoBehaviour {
         tooltipPanel.position = new(mousePosition.x + 10, mousePosition.y - 10);
     }
 
-    public void OnHover(ITooltipOnHover tooltipThing, Vector3 position, Kamera kamera = null) {
+    public void OnHover(ITooltipOnHover tooltipThing, Vector3 position, Kamera kamera = null)
+    {
+        if (tooltipThing == null)
+            return;
         if (tooltipThing != lastTooltipThing)
             timer = Time.time;
         lastTooltipThing = tooltipThing;
         content = tooltipThing.GetTooltip();
+        
         uiActivated = !kamera;
         objectActivated = !uiActivated;
         lastHoverPosition = position;
