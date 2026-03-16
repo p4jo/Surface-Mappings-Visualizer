@@ -135,31 +135,39 @@ public static class SurfaceGenerator
                 if (surface is not ModelSurface modelSurface)
                     throw new ArgumentException("The hyperbolic model surface that was expected here wasn't one!?");
                 var cusps = modelSurface.vertices;
+                
                 var peripheralCusps = cusps.OrderBy(v => v.boundaryCurves.Count).Take(peripheralPunctures).ToList();
+
+                var sidesToTraverse = modelSurface.sides.ToList();
+                foreach (var vertex in peripheralCusps) 
+                    sidesToTraverse.Remove(vertex.boundaryCurves.FirstOrDefault(c => char.IsDigit(c.Name[^1])) ?? vertex.boundaryCurves.Last()); 
+                
                 
                 var centerPoint = new BasicPoint(Vector3.zero); 
                 var centerJunction = new Junction(fibredSurface, centerPoint);
                 centerJunction.image = centerJunction; 
                 graph.AddVertex(centerJunction);
+                List<UnorientedStrip> edgesToRename = new();
                 
-                foreach (var side in modelSurface.sides)
+                foreach (var side in sidesToTraverse)
                 {
-                    if (char.IsDigit(side.Name[^1]) || genus == 0)
-                        continue; // todo? This means that it is one of the later sides in CuspsSideParameters that is added to the "normal" side to add cusps
-                    var point = side[side.Length / 2];
-                    var (point1, point2) = point.Positions;
+                    var point1 = side[side.Length / 2];
+                    var point2 = side.other[side.other.Length / 2];
                     var nameOfEdge = nameMap(side.Name);
+                    
                     if (reverse != null && reverse.ContainsKey(nameOfEdge) && reverse[nameOfEdge])
                         (point1, point2) = (point2, point1);
                     var firstPart = modelSurface.GetBasicGeodesic(centerPoint, point1, nameOfEdge); 
                     // saving the full point should mean that in ConcatenatedCurve, it will understand that this is not an actual jump point, just a visual one.
-                    // nvm, it is Clamp()ed anyway
+                    
                     var secondPart = modelSurface.GetBasicGeodesic(point2, centerPoint, nameOfEdge);
                     var curve = firstPart.Concatenate(secondPart);
                     var edge = new UnorientedStrip(curve, centerJunction, centerJunction, EdgePath.Empty, fibredSurface, curve.StartVelocity.vector.Angle(), (- curve.EndVelocity.vector).Angle(), addToGraph: true);
                     edge.Name = nameOfEdge;
                     edge.Color = side.Color;
                     edge.EdgePath = new NormalEdgePath(edge);
+                    if (char.IsDigit(nameOfEdge[^1]))
+                        edgesToRename.Add(edge);
                 }
                 
                 punctureNames ??= Enumerable.Range(0, 20).Select(i => ((char)('α' + i)).ToString()).Concat(Enumerable.Range(0, int.MaxValue).Select(i => "ρ" + i));
@@ -181,6 +189,12 @@ public static class SurfaceGenerator
                     peripheralSubgraph.Add(peripheralEdge);
                     
                     junction.Color = peripheralEdge.Color;
+                }
+
+                foreach (var edge in edgesToRename)
+                {
+                    edge.Name = fibredSurface.NextEdgeName();
+                    edge.Color = fibredSurface.NextEdgeColor();
                 }
 
                 break;
