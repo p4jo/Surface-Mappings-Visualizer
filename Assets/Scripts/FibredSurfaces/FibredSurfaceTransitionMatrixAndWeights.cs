@@ -27,56 +27,6 @@ public partial class FibredSurface
     public Dictionary<UnorientedStrip, Dictionary<UnorientedStrip, int>> TransitionMatrixEssential() =>
         TransitionMatrix(EssentialSubgraph());
 
-    /// <summary>
-    /// Tests if there is a preserved subgraph that is not contained in the (pre-)periphery.
-    /// If there is such a subgraph and it is not a forest in G/P (clear at the point in the algorithm where this test is done), then the map is reducible:
-    /// The boundary components of the preserved subgraph are preserved up to isotopy and at least one of them is essential, thus determining a reduction in the sense of the Thurston-Nielsen classification.  
-    /// 
-    /// If not, the transition matrix M is irreducible*. 
-    /// The "growth" of the graph map is the spectral radius (Frobenius-Perron eigenvalue) and the associated positive eigenvector is interpreted as the widths of the edges (in the train track sense).
-    /// (*) it is not necessarily irreducible, as P u pre-P is a preserved subgraph, but it defines positive weights on the edges (this is a condition on the block of M mapping G\P to P)
-    /// </summary>
-    /// <returns> A non-trivial essential preserved subgraph or null if it doesn't exist, i.e. the transition matrix is irreducible. </returns>
-    public HashSet<UnorientedStrip> PreservedSubgraph_Reducibility()
-    {
-        var prePeriphery = PrePeriphery();
-        var fullGraph = Strips.ToHashSet();
-        var essentialSubgraph = new HashSet<UnorientedStrip>(fullGraph);
-        essentialSubgraph.ExceptWith(prePeriphery);
-        var edgesKnownToHaveFullOrbit = new HashSet<UnorientedStrip>();
-
-        foreach (var edge in essentialSubgraph)
-        {
-            if (edgesKnownToHaveFullOrbit.Contains(edge)) 
-                continue;
-            var orbit = OrbitOfEdge(edge, edgesKnownToHaveFullOrbit);
-            if (!orbit.IsSupersetOf(fullGraph))  
-                return orbit;
-            edgesKnownToHaveFullOrbit.Add(edge);
-        }
-        return null; 
-    }
-
-    public AlgorithmSuggestion ReducibilitySuggestion()
-    {
-        var preservedSubgraph = PreservedSubgraph_Reducibility();
-        if (preservedSubgraph == null) return null;
-        var boundaryWordText = CheckIfBoundaryWordsOfSubgraphArePreserved(preservedSubgraph, out var arePreserved);
-        if (!arePreserved)
-            HandleInconsistentBehavior($"The boundary words of the invariant subgraph {preservedSubgraph.ToCommaSeparatedString(e => e.ColorfulName)} are not preserved!");
-        var description = "The map is reducible because there is an invariant essential subgraph, with edges "
-                          + preservedSubgraph.Select(e =>
-                                  peripheralSubgraph.Contains(e)
-                                      ? e.ColorfulName
-                                      : $"<b>{e.ColorfulName}</b>")
-                              .ToCommaSeparatedString()
-                          + $".\n {boundaryWordText}\n You can continue with the algorithm, but it will not necessarily terminate.";
-        return new AlgorithmSuggestion(
-            options: new (object, string)[] { },
-            description: description, 
-            buttons: new[] { AlgorithmSuggestion.ignoreReducibleButton }
-        );
-    }
 
     /// <summary>
     /// Finds the left and right eigenvectors of the essential transition matrix M_H associated to the Frobenius-Perron eigenvalue (growth) λ.

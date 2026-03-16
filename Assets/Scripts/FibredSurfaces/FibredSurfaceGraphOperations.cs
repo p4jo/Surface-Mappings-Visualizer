@@ -30,7 +30,10 @@ public partial class FibredSurface
             sb.AppendLine("Peripheral: " + peripheralBoundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10)));
         sb.AppendLine("Essential: " + boundaryWords.ToCommaSeparatedString(w => w.ToColorfulString(180, 10)));
         
-        
+        var (boundaryWordsPreservedString, boundaryWordsPreserved) = CheckIfBoundaryWordsOfSubgraphArePreserved(Strips);
+        if (!boundaryWordsPreserved)
+            sb.AppendLine(boundaryWordsPreservedString);
+            
         FrobeniusPerron(false, out var growthRate, out var widths, out var lengths, out var matrix);
         // var matrix = TransitionMatrix();
 
@@ -53,7 +56,6 @@ public partial class FibredSurface
             else
                 sb.AppendLine("\nType: Finite-Order");
 
-        sb.AppendLine(CheckIfBoundaryWordsOfSubgraphArePreserved(Strips.Where(_ => Random.value < 0.5), out _));
         
         return sb.ToString();
 
@@ -202,17 +204,21 @@ public partial class FibredSurface
         return newGraph;
     }
 
-    private static HashSet<UnorientedStrip> OrbitOfEdge(Strip edge, HashSet<UnorientedStrip> edgesKnownToHaveFullOrbit = null)
+    private static HashSet<UnorientedStrip> OrbitOfEdge(Strip edge, Dictionary<UnorientedStrip, HashSet<UnorientedStrip>> knownOrbits = null)
     {
         HashSet<UnorientedStrip> orbit = new() { edge.UnderlyingEdge };
-        Queue<Strip> queue = new(orbit);
-        while (queue.TryDequeue(out edge))
+        Queue<UnorientedStrip> queue = new(orbit);
+        while (queue.TryDequeue(out var strip))
         {
-            if (edgesKnownToHaveFullOrbit != null && edgesKnownToHaveFullOrbit.Contains(edge.UnderlyingEdge))
-                return edge.graph.Edges.ToHashSet();
-            foreach (var e in edge.EdgePath)
+            if (knownOrbits?.TryGetValue(strip, out var orbitSet) == true)
             {
-                if (orbit.Add(e.UnderlyingEdge)) // add returns false if the edge is already in the orbit
+                orbit.UnionWith(orbitSet);
+                continue;
+            }
+            foreach (var e in strip.EdgePath)
+            {
+                // add returns false if the edge is already in the orbit
+                if (orbit.Add(e.UnderlyingEdge))
                     queue.Enqueue(e.UnderlyingEdge);
             }
         }
@@ -223,7 +229,8 @@ public partial class FibredSurface
     /// <summary>
     /// The boundary words, following at the right. I.e. the orbits of the map e -> σ(e.Reversed()), where σ is the cyclic order that goes counter-clockwise. 
     /// </summary>
-    public IEnumerable<EdgePath> BoundaryWords(IEnumerable<UnorientedStrip> subgraphEdges = null)
+    public IEnumerable<EdgePath> 
+        BoundaryWords(IEnumerable<UnorientedStrip> subgraphEdges = null)
     {
         var visited = new HashSet<Strip>();
         var subgraphSet = subgraphEdges?.ToHashSet();
@@ -280,36 +287,73 @@ public partial class FibredSurface
         return new NormalEdgePath(boundaryWord);
     }
     
-    private string CheckIfBoundaryWordsOfSubgraphArePreserved(IEnumerable<UnorientedStrip> subgraphEdges, out bool arePreserved)
+    private (string Preserved, bool ArePreserved) CheckIfBoundaryWordsOfSubgraphArePreserved(IEnumerable<UnorientedStrip> subgraphEdges)
     {
         var subgraphEdgesSet = subgraphEdges.ToHashSet();
         var sb = new StringBuilder();
-        arePreserved = true;
+        var arePreserved = true;
         sb.AppendLine($"The boundary words of the subgraph {{{subgraphEdgesSet.ToCommaSeparatedString(e => e.ColorfulName)}}} are:");
-        List<EdgePath> boundaryWords = BoundaryWords(subgraphEdgesSet).ToList();
+        var boundaryWords = BoundaryWords(subgraphEdgesSet).ToList();
+        var boundaryWordsCancelled = boundaryWords.Select(b => b.CancelBacktracking(true)).ToList(); // for components with valence-1 vertices.
         for (var index = 0; index < boundaryWords.Count; index++)
         {
             var boundaryWord = boundaryWords[index];
             var image = boundaryWord.Image;
-            var isotopedImage = image.CancelBacktracking();
-            int j = boundaryWords.FindIndex(b => isotopedImage.CyclicShift(b.First()).SequenceEqual(b));
+            var isotopedImage = image.CancelBacktracking(cyclic: true);
+            var j = boundaryWordsCancelled.FindIndex(b =>  b.IsEmpty ? isotopedImage.IsEmpty : isotopedImage.CyclicShift(b.First()).SequenceEqual(b));
 
             sb.Append($"b_{index} = {boundaryWord.ToColorfulString(180, 10)} with image {isotopedImage.ToColorfulString(250, 10)}");
             if (isotopedImage.Count < image.Count)
                 sb.Append(" (after cancelling backtracking)");
-            if (j == -1)
-            {
-                sb.Append(", which is not cyclically equivalent to any boundary word, so it is <b><color=red>not preserved!</color></b>"); 
-                arePreserved = false;
-            }
+            if (j >= 0)
+                sb.Append($" = b_{j}");
             else
             {
-                sb.Append($" = b_{j}");
+                sb.Append(", which is not cyclically equivalent to any boundary word, so it is <b><color=red>not preserved!</color></b>");
+                arePreserved = false;
             }
+
             sb.Append('\n');
         }
 
-        return sb.ToString();
+        return (sb.ToString(), arePreserved);
     }
 
+    private AlgorithmSuggestion FiniteOrderSuggestion()
+    {
+        if (Strips.Any(strip => strip.EdgePath.Count > 1))
+            return null;
+        if (Strips.Any(strip => strip.EdgePath.IsEmpty))
+        {
+            HandleInconsistentBehavior("There is a pretrivial edge. At this point there should be no pretrivial subforests, so this should not happen. Do you map a loop to a point?");
+            return null;
+        }
+
+        var edgeCycles = EdgeCycle.FindEdgeCycles(OrientedEdges.ToArray());
+
+        if (edgeCycles.Any(cycle => cycle.attractedEdges.Count != cycle.order))
+        {
+            HandleInconsistentBehavior("The edge-cycle decomposition does not partition all oriented edges exactly once.");
+            return null;
+        }
+
+
+        long order = 1;
+        foreach (var cycle in edgeCycles)
+        {
+            order = order.Lcm(cycle.order);
+            if (order <= 0)
+            {
+                HandleInconsistentBehavior("The finite order is too large to fit into Int64.");
+                return null;
+            }
+        }
+
+        return new AlgorithmSuggestion(
+            options: Array.Empty<(object, string)>(),
+            description: $"The graph map is a graph isomorphism, and has order {order}",
+            buttons: Array.Empty<string>()
+        );
+
+    }
 }

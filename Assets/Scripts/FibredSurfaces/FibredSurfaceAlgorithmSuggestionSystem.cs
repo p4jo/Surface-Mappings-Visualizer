@@ -55,7 +55,9 @@ public partial class FibredSurface
         public const string absorbPInStepsButton = "Absorb in steps";
         public const string valence2SelectedButton = "Remove Selected";
         public const string valence2AllButton = "Remove All";
-        public const string ignoreReducibleButton = "Continue anyways";
+        public const string ignoreReducibleButton = "Ignore and continue";
+        public const string reductionKeepInnerButton = "Reduce to subgraph";
+        public const string reductionKeepOuterButton = "Reduce subgraph to periphery";
     }
 
     IEnumerator<AlgorithmSuggestion> currentAlgorithmRun;
@@ -82,6 +84,10 @@ public partial class FibredSurface
             return nextSuggestion;
         
         nextSuggestion = AbsorbIntoPeripherySuggestion();
+        if (nextSuggestion != null)
+            return nextSuggestion;
+
+        nextSuggestion = FiniteOrderSuggestion();
         if (nextSuggestion != null)
             return nextSuggestion;
         
@@ -262,6 +268,27 @@ public partial class FibredSurface
                 break;
             case AlgorithmSuggestion.ignoreReducibleButton:
                 ignoreBeingReducible = true;
+                break;
+            case AlgorithmSuggestion.reductionKeepInnerButton:
+                if (suggestion.FirstOrDefault() is not IEnumerable<string> preservedSubgraphEdges)
+                    break;
+                
+                currentAlgorithmRun = ReduceToSubgraph(preservedSubgraphEdges).GetEnumerator();
+                if (!currentAlgorithmRun.MoveNext())
+                {
+                    currentAlgorithmRun.Dispose();
+                    currentAlgorithmRun = null; // if it had just one step 
+                }
+                break;
+            case AlgorithmSuggestion.reductionKeepOuterButton:
+                if (suggestion.FirstOrDefault() is not IEnumerable<string> preservedSubgraphEdges2)
+                    break;
+                currentAlgorithmRun = ReduceSubgraphToPeriphery(preservedSubgraphEdges2).GetEnumerator();
+                if (!currentAlgorithmRun.MoveNext())
+                {
+                    currentAlgorithmRun.Dispose();
+                    currentAlgorithmRun = null; // if it had just one step 
+                }
                 break;
             case AlgorithmSuggestion.trainTrackButton:
                 ConvertToTrainTrack();

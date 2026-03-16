@@ -259,7 +259,7 @@ public static class EnumerableHelpers
         return newList;
     }
 
-    public static int SharedInitialSegment<T>(this IEnumerable<T> list, IEnumerable<T> other)
+    public static int SharedInitialSegmentLength<T>(this IEnumerable<T> list, IEnumerable<T> other)
     {
         using var enumerator = list.GetEnumerator();
         using var otherEnumerator = other.GetEnumerator();
@@ -310,7 +310,28 @@ public static class EnumerableHelpers
         }
         return count > 0 ? Math.Pow(product, 1.0 / count) : 0.0;
     }
-    
+
+    public static IEnumerable<T> SharedInitialSegment<T, TE>(this IEnumerable<TE> lists) where TE : IEnumerable<T>
+    {
+        // ReSharper disable once GenericEnumeratorNotDisposed
+        var enumerators = (
+            from list in lists 
+            select list.GetEnumerator()
+        ).ToArray();
+        
+        while (true)
+        {
+            if (enumerators.Any(enumerator => !enumerator.MoveNext()))
+                break;
+            var res = enumerators[0].Current;
+            if (enumerators.Skip(1).Any(enumerator => !Equals(enumerator.Current, res)))
+                break;
+            yield return res;
+        }
+
+        foreach (var enumerator in enumerators) 
+            enumerator.Dispose();
+    }
 }
 
 

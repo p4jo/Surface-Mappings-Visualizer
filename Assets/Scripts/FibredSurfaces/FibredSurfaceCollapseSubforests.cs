@@ -60,11 +60,11 @@ public partial class FibredSurface
         );
 
     /// <summary>
-    /// This checks if the graph is a subforest at each component touches the peripheral subgraph in at most one vertex.
-    /// Thus if touching and remove are true, this checks if subgraph deformation retracts to the peripheral subgraph.
+    /// This checks if the graph is a subforest and each component touches the peripheral subgraph in at most one vertex.
+    /// Thus, if touching and remove are true, this checks if subgraph deformation retracts to the peripheral subgraph.
     /// </summary>
     /// <param name="subgraph"></param>
-    /// <param name="peripheralSubgraph">If not present, the saved peripheral subgraph P is taken.</param>
+    /// <param name="peripheralSubgraph">If not present, the saved peripheral subgraph P is taken. This doesn't actually need to be a disjoint union of circle graphs.</param>
     /// <param name="remove">If remove is true, subgraph is replaced by (subgraph \ peripheralSubgraph)</param>
     /// <param name="touching">If touching is true, each component must touch the peripheral subgraph in exactly one vertex.</param>
     /// <returns></returns>
@@ -72,7 +72,7 @@ public partial class FibredSurface
         bool touching = false)
     {
         if (remove)
-            return IsPeripheryFriendlySubforest(subgraph.Edges, peripheralSubgraph, false, touching);
+            return IsPeripheryFriendlySubforest(subgraph.Edges, peripheralSubgraph, true, touching);
 
         if (!subgraph.IsUndirectedAcyclicGraph()) return false;
 
@@ -102,12 +102,12 @@ public partial class FibredSurface
             return IsPeripheryFriendlySubforest(edges.Except(peripheralSubgraph), peripheralSubgraph, false,
                 touching);
 
-        FibredGraph subgraph = new FibredGraph();
+        var subgraph = new FibredGraph();
         subgraph.AddVerticesAndEdgeRange(edges);
-        return IsPeripheryFriendlySubforest(subgraph, peripheralSubgraph, remove, touching);
+        return IsPeripheryFriendlySubforest(subgraph, peripheralSubgraph, false, touching);
     }
 
-    public IEnumerator<AlgorithmSuggestion> CollapseSubforest(IEnumerable<string> edges)
+    public IEnumerator<AlgorithmSuggestion> CollapseSubforest(IEnumerable<string> edges, IEnumerable<Junction> preferredJunctions = null)
     {
         var subforest = new FibredGraph(true);
         var edgeDict = OrientedEdges.ToDictionary(e => e.Name);
@@ -115,12 +115,13 @@ public partial class FibredSurface
             from edgeName in edges
             select edgeDict[edgeName].UnderlyingEdge
         );
-        return CollapseSubforest(subforest);
+        return CollapseSubforest(subforest, preferredJunctions);
     }
 
-    public IEnumerator<AlgorithmSuggestion> CollapseSubforest(FibredGraph subforest)
+    public IEnumerator<AlgorithmSuggestion> CollapseSubforest(FibredGraph subforest, IEnumerable<Junction> preferredJunctions = null)
     {
         var subforestEdges = subforest.Edges.ToHashSet();
+        var preferredJunctionSet = preferredJunctions?.ToHashSet();
 
         var componentList = subforest.ComponentGraphs(out var componentDict);
 
@@ -137,11 +138,23 @@ public partial class FibredSurface
             // );
             if (component.EdgeCount == 0)
                 continue; // nothing to collapse
+
+            Junction[] candidateCenters;
+            if (preferredJunctionSet == null)
+            {
+                candidateCenters = component.Vertices.OrderByDescending(v => graph.AdjacentDegree(v)).ToArray();
+            }
+            else
+            {
+                candidateCenters = component.Vertices.Where(preferredJunctionSet.Contains)
+                    .OrderByDescending(v => graph.AdjacentDegree(v)).ToArray();
+                if (candidateCenters.Length == 0)
+                    throw new InvalidOperationException(
+                        $"No preferred collapse center found in component {{{component.Edges.ToCommaSeparatedString(e => e.ColorfulName)}}}. This should not happen when preferred junctions are provided.");
+            }
+
             yield return new AlgorithmSuggestion(
-                options: from v in component.Vertices.OrderByDescending(
-                        v => graph.AdjacentDegree(v)
-                    )
-                    select (v.Name as object, v.ColorfulName),
+                options: candidateCenters.Select(v => (v.Name as object, v.ColorfulName)),
                 description: $"Pull component {{{component.Edges.ToCommaSeparatedString(e => e.ColorfulName)}}} towards vertex",
                 buttons: new[] { AlgorithmSuggestion.collapseInvariantSubforestContinueButton }    
             ); 
@@ -149,8 +162,8 @@ public partial class FibredSurface
             var selectedOption = selectedOptionsDuringAlgorithmPause?.FirstOrDefault();
             Junction newVertex = null;
             if (selectedOption is string selectedVertexName)
-                newVertex = component.Vertices.FirstOrDefault(v => v.Name == selectedVertexName);
-            newVertex ??= component.Vertices.ArgMax(v => graph.AdjacentDegree(v)).Item1;
+                newVertex = candidateCenters.FirstOrDefault(v => v.Name == selectedVertexName);
+            newVertex ??= candidateCenters.First();
             
             newVertices.Add(newVertex);
             
@@ -201,7 +214,8 @@ public partial class FibredSurface
                     return newStar;
                 
                 foreach (var prolongedStrip in newStar)
-                {
+                { 
+                    // for this reason, the subforest need not be invariant. So, valence 2 removal is a special case of subforest collapse.
                     prolongedStrip.EdgePath = stripToCenter.EdgePath.Inverse.Concat(prolongedStrip.EdgePath);          
                 }
                 

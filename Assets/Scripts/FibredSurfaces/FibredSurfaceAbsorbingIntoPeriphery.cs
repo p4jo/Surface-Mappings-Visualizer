@@ -7,9 +7,13 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
 public partial class FibredSurface
 {
-    FibredGraph GetMaximalPeripheralSubgraph()
+    /// <summary>
+    /// This gets the maximal invariant subgraph that deformation retracts to the given "peripheralSubgraph" (although this can be any preserved subgraph)
+    /// </summary>
+    FibredGraph GetMaximalInvariantSubgraphDeformationRetractingTo(IEnumerable<UnorientedStrip> peripheralSubgraph = null)
     {
         var Q = new FibredGraph(true);
+        peripheralSubgraph ??= this.peripheralSubgraph;
         Q.AddVerticesAndEdgeRange(peripheralSubgraph);
         foreach (var strip in Strips)
         {
@@ -25,7 +29,7 @@ public partial class FibredSurface
 
     public AlgorithmSuggestion AbsorbIntoPeripherySuggestion()
     {
-        var Q = GetMaximalPeripheralSubgraph();
+        var Q = GetMaximalInvariantSubgraphDeformationRetractingTo();
         var qEdges = Q.Edges.ToHashSet();
         var valenceTwoVertices = Q.Vertices.Where(v => Star(v).Count() <= 2).ToArray();
         var starQ = SubgraphStar(Q).ToList();
@@ -75,18 +79,17 @@ public partial class FibredSurface
     {
 
         // var trees = QwithoutP.ComponentGraphs(out var componentDict);
-        
-        // collapse the trees exactly like collapsing subforests, but keep track of the edge images
-        using var enumerator = CollapseSubforest(QwithoutP);
-        while (enumerator.MoveNext())
-            yield return enumerator.Current;
-        
-        
+
         var oldPeripheralEdges = peripheralSubgraph.ToHashSet();
         var oldPeripheralVertices = peripheralSubgraphVertices.ToHashSet(); // is already HashSet actually
         
+        // collapse the trees exactly like collapsing subforests, but keep track of the edge images
+        using var enumerator = CollapseSubforest(QwithoutP, oldPeripheralVertices);
+        while (enumerator.MoveNext())
+            yield return enumerator.Current;
+
         var peripheralBoundaryWordsCounterClockwise = (
-            from w in BoundaryWords() 
+            from w in BoundaryWords()
             where w.All(e => oldPeripheralEdges.Contains(e.UnderlyingEdge))
             select w.Inverse
         ).ToArray();

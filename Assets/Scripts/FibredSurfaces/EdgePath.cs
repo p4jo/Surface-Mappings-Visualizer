@@ -75,7 +75,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
     
     public virtual EdgePath Image => new NestedEdgePath(from strip in this select strip.EdgePath);
     
-    public virtual EdgePath CancelBacktracking() {
+    public virtual EdgePath CancelBacktracking(bool cyclic = false) {
         List<Strip> result = new List<Strip>();
         foreach (var e in this)
         {
@@ -84,6 +84,12 @@ public abstract class EdgePath : IReadOnlyList<Strip>
             else
                 result.Add(e);
         }    
+        if (cyclic)
+            while (result.Count > 1 && result[^1].Equals(result[0].Reversed()))
+            {
+                result.RemoveAt(result.Count - 1);
+                result.RemoveAt(0);
+            }
         return new NormalEdgePath(result);
     }
 

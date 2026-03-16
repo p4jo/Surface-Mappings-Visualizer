@@ -34,7 +34,7 @@ public partial class FibredSurface
                 throw new ArgumentException($"The edge {preferredEdge} has not enough side crossings: {c.Count} < {l}", nameof(preferredEdge));
 
             edgeCancellations =
-                edges.ToDictionary(edge => edge, edge => edge.Curve.SideCrossingWord.SharedInitialSegment(c));
+                edges.ToDictionary(edge => edge, edge => edge.Curve.SideCrossingWord.SharedInitialSegmentLength(c));
             
             vertexMovements = new Dictionary<Junction, IEnumerable<(string, bool)>>(
                 from edge in edges

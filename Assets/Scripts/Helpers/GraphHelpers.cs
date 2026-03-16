@@ -10,13 +10,15 @@ public static class GraphHelpers
     public static List<UndirectedGraph<TVertex, TEdge>> ComponentGraphs<TVertex, TEdge>(
         this UndirectedGraph<TVertex, TEdge> subforest, out Dictionary<TVertex, int> components) where TEdge : IEdge<TVertex>
     {
-        components = new();
-        int numberOfComponents = subforest.ConnectedComponents(components);
+        components = new(subforest.VertexCount);
+        var numberOfComponents = subforest.ConnectedComponents(components);
         var componentList = new List<UndirectedGraph<TVertex, TEdge>>(numberOfComponents);
         for (var i = 0; i < numberOfComponents; i++)
-            componentList.Add(new());
+            componentList.Add(new UndirectedGraph<TVertex, TEdge>());
+        foreach (var vertex in components.Keys) 
+            componentList[components[vertex]].AddVertex(vertex);
         foreach (var strip in subforest.Edges)
-            componentList[components[strip.Source]].AddVerticesAndEdge(strip);
+            componentList[components[strip.Source]].AddEdge(strip);
         return componentList;
     }
     
