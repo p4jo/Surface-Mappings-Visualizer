@@ -108,7 +108,9 @@ public class FibredSurfaceMenu : MonoBehaviour
     
     private void HandleError(string message)
     {
-        Debug.LogError(message);     
+        Debug.LogError(message);    
+        if (algorithmCoroutine != null)
+            StopCoroutine(algorithmCoroutine);
         if (suggestionCoroutine != null)
             StopCoroutine(suggestionCoroutine);
         errorText.text += message + "\n";
@@ -143,6 +145,7 @@ public class FibredSurfaceMenu : MonoBehaviour
             }
             catch (Exception e)
             {
+                Debug.LogException(e);
                 HandleError(e.Message);
                 yield break; // stop the coroutine if an error occurs
             }

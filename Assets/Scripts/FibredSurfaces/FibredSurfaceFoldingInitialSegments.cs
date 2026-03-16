@@ -41,8 +41,11 @@ public partial class FibredSurface
             (!char.IsLetter(m.preferredEdge.Name[^1]) ? 1f / edges.Count : 0) 
         ).ToArray();
         
+        var targetVerticesToFold =
+            (from edge in edges select edge.Target).Distinct().ToArray(); // has the correct order
+        
         yield return new AlgorithmSuggestion(
-            description: "Move vertices for folding:",
+            description: $"To fold edges {edges.ToCommaSeparatedString(e => e.ColorfulName)}, move their terminal vertices {targetVerticesToFold.ToCommaSeparatedString(v => v.ColorfulName)}:",
             options: from m in movementsOrdered 
                 select (m as object, m.ToString()),
                 // for the other steps (see fold inefficiencies) we changed it so that this doesn't contain actual references to Strips, but a  SerializationString, so that the FibredSurface can be copied, but this step is only ever applied on this uncopied Surface itself. This means we cannot undo and choose something different.
@@ -55,9 +58,6 @@ public partial class FibredSurface
             throw new InvalidOperationException(
                 $"The selected movement {selectedMovement} is not defined on this FibredSurface. " +
                 $"It was defined on {selectedMovement.edges.First().fibredSurface}.");
-        
-        var targetVerticesToFold =
-            (from edge in edges select edge.Target).Distinct().ToArray(); // has the correct order
         
         selectedMovement.MoveVerticesForFolding(ignoreGivenEdges: selectedButtonDuringAlgorithmPause == AlgorithmSuggestion.foldMoveAltButton || selectedButtonDuringAlgorithmPause == null);
         

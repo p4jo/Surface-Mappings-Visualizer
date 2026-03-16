@@ -30,6 +30,16 @@ public class MainMenu: MonoBehaviour
             case "Embedded Torus":
                 Initialize("g=1,#", showDeckTransformations, true);
                 break;
+            case "Half Twist":
+                Initialize("g=1,p=2,P=0", showDeckTransformations, true);
+                var bbb = fibredSurface.Strips.First(strip => strip.Name == "b");
+                bbb.ReplaceWithInverseEdge();
+                fibredSurfaceMenu.UpdateGraphMap("a -> c A b c B");
+                break;
+            case "Reducible Map": // todo: this is not a valid map: the boundary words are not preserved up to isotopy
+                Initialize("g=2, p=1", showDeckTransformations, true);
+                fibredSurfaceMenu.UpdateGraphMap( "a \u21a6 a b a, b \u21a6 a b a b a, c -> c d c, d -> c d c d c", mode: GraphMapUpdateMode.Replace);
+                break;
             case "Bestvina-Handel example 6.1.":
                 Initialize("g=2,p=1,P=0", showDeckTransformations, true);
                 var c = fibredSurface.Strips.First(strip => strip.Name == "c");

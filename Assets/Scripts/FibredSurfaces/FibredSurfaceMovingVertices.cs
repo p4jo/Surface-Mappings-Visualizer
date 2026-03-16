@@ -174,12 +174,12 @@ public partial class FibredSurface
 
         public override string ToString() {
             var sb = new StringBuilder();
-            sb.AppendLine($"Preferred edge: {preferredEdge.Name} - Keep the first {l}/{preferredEdge.Curve.SideCrossingWord.Count()} side crossings.");
+            sb.AppendLine($"Preferred edge: {preferredEdge.ColorfulName} - Keep the first {l}/{preferredEdge.Curve.SideCrossingWord.Count()} side crossings.");
             // sb.AppendLine($"  {string.Join(", ", c)}");
-            sb.AppendLine($"Vertex movements to converge at {preferredEdge.Target.Name}");
+            sb.AppendLine($"Vertex movements to converge at {preferredEdge.Target.ColorfulName}");
             foreach (var (vertex, movement) in vertexMovements)
                 if (movement.Any())
-                    sb.AppendLine($"Move vertex {vertex} across {(from sideCrossing in movement select sideCrossing.Item1 + (sideCrossing.Item2 ? "'" : "")).ToCommaSeparatedString()}");
+                    sb.AppendLine($"Move vertex {vertex.ColorfulName} across {(from sideCrossing in movement select sideCrossing.Item1 + (sideCrossing.Item2 ? "'" : "")).ToCommaSeparatedString()}");
             sb.AppendLine($"Total number of side crossings afterwards: {Badness}");
             return sb.ToString(); 
         }
@@ -188,7 +188,7 @@ public partial class FibredSurface
     public void MoveJunction(Strip e, float? length = null) => MoveJunction(e.Source, e.Curve, length ?? e.Curve.Length, e);
 
     
-    const float baseShiftStrength = 0.04f;
+    const float baseShiftStrength = 0.06f;
 
     public enum MoveJunctionShiftType
     {
