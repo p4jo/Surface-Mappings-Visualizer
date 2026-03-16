@@ -12,13 +12,15 @@ public class EdgeCycle
     /// </summary>
     public Dictionary<Strip, int> attractedEdges = new();
 
+    public static readonly Strip NullStripPlaceholder = new UnorientedStrip(null, null, null,null, null, 0, 0);
+    
     public EdgeCycle(Strip edge, int order)
     {
         this.order = order;
-        attractedEdges[edge] = 0; // this is the basepoint of the cycle
+        attractedEdges[edge ?? NullStripPlaceholder] = 0; // this is the basepoint of the cycle
         for (int i = order - 1; i > 0; i--)
         {
-            edge = edge?.Dg;
+            edge = edge?.Dg ?? NullStripPlaceholder;
             attractedEdges[edge] = i;
         }
     }
@@ -26,7 +28,7 @@ public class EdgeCycle
     /// <summary>
     /// Checks if the edge is known to be attracted into the cycle and returns the distance to the basepoint of the cycle (or -1 if it is not in the cycle).
     /// </summary>
-    public int CycleIndexOf(Strip edge) => attractedEdges.TryGetValue(edge, out var distance) ? distance : -1;
+    public int CycleIndexOf(Strip edge) => attractedEdges.TryGetValue(edge ?? NullStripPlaceholder, out var distance) ? distance : -1;
 
     /// <summary>
     /// The edgeCycle.attratcedEdges (for edgeCycle in edgeCycles) forms a partition of the set of oriented edges.  
@@ -136,7 +138,7 @@ public static class Gate
             var gatesFromPreviousEdgeCycles = gates.Count;
             foreach (var (edge, cycleDistance) in edgeCycle.attractedEdges)
             {
-                if (edge == null)
+                if (edge == EdgeCycle.NullStripPlaceholder)
                     continue; // null edges do not contribute to gates
                 var gate = gates.Skip(gatesFromPreviousEdgeCycles).FirstOrDefault( gate =>
                     identifier(edge.Source).Equals(gate.junctionIdentifier) &&
