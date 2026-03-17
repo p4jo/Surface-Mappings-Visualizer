@@ -15,6 +15,8 @@ public partial class ConcatenationSingularPoint: Point
     public int incomingPosIndex, outgoingPosIndex;
     public bool visualJump, actualJump, angleJump;
 
+    public override GeodesicSurface Surface => incomingCurve.Surface as GeodesicSurface ?? outgoingCurve.Surface as GeodesicSurface ?? base.Surface;
+
     public override IEnumerable<Vector3> Positions =>
         incomingCurve.EndPosition.Positions.Concat(outgoingCurve.StartPosition.Positions);
 
@@ -229,6 +231,8 @@ public partial class ConcatenatedCurve : Curve
     public override Point StartPosition => segments.First().StartPosition;
     public override TangentVector EndVelocity => segments.Last().EndVelocity;
     public override TangentVector StartVelocity => segments.First().StartVelocity;
+
+    public IEnumerable<Curve> Segments => segments;
 
     public override Point ValueAt(float t)
     {

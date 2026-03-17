@@ -27,6 +27,8 @@ public partial class ModelSurfaceBoundaryPoint : Point, IModelSurfacePoint
         return base.Equals(other);
     }
 
+    public override GeodesicSurface Surface => side.Surface as GeodesicSurface ?? base.Surface;
+
     public override Vector3 Position => positions?.First() ?? side.curve[t].Position; // slightly more efficient than Positions.First() because it doesn't calculate side.other.curve[t]
 
     public override IEnumerable<Vector3> Positions
@@ -127,6 +129,8 @@ public partial class ModelSurfaceVertex : Point
     {
         this.boundaryCurves = boundaryCurves;
     }
+
+    public override GeodesicSurface Surface => boundaryCurves.FirstOrDefault()?.Surface as GeodesicSurface ?? base.Surface;
 
     public override IEnumerable<Vector3> Positions => positions ??= (
         from i in Enumerable.Range(0, boundaryCurves.Count / 2)

@@ -210,7 +210,7 @@ public partial class FibredSurface
         Queue<UnorientedStrip> queue = new(orbit);
         while (queue.TryDequeue(out var strip))
         {
-            if (knownOrbits?.TryGetValue(strip, out var orbitSet) == true)
+            if (knownOrbits != null && knownOrbits.TryGetValue(strip, out var orbitSet))
             {
                 orbit.UnionWith(orbitSet);
                 continue;
