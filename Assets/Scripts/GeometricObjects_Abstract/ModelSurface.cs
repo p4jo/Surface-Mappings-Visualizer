@@ -297,8 +297,8 @@ public partial class ModelSurface : GeodesicSurface
         return GeometrySurface.GetGeodesic(startPoint, endPoint, name, surface);
     }
 
-    public Curve GetBasicGeodesic(TangentVector tangentVector, float length, string name,
-        GeodesicSurface surface = null) => GeometrySurface.GetGeodesic(tangentVector, length, name, surface ?? this);
+    public Curve GetBasicGeodesic(TangentVector tangentVector, float length, string name, out float speedFactor, GeodesicSurface surface = null) => 
+        GeometrySurface.GetGeodesic(tangentVector, length, name, out speedFactor, surface ?? this);
 
     public override Curve GetGeodesic(Point startPoint, Point endPoint, string name, GeodesicSurface surface = null)
     {
@@ -324,62 +324,53 @@ public partial class ModelSurface : GeodesicSurface
             name); //.Smoothed(); // todo?: this doesn't work as expected. Shouldn't be necessary, bc. there shouldn't really be an angle jump
     }
 
-    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name,
-        GeodesicSurface surface = null)
+    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name, out float speedFactor, GeodesicSurface surface = null)
     {
         if (length < 0)
-            return GetGeodesic(-startVelocity, -length, name, surface);
+        {
+            startVelocity = -startVelocity;
+            length = -length;
+        }
         List<Curve> segments = new();
         var currentStartVector = startVelocity;
         int i = 0;
         Vector3 lastPos = startVelocity.point.Position;
+        speedFactor = 1f;
         while (length > 0)
         {
-            var currentSegment = GetBasicGeodesic(currentStartVector, length, name + $"pt {i}", surface);
-            float res = 0.1f;
-            float t = res; // we shouldn't need to check at 0 (it should be the last start point)
-            while (res >= length)
-                res /= 2;
-            Point p = null;
-            bool stillAtTheStartingSide = true;
-            while (t < length)
+            var currentSegment = GetBasicGeodesic(currentStartVector, length, name + $"pt {i}", out var speedFactor2, surface);
+            if (speedFactor == 1f)
+                speedFactor = speedFactor2;
+
+            var intersectionTime = float.MaxValue;
+
+            ModelSurfaceSide side = null;
+            var sideTime = 0f;
+            
+            foreach (var side1 in AllSideCurves)
             {
-                p = ClampPoint(currentSegment[t], 0.001f);
-                switch (p)
+                var times = GeometrySurface.GetIntersectionOfGeodesics(side1, currentSegment);
+                if (times?.t2 <= 0)
                 {
-                    case null:
-                    {
-                        res /= 4;
-                        if (res < 1e-8f)
-                            throw new Exception(
-                                "Didn't hit the boundary exactly when running along a geodesic! Aborting.");
-                        t -= res * 3;
-                        stillAtTheStartingSide = false;
-                        continue;
-                    }
-                    case ModelSurfaceInteriorPoint:
-                        stillAtTheStartingSide = false;
-                        t += res;
-                        continue;
-                    case ModelSurfaceVertex:
-                    case ModelSurfaceBoundaryPoint:
-                        if (!stillAtTheStartingSide)
-                            goto afterWhileLoop; // break does the same as continue
-                        t += res;
-                        continue;
-                    default:
-                        throw new Exception($"Weird type of clamped point: {p}");
+                    // todo: switch to other side and recompute the intersections, if the vector actually points through this side.
+                    continue;
                 }
+                if (times == null)
+                    continue;
+                var value = times.Value.t2;
+                if (value > intersectionTime) continue;
+                intersectionTime = value;
+                side = side1;
+                sideTime = times.Value.t1;
             }
-
-            afterWhileLoop:
-
+            
+            var t = MathF.Min(intersectionTime, length);
+            var p = side != null ? side[sideTime] : currentSegment[t];
+            
             i++;
-            if (length < t)
-                t = length;
             length -= t;
-            if (t > 0)
-                segments.Add(currentSegment.Restrict(0, t));
+            
+            segments.Add(currentSegment.Restrict(0, t));
             if (length <= 0)
                 break;
 
@@ -410,8 +401,9 @@ public partial class ModelSurface : GeodesicSurface
                 new TangentVector(p, endTangentVec.vector,
                     primaryPositionIndex: newPositionIndex); // switch to other side
         }
-
-        return new ConcatenatedCurve(segments, name);
+        if (segments.Count > 1)
+            return new ConcatenatedCurve(segments, name);
+        return segments.First();
     }
 
     private ModelSurfaceBoundaryPoint DistanceMinimizer(Point startPoint, Point endPoint,
@@ -429,8 +421,7 @@ public partial class ModelSurface : GeodesicSurface
             return null;
         var geodesic = baseGeometrySurface.GetGeodesic(startPoint,
             endPoint.ApplyHomeomorphism(optimalSide.DeckTransformation()), "DistanceMinimizer");
-        var (tGeodesic, tSide) = baseGeometrySurface.GetGeodesicIntersection(geodesic, optimalSide.curve) ??
-                                 throw new Exception("There should be an intersection point here.");
+        var (tGeodesic, tSide) = baseGeometrySurface.GetIntersectionOfGeodesics(geodesic, optimalSide.curve) ?? throw new Exception("There should be an intersection point here.");
         return new ModelSurfaceBoundaryPoint(optimalSide, tSide);
     }
 
@@ -444,8 +435,7 @@ public partial class ModelSurface : GeodesicSurface
         float shortestLength = GeometrySurface.DistanceSquared(startPoint, endPoint);
         foreach (var side in AllSideCurves)
         {
-            float distance =
-                GeometrySurface.DistanceSquared(startPoint, endPoint.ApplyHomeomorphism(side.DeckTransformation()));
+            float distance = GeometrySurface.DistanceSquared(startPoint, endPoint.ApplyHomeomorphism(side.DeckTransformation()));
 
             if (distance >= shortestLength ||
                 optimalSide == null && distance >= shortestLength - preferBasicGeodesicTolerance)
@@ -458,57 +448,37 @@ public partial class ModelSurface : GeodesicSurface
     }
 
 
-    private ModelSurfaceBoundaryPoint DistanceMinimizerOld(Point startPoint, Point endPoint,
-        GeodesicSurface baseGeometrySurface)
-    {
-        // removed because of TODO: Take the deck transformation φ on the base surface that belongs to crossing this side and return the (projection) of the geodesic on the base surface from start to φ(end).
-
-        var shortestLength = baseGeometrySurface.DistanceSquared(startPoint, endPoint);
-        ModelSurfaceBoundaryPoint result = null;
-        if (startPoint is not IModelSurfacePoint start || endPoint is not IModelSurfacePoint end)
-            throw new Exception("Start and end point should have the type IModelSurfacePoint");
-        foreach (var side in sides)
-        {
-            var a = start.ClosestBoundaryPoints(side);
-            var b = start.ClosestBoundaryPoints(side.other);
-            var c = end.ClosestBoundaryPoints(side);
-            var d = end.ClosestBoundaryPoints(side.other);
-            if (a == null || b == null || c == null || d == null)
-                throw new Exception("Lazy Programmer!");
-
-            ModelSurfaceBoundaryPoint[] points =
-            {
-                a, b, c, d,
-                new ModelSurfaceBoundaryPoint(side, (a.t + d.t) / 2),
-                new ModelSurfaceBoundaryPoint(side.other, (b.t + c.t) / 2)
-            };
-
-            var (minPoint, distance) = points.ArgMin(LengthVia);
-
-            if (!(distance < shortestLength)) continue;
-            shortestLength = distance;
-            result = minPoint;
-            continue;
-
-            float LengthVia(ModelSurfaceBoundaryPoint x) =>
-                baseGeometrySurface.Distance(x, startPoint) +
-                baseGeometrySurface.Distance(x, endPoint); // this minimizes over the positions
-        }
-
-        return result;
-    }
-
     // sped up by 50 times from using GetGeodesic(....).Length ^ 2
     public override float DistanceSquared(Point startPoint, Point endPoint) =>
         DistanceMinimizingDeckTransformation1Side(startPoint, endPoint).Item2;
 
-    public override float DistanceSquared(Vector3 startPoint, Vector3 endPoint) =>
-        DistanceMinimizingDeckTransformation1Side(startPoint, endPoint).Item2;
+    public override float DistanceSquaredBasic(Vector3 startPoint, Vector3 endPoint) =>
+        GeometrySurface.DistanceSquaredBasic(startPoint, endPoint);
 
-    public override float Distance(Vector3 u, Vector3 v) => MathF.Sqrt(DistanceSquared(u, v));
 
-    public override (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2) =>
-        GeometrySurface.GetGeodesicIntersection(geodesic1, geodesic2);
+    public override (float t1, float t2)? GetIntersectionOfGeodesics(Curve geodesic1, Curve geodesic2) // not needed really, is it?
+    {
+        IEnumerable<Curve> geodesic1Segments = geodesic1 is ConcatenatedCurve concatenatedCurve1 ? concatenatedCurve1.Segments : new[] { geodesic1 };
+        Curve[] geodesic2Segments = geodesic2 is ConcatenatedCurve concatenatedCurve2 ? concatenatedCurve2.Segments as Curve[] ?? concatenatedCurve2.Segments.ToArray(): new[] { geodesic2 };
+        var time1 = 0f;
+        foreach (var segment1 in geodesic1Segments)
+        {
+            var time2 = 0f;
+            foreach (var segment2 in geodesic2Segments)
+            {
+                var intersection = GeometrySurface.GetIntersectionOfGeodesics(segment1, segment2);
+                if (intersection != null)
+                {
+                    var (tSegment1, tSegment2) = intersection.Value;
+                    return (tSegment1 + time1, tSegment2 + time2); // todo: parametrization speed! 
+                }
+                time2 += segment2.Length;
+            }
+            time1 += segment1.Length;
+        }
+
+        return null;
+    }
 
     public override Point ClampPoint(Vector3? point, float closenessThreshold) =>
         ClampPoint(point, closenessThreshold, allowVertices: true);

@@ -346,7 +346,7 @@ public partial class FibredSurface
             HandleInconsistentBehavior($"The name of {duplicateName} is used twice.");
         var weirdCurveName = Strips.FirstOrDefault(s => s.Reversed().Curve.Name != s.Name + "'");
         if (weirdCurveName != null)
-            HandleInconsistentBehavior($"The curve {weirdCurveName} has a weird name.");
+            HandleInconsistentBehavior($"The inverse curve of {weirdCurveName} has a weird name: {weirdCurveName.Reversed().Curve.Name} instead of {weirdCurveName.Name}'");
         var brokenVertex = graph.Vertices.FirstOrDefault(v => v.fibredSurface != this);
         if (brokenVertex != null)
             HandleInconsistentBehavior($"The vertex {brokenVertex} doesn't refer to this graph.");

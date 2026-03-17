@@ -19,33 +19,64 @@ public abstract partial class Curve : ITransformable<Curve> // even IDrawnsforma
     public abstract Surface Surface { get; }
     public virtual IEnumerable<float> VisualJumpTimes => Enumerable.Empty<float>();
 
+    const float jumpTimeTolerance = 0.2f;
     public virtual IEnumerable<(float, ModelSurfaceBoundaryPoint)> VisualJumpPoints
     {
         get
         {
-            if (Surface is not ModelSurface modelSurface)
-                yield
-                    break; // shouldn't happen unless VisualJumpTimes is already empty (atm this could happen in TransformedCurve, but there it doesn't matter)
             foreach (float t in VisualJumpTimes)
             {
-                if (this[t] is ModelSurfaceBoundaryPoint boundaryPoint)
-                    yield return (t, boundaryPoint);
-                else
+                var pt = this[t];
+                if (pt is ModelSurfaceBoundaryPoint boundaryPoint)
                 {
-                    const float jumpTimeTolerance = 1e-3f;
-                    var pt1 = modelSurface.ClampPoint(this[t - jumpTimeTolerance], jumpTimeTolerance * 10);
-                    var pt2 = modelSurface.ClampPoint(this[t + jumpTimeTolerance], jumpTimeTolerance * 10);
-                    if (pt1 is not ModelSurfaceBoundaryPoint p1 || pt2 is not ModelSurfaceBoundaryPoint p2)
-                    {
-                        Debug.LogError($"In the curve {this} of type {GetType()}, the point at time {t}, {this[t]} is saved as a visual jump point, but the points just before and after are not clamped to model surface boundary points, but to {pt1} and {pt2} respectively!");
-                        continue;
-                    }
-                    if (p1.side != p2.side.other)
-                        Debug.LogWarning($"In the curve {this} of type {GetType()}, the point at time {t}, {this[t]} is saved as a visual jump point, but the points just before and after are not clamped to opposite side of the same model surface side, but {p1.side} and {p2.side}! This might be the case if the visual jump point is not calculated with enough precision.");
-                    yield return (t, p1);
+                    yield return (t, boundaryPoint);
+                    continue;
                 }
+
+                var point = Surface.ClampPoint(pt, jumpTimeTolerance);
+                if (point is not ModelSurfaceBoundaryPoint sidePoint)
+                {
+                    Debug.LogError($"In the curve {Name} of type {GetType()}, the point at time {t}, {pt} is saved as a visual jump point, but the point is not clamped to model surface boundary points, but to {point}!");
+                    continue;
+                }
+                var jumpPoint = FindIntersectionPointWithSideCloseTo(t, sidePoint.side);
+                if (jumpPoint.HasValue)
+                    yield return jumpPoint.Value;
             }
         }
+    }
+
+    protected virtual (float, ModelSurfaceBoundaryPoint)? FindIntersectionPointWithSideCloseTo(float t, ModelSurfaceSide side)
+    {
+        // shouldn't happen unless VisualJumpTimes is already empty (atm this could happen in TransformedCurve, but there it doesn't matter)
+         if (Surface is not ModelSurface modelSurface)
+             return null; 
+         
+        var startVelocity = DerivativeAt(Mathf.Clamp(t, 0, Length));
+        
+
+        var geodesicForward = modelSurface.GeometrySurface.GetGeodesic(startVelocity, jumpTimeTolerance, "forward test geodesic", out var speedFactor);
+        var intersectionTimesForwardThisSide = modelSurface.GeometrySurface.GetIntersectionOfGeodesics(geodesicForward, side.curve);
+        var intersectionTimesForwardOtherSide = modelSurface.GeometrySurface.GetIntersectionOfGeodesics(geodesicForward, side.other.curve);
+        var geodesicBackward = modelSurface.GeometrySurface.GetGeodesic(startVelocity,- jumpTimeTolerance,"backward test geodesic", out var speedFactorBackwards);
+        var intersectionTimesBackwardThisSide = modelSurface.GeometrySurface.GetIntersectionOfGeodesics(geodesicBackward, side.curve);
+        var intersectionTimesBackwardOtherSide = modelSurface.GeometrySurface.GetIntersectionOfGeodesics(geodesicBackward, side.other.curve);
+        
+        if (!speedFactor.ApproximateEquals(speedFactorBackwards))
+            Debug.LogError($"The speed factor of the forward and backward geodesics  with start vector {startVelocity} disagree: {speedFactor} and {speedFactorBackwards}!");
+        
+        if (intersectionTimesForwardThisSide.HasValue)
+            return (t + intersectionTimesForwardThisSide.Value.t1 / speedFactor, new ModelSurfaceBoundaryPoint(side, intersectionTimesForwardThisSide.Value.t2));
+        if (intersectionTimesForwardOtherSide.HasValue)
+            return (t + intersectionTimesForwardOtherSide.Value.t1 / speedFactor, new ModelSurfaceBoundaryPoint(side.other, intersectionTimesForwardOtherSide.Value.t2));
+        if (intersectionTimesBackwardThisSide.HasValue)
+            return (t - intersectionTimesBackwardThisSide.Value.t1 / speedFactorBackwards, new ModelSurfaceBoundaryPoint(side.other, intersectionTimesBackwardThisSide.Value.t2));
+        if (intersectionTimesBackwardOtherSide.HasValue)         
+            return (t - intersectionTimesBackwardOtherSide.Value.t1 / speedFactorBackwards, new ModelSurfaceBoundaryPoint(side, intersectionTimesBackwardOtherSide.Value.t2));
+
+
+        Debug.LogWarning($"In the curve {Name} of type {GetType()}, the point at time {t}, is close to {side}, but the intersection with the side is empty!");
+        return null;
     }
 
     public virtual IEnumerable<(string, bool)> SideCrossingWord =>

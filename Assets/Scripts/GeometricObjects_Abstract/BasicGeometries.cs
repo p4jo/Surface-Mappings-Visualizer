@@ -72,17 +72,17 @@ public class HyperbolicPlane : Plane
     public override Curve GetGeodesic(Point start, Point end, string name, GeodesicSurface surface = null)
         => new HyperbolicGeodesicSegment(start, end, surface ?? this, name, diskModel);
 
-    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name, GeodesicSurface surface = null)
+    public override Curve GetGeodesic(TangentVector startVelocity, float length, string name, out float speedFactor, GeodesicSurface surface = null)
     {
         if (length < 0)
         {
             length = -length;
             startVelocity = -startVelocity;
         }
-        return new HyperbolicGeodesicSegment(startVelocity, length, surface ?? this, name, diskModel);
+        return new HyperbolicGeodesicSegment(startVelocity, length, surface ?? this, name, diskModel, out speedFactor);
     }
 
-    public override float Distance(Vector3 u, Vector3 v)
+    public override float DistanceBasic(Vector3 u, Vector3 v)
     {
         if (diskModel)
             return (float) Math.Acosh(1 + 2 * (u - v).sqrMagnitude / (1 - u.sqrMagnitude) / (1 - v.sqrMagnitude));
@@ -90,9 +90,9 @@ public class HyperbolicPlane : Plane
         return 2 * (float) Math.Atanh((u - v).magnitude / (u - vBar).magnitude);
     }
 
-    public override float DistanceSquared(Vector3 startPoint, Vector3 endPoint)
+    public override float DistanceSquaredBasic(Vector3 startPoint, Vector3 endPoint)
     {
-        var distance = Distance(startPoint, endPoint);
+        var distance = DistanceBasic(startPoint, endPoint);
         return distance * distance;
     }
 
@@ -145,7 +145,7 @@ public class HyperbolicPlane : Plane
     );
 
 
-    public override (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2)
+    public override (float t1, float t2)? GetIntersectionOfGeodesics(Curve geodesic1, Curve geodesic2)
     {
         if (geodesic1 is not HyperbolicGeodesicSegment line1 || geodesic2 is not HyperbolicGeodesicSegment line2)
             return null;
@@ -159,18 +159,26 @@ public class HyperbolicPlane : Plane
         
         var det = a * d - b * c;
         var expOfTwiceT2 = - b * d / (a * c);
-        if (Math.Abs(expOfTwiceT2.Imaginary) > 1e-6 * expOfTwiceT2.Magnitude) throw new Exception($@"The Möbius transformation between the two geodesics {line1} and {line2} is not (a multiple of) a real matrix: ({a}, {b} \\ {c}, {d})");
-        if (expOfTwiceT2.Real <= 0 || !double.IsFinite(expOfTwiceT2.Real)) return null; // no intersection
+        if (Math.Abs(expOfTwiceT2.Imaginary) > 1e-6 * expOfTwiceT2.Magnitude) 
+            throw new Exception($@"The Möbius transformation between the two geodesics {line1} and {line2} is not (a multiple of) a real matrix: ({a}, {b} \\ {c}, {d})");
+        if (expOfTwiceT2.Real <= 0 || !double.IsFinite(expOfTwiceT2.Real)) 
+            return null; // no intersection
         var t2 = 0.5 * Math.Log(expOfTwiceT2.Real);
         var intersectionPointImaginaryPart = det * Math.Exp(t2) / (c * c * expOfTwiceT2.Real + d * d);  
-        if (Math.Abs(intersectionPointImaginaryPart.Imaginary) > 1e-6 * intersectionPointImaginaryPart.Magnitude) throw new Exception($@"The Möbius transformation between the two geodesics {line1} and {line2} is not (a multiple of) a real matrix: ({a}, {b} \\ {c}, {d})");
+        if (Math.Abs(intersectionPointImaginaryPart.Imaginary) > 1e-6 * intersectionPointImaginaryPart.Magnitude) 
+            throw new Exception($@"The Möbius transformation between the two geodesics {line1} and {line2} is not (a multiple of) a real matrix: ({a}, {b} \\ {c}, {d})");
         
         var t1 = (float) Math.Log(intersectionPointImaginaryPart.Real);
-        if (t1 < -1e-6f || t1 > line1.Length + 1e-6f || t2 < -1e-6f || t2 > line2.Length + 1e-6f) return null;
-        if (t1 < 0) t1 = 0;
-        if (t2 < 0) t2 = 0;
-        if (t1 > line1.Length) t1 = line1.Length;
-        if (t2 > line2.Length) t2 = line2.Length;
+        if (t1 < -1e-6f || t1 > line1.Length + 1e-6f || t2 < -1e-6f || t2 > line2.Length + 1e-6f) 
+            return null;
+        if (t1 < 0)
+            t1 = 0;
+        if (t2 < 0) 
+            t2 = 0;
+        if (t1 > line1.Length)
+            t1 = line1.Length;
+        if (t2 > line2.Length) 
+            t2 = line2.Length;
         return (t1, (float) t2);
     }
 
@@ -183,14 +191,17 @@ public class EuclideanPlane : Plane
     public override Curve GetGeodesic(Point start, Point end, string name, GeodesicSurface surface = null)
         => new FlatGeodesicSegment(start, end, surface ?? this, name);
 
-    public override Curve GetGeodesic(TangentVector tangentVector, float length, string name, GeodesicSurface surface = null)
-        => new FlatGeodesicSegment(tangentVector, length, surface ?? this, name);
+    public override Curve GetGeodesic(TangentVector tangentVector, float length, string name, out float speedFactor, GeodesicSurface surface = null)
+    {
+        speedFactor = tangentVector.vector.magnitude;
+        return new FlatGeodesicSegment(tangentVector.Normalized, length, surface ?? this, name);
+    }
 
-    public override float DistanceSquared(Vector3 startPoint, Vector3 endPoint) => (startPoint - endPoint).sqrMagnitude;
-    public override float Distance(Vector3 u, Vector3 v) => (u - v).magnitude;
+    public override float DistanceSquaredBasic(Vector3 startPoint, Vector3 endPoint) => (startPoint - endPoint).sqrMagnitude;
+    public override float DistanceBasic(Vector3 u, Vector3 v) => (u - v).magnitude;
 
     const float intersectionTolerance = 1e-6f;
-    public override (float t1, float t2)? GetGeodesicIntersection(Curve geodesic1, Curve geodesic2)
+    public override (float t1, float t2)? GetIntersectionOfGeodesics(Curve geodesic1, Curve geodesic2)
     {
         if (geodesic1 is not FlatGeodesicSegment line1 || geodesic2 is not FlatGeodesicSegment line2)
             return null;
@@ -343,9 +354,9 @@ public class Cylinder : Rectangle
         // TODO
     }
 
-    public override Curve GetGeodesic(TangentVector tangentVector, float length, string name, GeodesicSurface surface = null)
+    public override Curve GetGeodesic(TangentVector tangentVector, float length, string name, out float speedFactor, GeodesicSurface surface = null)
     {
-        return base.GetGeodesic(tangentVector, length, name, surface ?? this);
+        return base.GetGeodesic(tangentVector, length, name, out speedFactor, surface ?? this);
         // TODO
     }
 }

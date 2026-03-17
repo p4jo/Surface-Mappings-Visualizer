@@ -16,7 +16,12 @@ public partial class Point : IDrawnsformable<Point>
 
     private Color? color;
 
-    public string Name { get; set; }
+    private string name = null;
+    public virtual string Name
+    {
+        get => name ?? ToString();
+        set => name = value;
+    }
 
     public virtual Color Color
     {
@@ -32,6 +37,7 @@ public partial class Point : IDrawnsformable<Point>
         new Color(26f / 256, 105f / 256, 58f / 256), // dark green
         new Color(0.3f, 0.3f, 0.3f),
     };
+
 
     public abstract Point Copy();
 }

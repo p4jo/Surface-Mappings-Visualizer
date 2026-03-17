@@ -44,7 +44,7 @@ public partial class ModelSurfaceSide: Curve
 
     public override Point ValueAt(float t) => new ModelSurfaceBoundaryPoint(this, t);
 
-    public override TangentVector DerivativeAt(float t) => curve.DerivativeAt(t);
+    public override TangentVector DerivativeAt(float t) => new(ValueAt(t), curve.DerivativeAt(t).vector);
 
     public void AddOther(ModelSurfaceSide newOtherSide)
     {

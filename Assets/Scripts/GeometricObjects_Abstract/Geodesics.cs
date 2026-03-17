@@ -94,8 +94,10 @@ public class HyperbolicGeodesicSegment : Curve
         δ = d;
         StartPosition = base.StartPosition; // calculate the start position from the coefficients
     }
-
-    public HyperbolicGeodesicSegment(TangentVector startVelocity, float length, Surface surface, string name, bool diskModel)
+    /// <summary>
+    /// Returns a geodesic, parametrized by arclength, but gives the speedFactor, so the StartVelocity should be startVelocity / speedFactor
+    /// </summary>
+    public HyperbolicGeodesicSegment(TangentVector startVelocity, float length, Surface surface, string name, bool diskModel, out float speedFactor)
     {
         if (length < 0)
             throw new System.ArgumentException("Length must be non-negative.");
@@ -104,10 +106,13 @@ public class HyperbolicGeodesicSegment : Curve
         StartPosition = startVelocity.point;
         this.diskModel = diskModel;
         this.length = length;
-        (α, β, γ, δ) = Coefficients(startVelocity);
+        (α, β, γ, δ) = Coefficients(startVelocity, out var speedFactorDouble);
+        speedFactor = (float) speedFactorDouble;
+        if (!(startVelocity.vector / speedFactor).ApproximatelyEquals(StartVelocity.vector)) 
+            Debug.LogError("Calculation error: The Möbius transformation doesn't send the tangent vector to the positive imaginary axis with the correct speed factor");
     }
     
-    private (Complex, Complex, Complex, Complex) Coefficients(TangentVector startVelocity)
+    private (Complex, Complex, Complex, Complex) Coefficients(TangentVector startVelocity, out double speedFactor)
     {
         double a = 0, b = 0, c = 0, d = 0;
         Complex p = startVelocity.point.Position.ToComplex();
@@ -130,6 +135,18 @@ public class HyperbolicGeodesicSegment : Curve
         c = - Math.Sin(φ);
         b = - a * p.Real - c * p.Imaginary;
         d = a * p.Imaginary - c * p.Real;
+
+        // multiply v by the derivative of the Möbius transformation, this should be 
+        var factor2 = c * p + d;
+        var fOfP = (a * p + b) / factor2;
+        var vAtStart = (a * d - b * c) / factor2 / factor2 * v;
+        if (Math.Abs(vAtStart.Real) > 1e-6)
+            Debug.LogError("Calculation error: The Möbius transformation doesn't send the tangent vector to the imaginary axis");
+        if (Complex.Abs(fOfP - Complex.ImaginaryOne) > 1e-6)
+            Debug.LogError("Calculation error: The Möbius transformation doesn't send the point to i");
+        if (vAtStart.Imaginary <= 0)
+            Debug.LogError("Calculation error: The Möbius transformation doesn't send the tangent vector to the positive imaginary axis");
+        speedFactor = vAtStart.Imaginary; // this is the length of the vector (in the hyperbolic Riemannian metric), as at this point it agrees with the Euclidean one.
         
         if (diskModel)
             return (

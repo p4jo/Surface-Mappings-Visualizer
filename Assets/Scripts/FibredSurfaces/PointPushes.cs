@@ -178,8 +178,8 @@ public class PushingPath : IPatchedDrawnsformable
             return surface.GetGeodesic(
                 new TangentVector(
                     xAxis.Curve[x.Concrete ? x.Value : 1f],
-                    yAxis.Curve.StartVelocity.vector.normalized
-                ), y.Concrete ? y.Value : 1f, "Point near vertex segment"
+                    yAxis.Curve.StartVelocity.vector
+                ), y.Concrete ? y.Value : 1f, "Point near vertex segment", out _
             ).EndPosition;
         }
 

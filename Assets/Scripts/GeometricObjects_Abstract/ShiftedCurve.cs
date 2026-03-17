@@ -85,80 +85,109 @@ public partial class ShiftedCurve : Curve
     public override Surface Surface => curve.Surface;
 
     private List<float> _visualJumpTimes;
-    public override IEnumerable<float> VisualJumpTimes
+    
+    // public override IEnumerable<float> VisualJumpTimes
+    // {
+    //     get
+    //     {
+    //         if (_visualJumpTimes != null) 
+    //             return _visualJumpTimes;
+    //         _visualJumpTimes = new List<float>();
+    //
+    //         var testResolution = 0.04f;
+    //         const float goalRes = 0.0001f;
+    //         foreach (var (t, sidePoint) in curve.VisualJumpPoints)
+    //         {
+    //             var lastJump = (_visualJumpTimes.Count == 0 ? 0 : _visualJumpTimes[^1]);
+    //             
+    //             var crossedVector = sidePoint.side.DerivativeAt(sidePoint.t).vector;
+    //             var thisVector = curve.DerivativeAt( MathF.Max(t - testResolution, (lastJump + 2f * t) / 3f )).vector;
+    //             var angle = Vector3.Angle(crossedVector, thisVector) * Mathf.Deg2Rad;
+    //
+    //             var res = shift(t) / MathF.Tan(angle);
+    //             var guess = t + res;
+    //             res *= 2;
+    //             var time = guess;
+    //             var lastGuess = guess;
+    //
+    //             while (goalRes < res)
+    //             {
+    //                 bool haveHit = false;
+    //                 float localCurveJump;
+    //                 while (time >= lastGuess - 3 * res && time > lastJump)
+    //                 {
+    //                     localCurveJump = LocalCurveJump(time);
+    //                     haveHit = haveHit || localCurveJump > -1;
+    //                     if (localCurveJump >= MathF.Abs(shift(time)))
+    //                         break;
+    //                     time -= res;
+    //                 }
+    //
+    //                 res /= 2;
+    //                 if (haveHit)
+    //                     lastGuess = time;
+    //                 else
+    //                     time = lastGuess;
+    //                 haveHit = false;
+    //
+    //                 while (time <= lastGuess + 3 * res && time < curve.Length)
+    //                 {
+    //                     localCurveJump = LocalCurveJump(time);
+    //                     haveHit = haveHit || localCurveJump > -1;
+    //                     if (localCurveJump > 0 && localCurveJump <= MathF.Abs(shift(time)))
+    //                         break;
+    //                     time += res;
+    //                 } 
+    //                 res /= 4;
+    //                 if (haveHit)
+    //                     lastGuess = time;
+    //                 else
+    //                     time = lastGuess;
+    //             }
+    //             if (time < 0f || time > curve.Length)
+    //                 continue;
+    //             _visualJumpTimes.Add(time);
+    //         }
+    //         
+    //         return _visualJumpTimes;
+    //
+    //         float LocalCurveJump(float t)
+    //         {
+    //             if (shift(t) == 0f)
+    //                 return 0f;
+    //             var visualJumpTime = LocalCurve(t, shift(t) * 3).VisualJumpTimes.FirstOrDefault();
+    //             return visualJumpTime == 0f ? -1f : visualJumpTime;
+    //         }
+    //         // todo: Performance. Make more efficient (do it like in the definition of geodesic with start vector)
+    //         
+    //     }
+    // }
+
+    public override IEnumerable<(float, ModelSurfaceBoundaryPoint)> VisualJumpPoints
     {
         get
         {
-            if (_visualJumpTimes != null) 
-                return _visualJumpTimes;
-            _visualJumpTimes = new List<float>();
-
-            var res = 0.04f;
-            const float goalRes = 0.0001f;
-            foreach (var (t, sidePoint) in curve.VisualJumpPoints)
+            foreach (var (jumpTime, sidePoint) in curve.VisualJumpPoints)
             {
-                var lastJump = (_visualJumpTimes.Count == 0 ? 0 : _visualJumpTimes[^1]);
-                
-                var crossedVector = sidePoint.side.DerivativeAt(sidePoint.t).vector;
-                var thisVector = curve.DerivativeAt( MathF.Max(t - res, (lastJump + 2f * t) / 3f )).vector;
-                var angle = Vector3.Angle(crossedVector, thisVector) * Mathf.Deg2Rad;
-                
-                var guess = t + shift(t) / MathF.Tan(angle); 
-                var time = guess;
-                var lastGuess = guess;
+                var sideVector = sidePoint.side.DerivativeAt(sidePoint.t);
+                var thisVector = curve.DerivativeAt(jumpTime);
+                var (indexThis, indexSide, _) =
+                    geodesicSurface.ClosestPositionIndices(thisVector.point, sideVector.point);
+                var angle = Vector3.Angle(thisVector.VectorAtPositionIndex(indexThis),
+                    sideVector.VectorAtPositionIndex(indexSide)) * Mathf.Deg2Rad;
 
-                while (goalRes < res)
-                {
-                    bool haveHit = false;
-                    float localCurveJump;
-                    while (time >= lastGuess - 3 * res && time > lastJump)
-                    {
-                        localCurveJump = LocalCurveJump(time);
-                        haveHit = haveHit || localCurveJump > -1;
-                        if (localCurveJump >= MathF.Abs(shift(time)))
-                            break;
-                        time -= res;
-                    }
-
-                    res /= 2;
-                    if (haveHit)
-                        lastGuess = time;
-                    else
-                        time = lastGuess;
-                    haveHit = false;
-
-                    while (time <= lastGuess + 3 * res && time < curve.Length)
-                    {
-                        localCurveJump = LocalCurveJump(time);
-                        haveHit = haveHit || localCurveJump > -1;
-                        if (localCurveJump <= MathF.Abs(shift(time)))
-                            break;
-                        time += res;
-                    } 
-                    res /= 4;
-                    if (haveHit)
-                        lastGuess = time;
-                    else
-                        time = lastGuess;
-                }
-                if (time < 0f || time > curve.Length)
-                    continue;
-                _visualJumpTimes.Add(time);
+                var expectedShift = shift(jumpTime) / MathF.Tan(angle);
+                var res = FindIntersectionPointWithSideCloseTo(jumpTime + expectedShift, sidePoint.side);
+                if (res.HasValue)
+                    yield return res.Value;
+                else                 
+                    Debug.LogError($"Couldn't find visual jump point for jump time {jumpTime} and side {sidePoint.side} in curve {Name}!");
             }
-            
-            return _visualJumpTimes;
-
-            float LocalCurveJump(float t)
-            {
-                if (shift(t) == 0f)
-                    return 0f;
-                var visualJumpTime = LocalCurve(t, shift(t) * 3).VisualJumpTimes.FirstOrDefault();
-                return visualJumpTime == 0f ? -1f : visualJumpTime;
-            }
-            // todo: Performance. Make more efficient (do it like in the definition of geodesic with start vector)
-            
         }
     }
+
+    public override IEnumerable<float> VisualJumpTimes => from p in VisualJumpPoints select p.Item1;
+
 
     private GeodesicSurface geodesicSurface => (GeodesicSurface) Surface;
     
@@ -177,7 +206,7 @@ public partial class ShiftedCurve : Curve
         if (curve.Surface is not GeodesicSurface geodesicSurface)
             return null;
         var basis = curve.BasisAt(t);
-        var localCurve = geodesicSurface.GetGeodesic(basis.B.Normalized, s, $"shift geodesic for {curve.Name} at time {t}");
+        var localCurve = geodesicSurface.GetGeodesic(basis.B, s, $"shift geodesic for {curve.Name} at time {t}", out _);
         return localCurve;
     }
 
@@ -187,7 +216,7 @@ public partial class ShiftedCurve : Curve
         if (MathF.Abs(s) < 1e-5f)
             return curve.DerivativeAt(t);
         var basis = curve.BasisAt(t);
-        var localCurve = geodesicSurface.GetGeodesic(basis.B.Normalized, s, $"shift geodesic for {curve.Name} at time {t}");
+        var localCurve = geodesicSurface.GetGeodesic(basis.B, s, $"shift geodesic for {curve.Name} at time {t}", out _);
         return new (localCurve.EndPosition, basis.basis.a); // this is not really correct, but for small shifts it is good enough. It is unfeasible to calculate this correctly (derivative of exponential map...)
     }
 

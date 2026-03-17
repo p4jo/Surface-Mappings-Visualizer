@@ -16,7 +16,7 @@ public class CurveSectionEditor : MonoBehaviour
         this.startPoint = startPoint;
         this.endPoint = endPoint;
         gameObject.SetActive(true); 
-        label.text = $"Segment [{startTime:0.00}, {endTime:0.00}] ({subcurve.GetType()}) from {startPoint} to {endPoint}";
+        label.text = $"Segment [{startTime:0.00}, {endTime:0.00}] ({subcurve.GetType()}) from {((IDrawable)startPoint).ColorfulName} to {((IDrawable)endPoint).ColorfulName}";
     }
 
     public void StraightenSegment() => curveEditor.StraightenSegment(index, startPoint, endPoint);
