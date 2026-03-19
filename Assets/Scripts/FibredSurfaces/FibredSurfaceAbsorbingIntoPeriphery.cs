@@ -196,10 +196,6 @@ public partial class FibredSurface
                 if (!gateInOrder.ToHashSet().SetEquals(gate.Edges)) 
                     throw new Exception($"The peripheral gate {gate} is not connected in the cyclic order of the star of the peripheral subgraph (after collapsing the trees of Q\\P into their components).");
 
-                foreach (var (index,strip) in gateInOrder.Enumerate())
-                {
-                    strip.OrderIndexStart = index; // this will remain the same also throughout the movements.
-                }
                 
                 var verticesOfGate = gateInOrder.Select(e => e.Source).Distinct().ToList();
                 // the following assumes that all edges of a gate at the same vertex are moved along P together, which is true if the linear order of the gate agrees with the linear order of that vertex. The only problem that can happen is if the first and last edges of the gate are at the same vertex (we have to split the vertex and move the corresponding edges in different directions around P). So we split that vertex in this case:
@@ -220,7 +216,7 @@ public partial class FibredSurface
                         },
                         buttons: new[] { AlgorithmSuggestion.generalSubroutineContinueButton }
                     );
-                    
+                     
                     var opposite = Equals(selectedOptionsDuringAlgorithmPause?.FirstOrDefault(), true);
                     Strip[] edgesToMove;
                     Strip direction;
@@ -250,7 +246,13 @@ public partial class FibredSurface
                     foreach (var strip in edgesToMove) 
                         strip.Source = direction.Target;
                     graph.RemoveVertex(temporarySplitJunction);
+                    previousEdgeOld[lastVertex].OrderIndexEnd = -1;
+                    nextEdgeOld[lastVertex].OrderIndexStart = linearStarOfLastVertex.Count + 1;
                 }
+                    
+                foreach (var (index,strip) in gateInOrder.Enumerate()) 
+                    strip.OrderIndexStart = index; // this will remain the same also throughout the movements.
+                
                 
                 int indexOffset = componentVertices.IndexOf(verticesOfGate.First()); // this is the index of the first vertex of the gate in the cyclic order of the star of the component, i.e. the vertex set of the gate is {componentVertices[indexOffset], componentVertices[indexOffset + 1], ...} (indices mod componentVertices.Count). Two gates might have the same vertices, but in different orders, with different indexOffsets, so that we actually wrap around correctly. IndexOffset should increase everytime
                 if (indexOffset < lastIndexOffset)

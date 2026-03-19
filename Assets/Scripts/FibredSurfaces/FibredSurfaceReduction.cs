@@ -85,9 +85,9 @@ public partial class FibredSurface
         
         foreach (var (maximalSubgraph, minimalPreservedSubgraph) in maximalInvariantSubgraphGroups.Values)
         {
-            var (boundaryWordText, arePreserved) = CheckIfBoundaryWordsOfSubgraphArePreserved(minimalPreservedSubgraph);
+            var (boundaryWordText, arePreserved) = CheckIfBoundaryWordsOfSubgraphArePreserved(maximalSubgraph);
             if (!arePreserved)
-                HandleInconsistentBehavior($"The boundary words of the invariant subgraph {minimalPreservedSubgraph.ToCommaSeparatedString(e => e.ColorfulName)} are not preserved!");
+                HandleInconsistentBehavior($"The boundary words of the invariant subgraph {maximalSubgraph.ToCommaSeparatedString(e => e.ColorfulName)} are not preserved!");
             
             // Display the minimal preserved subgraph and the maximal invariant subgraph
             var preservedSubgraphText = minimalPreservedSubgraph.Select(e =>
@@ -105,12 +105,12 @@ public partial class FibredSurface
             var displayText = preservedSubgraphText;
             if (!maximalSubgraph.SetEquals(minimalPreservedSubgraph))
             {
-                displayText += $"\n  (maximal invariant subgraph: {maximalSubgraphText})";
+                displayText += $"\n  (extended to: {maximalSubgraphText})";
             }
             displayText += $".\n {boundaryWordText}";
             
             options.Add((
-                minimalPreservedSubgraph.Select(e => e.Name).ToArray(),
+                maximalSubgraph.Select(e => e.Name).ToArray(),
                 displayText
             ));
         }
@@ -210,9 +210,9 @@ public partial class FibredSurface
             yield return suggestion;
 
         // replace the graph by the preserved subgraph
-        graph.RemoveEdgeIf(e => !preservedSubgraph.Edges.Contains(e));
-        graph.RemoveVertexIf(v => !preservedSubgraph.Vertices.Contains(v));
-        
+        graph.RemoveEdgeIf(e => !preservedSubgraph.ContainsEdge(e));
+        graph.RemoveVertexIf(v => !preservedSubgraph.ContainsVertex(v));
+        peripheralSubgraph.RemoveWhere(e => !preservedSubgraph.ContainsEdge(e));
     }
 
     private IEnumerable<AlgorithmSuggestion> ReduceSubgraphToPeriphery(IEnumerable<string> preservedSubgraphEdges)
