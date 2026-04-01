@@ -26,7 +26,7 @@ public class FibredSurfaceMenu : MonoBehaviour
         }
     }
     
-    [SerializeField] private SurfaceMenu surfaceMenu;
+    [SerializeField] internal SurfaceMenu surfaceMenu;
     
     [SerializeField] private Transform forwardButtonList;
     [SerializeField] private GameObject forwardButtonPrefab;

@@ -46,7 +46,7 @@ public abstract class Strip: IEdge<Junction>, IDrawable
 
     public EdgePoint this[int i] => new(this, i);
 
-    public override string ToString() => $"{Name}: {Source} -> {Target} with g({Name}) = {EdgePath.ToString(250, 10)}";
+    public override string ToString() => Name; // $"{Name}: {Source} -> {Target} with g({Name}) = {EdgePath.ToString(250, 10)}";
     
     public string ToColorfulString()
     {

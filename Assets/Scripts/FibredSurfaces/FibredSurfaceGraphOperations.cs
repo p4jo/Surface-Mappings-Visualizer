@@ -42,6 +42,7 @@ public partial class FibredSurface
         {
             sb.Append("Variables: ");
             sb.AppendJoin("\n", variables.Select(v => v.name + " = " + v.value.ToColorfulString(180, 10)));
+            sb.AppendLine();
         }
         stripsOrdered.Add(null); // for the "width" column and "length" row
 
@@ -278,7 +279,7 @@ public partial class FibredSurface
             var star = stars[edge.Target];
             int index = star.IndexOf(edge.Reversed());
             if (index == -1)
-                throw new Exception($"The edge {edge.Reversed().ToColorfulString()} is not in the star {star.ToCommaSeparatedString(e => e.ColorfulName)} of its source {edge.Target.ToColorfulString()}. This should never happen, so something went wrong. This happened when trying to figure out the boundary word of {strip.ToColorfulString()}.");
+                throw new Exception($"The edge {edge.Reversed().ColorfulName} is not in the star {star.ToCommaSeparatedString(e => e.ColorfulName)} of its source {edge.Target.ColorfulName}. This should never happen, so something went wrong. This happened when trying to figure out the boundary word of {strip.ColorfulName}.");
             edge = star[(index + 1) % star.Count];
             if (--stopCondition < 0)
                 throw new Exception($"The boundary word {boundaryWord.ToCommaSeparatedString(" ")} didn't loop correctly. Stopped infinite loop");

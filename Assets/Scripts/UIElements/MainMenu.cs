@@ -92,39 +92,86 @@ public class MainMenu: MonoBehaviour
                 a.ReplaceWithInverseEdge();
                 b.ReplaceWithInverseEdge();
         
-                fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
-                fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
-                fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
-                fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
+                // Opposite orientation of the side curves (following along the edge e, the side ε crosses from the left)
+                // fibredSurfaceMenu.UpdateGraphMap("a \u21a6 B a D c d C b", mode: GraphMapUpdateMode.Postcompose); // Push(α)
+                // fibredSurfaceMenu.UpdateGraphMap("c \u21a6 b A B a D c d", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
+                // fibredSurfaceMenu.UpdateGraphMap("b \u21a6 c D C d A b a", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
+                // fibredSurfaceMenu.UpdateGraphMap("d \u21a6 c d C b A B a", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
+                fibredSurfaceMenu.UpdateGraphMap("a \u21a6 b a B c D C d", mode: GraphMapUpdateMode.Postcompose); // Push(α)
+                fibredSurfaceMenu.UpdateGraphMap("c \u21a6 d A b a B c D", mode: GraphMapUpdateMode.Postcompose); // Push(γ)
+                fibredSurfaceMenu.UpdateGraphMap("b \u21a6 a D c d C b A", mode: GraphMapUpdateMode.Postcompose); // Push(β rev)
+                fibredSurfaceMenu.UpdateGraphMap("d \u21a6 C d A b a B c", mode: GraphMapUpdateMode.Postcompose); // Push(δ)
 
                 fibredSurfaceMenu.SelectFibredSurface(fibredSurface);
-                fibredSurfaceMenu.UpdateGraphMap($"ρ := d C b A B a D c\n" +
-                                                 $"d \u21a6 Ρ d\n" +
-                                                 $"b \u21a6 (a d)°(Ρ) b\n" +
-                                                 $"c \u21a6 c (d C a d)°(Ρ)\n" +
-                                                 $"a \u21a6 a (D ρ c Ρ d (c a d)°(Ρ) Ρ d C a D)°(Ρ)",
+                fibredSurfaceMenu.UpdateGraphMap($"ρ := D C d A b a B c\n" +
+                                                 $"d \u21a6 d ρ\n" +
+                                                 $"b \u21a6 a°Ρ b\n" +
+                                                 $"c \u21a6 c (d ρ C a)°ρ\n" +
+                                                 $"a \u21a6 a (Ρ D c d ρ (C a )°ρ d ρ C a)°ρ",
                     mode: GraphMapUpdateMode.Replace);
+                // original (moving start point along d, thus shifting some d's)
+                // fibredSurfaceMenu.UpdateGraphMap($"ρ := C d A b a B c D\n" +
+                //                              $"d \u21a6 ρ d\n" +
+                //                              $"b \u21a6 (a D)°(Ρ) b\n" +
+                //                              $"c \u21a6 c (ρ d C a D)°(ρ)\n" +
+                //                              $"a \u21a6 a (D Ρ c ρ d (C a D)°(ρ) ρ d C a D)°(ρ)",
+                //     mode: GraphMapUpdateMode.Replace);
                 break;
             case "General Point Push example (one way)":
-                // var pointPush = new PushingPath(EdgePath.FromString("C b d' c d d c' a", fibredSurface.Strips), startLeft: true);
-                // var r = new Random();
-                // foreach (var variable in pointPush.variables)
-                // {
-                //     variable.SetValue((float) r.NextDouble()/3);
-                // }
-                // pointPush.CalculateSelfIntersections();
-                // surfaceMenu.Display(pointPush, fibredSurface.surface.Name);
-                //
-                // Debug.Log(pointPush.ToString());
-                //
-                // var pushingMapString = fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { pointPush.Image(strip)}");
-                // Debug.Log(pushingMapString);
-                //
-                //
-                // fibredSurfaceMenu.UpdateGraphMap(fibredSurface.Strips.ToDictionary(e => (Strip) e, e => pointPush.Image(e)),
-                //     mode: GraphMapUpdateMode.Replace, selectFibredSurface: true); 
-                //
+                Initialize("g=2,p=1,P=0", showDeckTransformations, true);
+                
+                var a2 = fibredSurface.Strips.First(strip => strip.Name == "a");
+                var b2 = fibredSurface.Strips.First(strip => strip.Name == "b");
+                a2.ReplaceWithInverseEdge();
+                b2.ReplaceWithInverseEdge();
+
+                var pointPush = new PushingPath(EdgePath.FromString("C b d' c d d c' a", fibredSurface.Strips), startLeft: true);
+                var r = new Random();
+                pointPush.variables[0].SetValue(5);
+                pointPush.variables[1].SetValue(4);
+                pointPush.variables[2].SetValue(3);
+                pointPush.variables[3].SetValue(2);
+                
+                pointPush.CalculateSelfIntersections(); // todo
+                fibredSurfaceMenu.surfaceMenu.Display(pointPush, fibredSurface.surface.Name);
+                
+                Debug.Log(pointPush.ToString());
+                
+                var pushingMapString = fibredSurface.Strips.ToLineSeparatedString(strip => $"g({strip.Name}) = { pointPush.Image(strip) }");
+                Debug.Log(pushingMapString);
+                
+                
+                fibredSurfaceMenu.UpdateGraphMap(fibredSurface.Strips.ToDictionary(e => (Strip) e, e => pointPush.Image(e)),
+                    mode: GraphMapUpdateMode.Replace, selectFibredSurface: true);
+                
+                StartCoroutine(UpdatePointPushCoroutine());
+
                 break;
+
+                IEnumerator UpdatePointPushCoroutine()
+                {
+                    while (!Input.GetKey(KeyCode.Escape))
+                    {
+                        bool changed = Input.GetKeyUp(KeyCode.E);
+
+                        if (Input.GetKeyUp(KeyCode.M))
+                        {
+                            foreach (var variable in pointPush.variables)
+                                variable.SetValue((float) r.NextDouble()/3);
+                            changed = true;
+                        }
+
+                        if (changed)
+                        {
+                            pointPush.CalculateSelfIntersections();
+                            fibredSurfaceMenu.UpdateGraphMap(fibredSurface.Strips.ToDictionary(e => (Strip) e, e => pointPush.Image(e)),
+                                mode: GraphMapUpdateMode.Replace, selectFibredSurface: true);
+                            fibredSurfaceMenu.surfaceMenu.Display(pointPush, fibredSurface.surface.Name);
+                            
+                        } 
+                        yield return null; // waits for next frame
+                    }
+                }
         }
         
     }

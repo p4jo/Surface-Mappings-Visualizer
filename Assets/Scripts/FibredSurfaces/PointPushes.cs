@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class PushingPath : IPatchedDrawnsformable
@@ -57,26 +58,35 @@ public class PushingPath : IPatchedDrawnsformable
     private class SelfIntersection : Entry
     {
         public readonly bool rightToLeft;
-        public SelfIntersectionSecondTime secondTime;
+        public readonly SelfIntersectionSecondTime secondTime;
+        public readonly string name;
 
-        public SelfIntersection(bool rightToLeft, SelfIntersectionSecondTime secondTime)
+        public SelfIntersection(bool rightToLeft, string name, SelfIntersectionSecondTime secondTime)
         {
             this.rightToLeft = rightToLeft;
+            this.name = name;
             this.secondTime = secondTime;
         }
 
-        public override EdgePath AssociatedPath(PushingPath pushingPath) => new ConjugateEdgePath(
-            rightToLeft ? pushingPath.punctureWord : pushingPath.punctureWord.Inverse,
-            pushingPath.ConjugationPath(pushingPath.path.IndexOf(secondTime)),
-            true
-        );
+        public override EdgePath AssociatedPath(PushingPath pushingPath)
+        {
+            int secondIndex = pushingPath.path.IndexOf(secondTime);
+            if (secondIndex <= pushingPath.path.IndexOf(this))
+                throw new InvalidOperationException("The second time of a self-intersection has to be after the first time in the path!");
+            return new ConjugateEdgePath(
+                rightToLeft ? pushingPath.punctureWord : pushingPath.punctureWord.Inverse,
+                pushingPath.ConjugationPath(secondIndex),
+                true
+            );
+        }
 
-        public override string ToString() => $"[{secondTime.name}]";
+        public override string ToString() => $"[{name}]";
     }
 
     private class SelfIntersectionSecondTime : Entry
     {
-        internal readonly string name;
+        public readonly string name;
+        public int indexInPath = -1; 
 
         public SelfIntersectionSecondTime(string name)
         {
@@ -146,26 +156,136 @@ public class PushingPath : IPatchedDrawnsformable
         public readonly Variable x;
         public readonly Variable y;
 
-        public CornerSegment(Strip xAxis, Strip yAxis, Variable x, Variable y, SegmentType type, bool flip)
+        /// true iff the path comes in from the y direction and goes out in the x direction.
+        public readonly bool flip;
+
+        public readonly bool increasingInX;
+        public readonly bool increasingInY;
+
+        /// <summary>
+        ///  this is always the index after the last edge-following / edge-crossing before the turn (the number of path entries already discovered at the time of this corner turn).
+        /// </summary>
+        public readonly int indexInPath;
+
+        /// <summary>
+        /// Creates a corner segment in the quadrant defined by <paramref name="xAxis"/> and <paramref name="yAxis"/>.
+        /// These span a coordinate system (x, y).
+        /// 
+        /// <paramref name="flip"/> is the orientation of the corner segment, i.e. it is false iff <paramref name="yAxis"/> = σ(<paramref name="xAxis"/>), and true if <paramref name="yAxis"/> = σ^(-1)(<paramref name="xAxis"/>).
+        ///
+        /// The type describes the segments (as sets) from the viewpoint of the point (x,y).
+        /// Thus, the direction that the outward path (along the yAxis) takes agrees with the one in the type (YUpwards/YDownwards), while the incoming direction is the opposite of the one in the type (If XUpwards, x decreases when coming in; as xAxis corresponds to the inverse of the incoming strip).
+        /// </summary>
+        public CornerSegment(Strip xAxis, Strip yAxis, Variable x, Variable y, SegmentType type, bool flip, int indexInPath, bool increasingInX = false)
         {
-            if (flip)
+            this.flip = flip;
+            this.indexInPath = indexInPath;
+            this.xAxis = xAxis;
+            this.yAxis = yAxis;
+            this.x = x;
+            this.y = y;
+            this.type = type;
+            this.increasingInX = increasingInX;
+            
+            bool hasX = (this.type & ( SegmentType.XDownwards | SegmentType.XUpwards )) != 0;
+            bool hasY = (this.type & ( SegmentType.YDownwards | SegmentType.YUpwards )) != 0;
+            bool errorCase = (increasingInX == type.HasFlag(SegmentType.XUpwards)) && hasY;
+            
+            this.increasingInY = type.HasFlag(SegmentType.YUpwards) ^ errorCase; // if we are in the error case, then the y direction is inverted; Else, it follows the type.
+            
+            if (!hasX)
+                Debug.LogError($"The type {type} is not valid for a corner segment, as it doesn't specify any direction along the xAxis {xAxis.Name}. The xAxis must be traversed first.");
+            if (increasingInX && type.HasFlag(SegmentType.XUpwards) && (type.HasFlag(SegmentType.YUpwards) || type.HasFlag(SegmentType.YDownwards)))
+                throw new ArgumentException($"The flag {nameof(increasingInX)} = true is only possible for XDownward or if the corner segment does not follow along the yAxis. Thus the type {type} is invalid. The xAxis {xAxis.Name} must be traversed first.");
+            // value of increasingInY doesn't matter if neither yUpward nor yDownwards, so we can assume one is set, and thus also that increasingInX =>  XDownward 
+            
+            if (!flip)
+                return;
+            
+            (this.xAxis, this.yAxis) = (this.yAxis, this.xAxis);
+            (this.x, this.y) = (this.y, this.x);
+            (this.increasingInX, this.increasingInY) = (this.increasingInY, this.increasingInX);
+            this.type = (this.type.HasFlag(SegmentType.XDownwards) ? SegmentType.YDownwards : 0) |
+                        (this.type.HasFlag(SegmentType.XUpwards) ? SegmentType.YUpwards : 0) |
+                        (this.type.HasFlag(SegmentType.YDownwards) ? SegmentType.XDownwards : 0) |
+                        (this.type.HasFlag(SegmentType.YUpwards) ? SegmentType.XUpwards : 0);
+        }
+
+        internal class CornerSegmentIntersection
+        {
+            public readonly CornerSegment self;
+            public readonly CornerSegment other;
+            public readonly float x;
+            public readonly float y;
+            public readonly float timeAlongSelf;
+            public readonly float timeAlongOther;
+            public readonly bool rightToLeft; 
+
+            public CornerSegmentIntersection(CornerSegment self, CornerSegment other, float x, float y, float timeAlongSelf, float timeAlongOther, bool rightToLeft)
             {
-                this.xAxis = yAxis;
-                this.yAxis = xAxis;
-                this.x = y;
-                this.y = x;
-                this.type = (type.HasFlag(SegmentType.XDownwards) ? SegmentType.YDownwards : 0) |
-                        (type.HasFlag(SegmentType.XUpwards) ? SegmentType.YUpwards : 0) |
-                        (type.HasFlag(SegmentType.YDownwards) ? SegmentType.XDownwards : 0) |
-                        (type.HasFlag(SegmentType.YUpwards) ? SegmentType.XUpwards : 0);
-            }
-            else
-            {
-                this.xAxis = xAxis;
-                this.yAxis = yAxis;
+                this.self = self;
+                this.other = other;
                 this.x = x;
                 this.y = y;
-                this.type = type;
+                this.timeAlongSelf = timeAlongSelf;
+                this.timeAlongOther = timeAlongOther;
+                this.rightToLeft = rightToLeft;
+            }
+        }
+        internal static IEnumerable<CornerSegmentIntersection> CalculateIntersections(CornerSegment self, CornerSegment other)
+        {
+            if (self.xAxis != other.xAxis)
+                yield break;
+
+            // the segments selfY and otherX have at most one intersection, at (self.x, other.y).
+            // if the values are the same, we treat the earlier one (self) as being ε larger
+            // Thus, in the uninitialized case (all variables have no value, treated as 1), they are considered to be decreasing along γ.
+            bool intersectionOfSelfYWithOtherX = (
+                other.type.HasFlag(SegmentType.XUpwards) && self.x.Value >= other.x.Value ||
+                other.type.HasFlag(SegmentType.XDownwards) && self.x.Value < other.x.Value
+            ) && (
+                self.type.HasFlag(SegmentType.YUpwards) && other.y.Value > self.y.Value ||
+                self.type.HasFlag(SegmentType.YDownwards) && other.y.Value <= self.y.Value
+            );
+            
+            // the same with self and other exchanged
+            bool intersectionOfSelfXWithOtherY = (
+                self.type.HasFlag(SegmentType.XUpwards) && other.x.Value > self.x.Value ||
+                self.type.HasFlag(SegmentType.XDownwards) && other.x.Value <= self.x.Value
+            ) && (
+                other.type.HasFlag(SegmentType.YUpwards) && self.y.Value >= other.y.Value ||
+                other.type.HasFlag(SegmentType.YDownwards) && self.y.Value < other.y.Value
+            );
+            
+            if (intersectionOfSelfYWithOtherX)
+            {
+                // the basis (other.deriv, self.deriv) = (+- e_x, +- e_y) is negatively oriented iff exactly one of the basis vectors (e_x, e_y) is inverted
+                bool negativelyOriented = other.increasingInX != self.increasingInY;
+
+                var distanceFromSelfTurn = other.y.Value - self.y.Value;
+                var distanceFromOtherTurn = self.x.Value - other.x.Value;
+                
+                
+                yield return new CornerSegmentIntersection(self, other, self.x.Value, other.y.Value, 
+                    timeAlongSelf: self.increasingInY ? distanceFromSelfTurn : - distanceFromSelfTurn, 
+                    timeAlongOther: other.increasingInX ? distanceFromOtherTurn : - distanceFromOtherTurn, 
+                    rightToLeft: negativelyOriented
+                );
+            }
+
+            if (intersectionOfSelfXWithOtherY)
+            {
+                // the basis (self.deriv, other.deriv) = (+- e_x, +- e_y) is negatively oriented iff exactly one of the basis vectors (e_x, e_y) is inverted, i.e. exactly one of these is decreasing:
+                bool negativelyOriented = self.increasingInX != other.increasingInY;
+                
+                var distanceFromSelfTurn = other.x.Value - self.x.Value;
+                var distanceFromOtherTurn = self.y.Value - other.y.Value;
+                
+                yield return new CornerSegmentIntersection(self, other, other.x.Value, self.y.Value, 
+                    timeAlongSelf: self.increasingInX ? distanceFromSelfTurn : - distanceFromSelfTurn, 
+                    timeAlongOther: other.increasingInY ? distanceFromOtherTurn : - distanceFromOtherTurn, 
+                    rightToLeft: !negativelyOriented
+                );
             }
         }
 
@@ -190,16 +310,17 @@ public class PushingPath : IPatchedDrawnsformable
             if (yAxis.Curve.Surface is not GeodesicSurface surface)
                 return yAxis.Source.Position; // todo?
 
+            float normalize(float x, float doublemax) => Mathf.Atan(x) / Mathf.PI * doublemax;
             Curve xSegment = null;
             Curve ySegment = null;
             if (type.HasFlag(SegmentType.XDownwards))
-                xSegment = new ShiftedCurve(xAxis.Curve.Restrict(0, x.Value), y.Value);
+                xSegment = new ShiftedCurve(xAxis.Curve.Restrict(0, normalize(x.Value, xAxis.Curve.Length / 2)), normalize(y.Value, 1));
             if (type.HasFlag(SegmentType.XUpwards))
-                xSegment = new ShiftedCurve(xAxis.Curve.Restrict(x.Value, xAxis.Curve.Length / 2), y.Value);
+                xSegment = new ShiftedCurve(xAxis.Curve.Restrict(normalize(x.Value, xAxis.Curve.Length / 2), xAxis.Curve.Length / 2), normalize(y.Value, 1));
             if (type.HasFlag(SegmentType.YDownwards))
-                ySegment = new ShiftedCurve(yAxis.Curve.Restrict(0, y.Value), x.Value);
+                ySegment = new ShiftedCurve(yAxis.Curve.Restrict(0, normalize(y.Value, xAxis.Curve.Length / 2)),  normalize(x.Value, 1));
             if (type.HasFlag(SegmentType.YUpwards))
-                ySegment = new ShiftedCurve(yAxis.Curve.Restrict(y.Value, yAxis.Curve.Length / 2), x.Value);
+                ySegment = new ShiftedCurve(yAxis.Curve.Restrict(normalize(y.Value, yAxis.Curve.Length / 2), yAxis.Curve.Length / 2), normalize(x.Value, 1));
             // todo: unordered curve? will be displayed as ordered
 
             if (xSegment != null && ySegment != null)
@@ -289,17 +410,16 @@ public class PushingPath : IPatchedDrawnsformable
     {
         variables = new List<Variable>(2 * edgePath.Count);
         cornerPoints = new List<CornerSegment>(2 * edgePath.Count);
-        // todo: save the corresponding indices of the cornerPoints in path
         
         var path = new List<Entry>(2 * edgePath.Count);
 
         bool followingLeft = startLeft;
-        
-        var currentDistanceToFollowedStrip = new Variable("distance to first followed strip");
-        variables.Add(currentDistanceToFollowedStrip);
+
+        Variable punctureDistanceM = new Variable($"M = Distance of puncture to the corner at the beginning of {edgePath.First()}", float.MaxValue);
+        Variable currentDistanceToFollowedStrip = punctureDistanceM;
+        // variables.Add(currentDistanceToFollowedStrip);
 
         // we currently insert the first half-edge-following last.
-        Variable nextStartY = 0; // todo: the first start distance can be adjusted, bigger is better? 
         List<Strip> edgesToFollow = edgePath.ToList();
         for (var index = 0; index < edgesToFollow.Count; index++)
         {
@@ -340,7 +460,7 @@ public class PushingPath : IPatchedDrawnsformable
             {
                 // in these cases we have to cross the edge that we just followed before continuing with the edge crossings
 
-                currentEdgeCrossingPosition = new Variable($"Distance to the end of first edge crossing (half-turn) through {currentlyFollowedStrip}");
+                currentEdgeCrossingPosition = new Variable($"v_{variables.Count} = Distance to the end of {currentlyFollowedStrip.Name} when doing a half-turn through it.");
                 variables.Add(currentEdgeCrossingPosition);
                 
                 var halfTurn = new CornerSegment(
@@ -349,19 +469,20 @@ public class PushingPath : IPatchedDrawnsformable
                     currentEdgeCrossingPosition,
                     currentDistanceToFollowedStrip, // todo think about variable: could be chosen independent from the distance that the strip has at the beginning, but this would mean that we introduce self-intersections in the middle of the edge when permuting edge followings // the incoming distance might be modified
                     CornerSegment.SegmentType.HalfTurn,
-                    flip: followingLeft
+                    flip: followingLeft,
+                    indexInPath: path.Count
                 );
 
                 cornerPoints.Add(halfTurn);
-
+                
                 edgesToCross.Insert(0, currentlyFollowedStrip.Reversed());
                 // the crossing loop will cross this edge at distance currentEdgeCrossingPosition
 
-                followingLeft = !followingLeft;
+                followingLeft = !followingLeft; // This is the only time this changes. This change only affects the next edge followings, the loops below reference only turnaroundClockwise 
             }
             else
             {
-                if (indexInStar == 0) // otherAxisInArrivingQuadrant == nextStrip
+                if (indexInStar == 0) // otherAxisInArrivingQuadrant == nextStrip, so we don't have to cross any edges.
                 {
                     
                     // var max = float.MinValue;
@@ -382,38 +503,37 @@ public class PushingPath : IPatchedDrawnsformable
                     // currentDistanceToFollowedStrip = MathF.Sign(currentDistanceToFollowedStrip) *
                     //                                  (max == float.MinValue ? 1f : max * 1.333333333333f);
 
-                    currentEdgeCrossingPosition = new Variable($"Distance to edge {otherAxisInArrivingQuadrant.Name} when turning " + (followingLeft ? "left" : "right" ) + $" after following {currentlyFollowedStrip}");
-
+                    var nextDistanceToFollowedStrip = new Variable($"v_{variables.Count} = Distance to edge {otherAxisInArrivingQuadrant.Name} when turning " + (followingLeft ? "left" : "right" ) + $" after following {currentlyFollowedStrip.Name}");
+                    variables.Add(nextDistanceToFollowedStrip);
+                    
                     var outerTurn = new CornerSegment(
                         currentlyFollowedStrip.Reversed(),
                         otherAxisInArrivingQuadrant,
-                        currentEdgeCrossingPosition,
+                        nextDistanceToFollowedStrip,
                         currentDistanceToFollowedStrip, // again, the incoming distance might be modified
-                        CornerSegment.SegmentType
-                            .XUpwards, // outerTurn not really because we add the outgoing thing extra at the end
-                        flip: followingLeft
+                        CornerSegment.SegmentType.OuterTurn,
+                        flip: followingLeft,
+                        indexInPath: path.Count
                     );
                     cornerPoints.Add(outerTurn);
-                    nextStartY = currentDistanceToFollowedStrip; // also overwrites the variable reference
+                    currentDistanceToFollowedStrip = nextDistanceToFollowedStrip;
+                    continue;
                 }
-                else
-                {
-                    // We run straight into the next edge
-                    // TODO: Refactoring / Feature: To optimize over different values we should introduce "variables", i.e. instead of actual numbers we should give references to variables
-                    var incomingSegment = new CornerSegment(
-                        currentlyFollowedStrip.Reversed(),
-                        otherAxisInArrivingQuadrant,
-                        0,
-                        currentDistanceToFollowedStrip, 
-                        CornerSegment.SegmentType.XUpwards,
-                        flip: followingLeft
-                    );
 
-                    cornerPoints.Add(incomingSegment);
+                // We run straight into the next edge, then continue with the crossing loop
+                var incomingSegment = new CornerSegment(
+                    currentlyFollowedStrip.Reversed(),
+                    otherAxisInArrivingQuadrant,
+                    0,
+                    currentDistanceToFollowedStrip, 
+                    CornerSegment.SegmentType.XUpwards,
+                    flip: followingLeft,
+                    indexInPath: path.Count
+                );
 
-                    currentEdgeCrossingPosition =
-                        currentDistanceToFollowedStrip; // also overwrites the variable reference
-                }
+                cornerPoints.Add(incomingSegment);
+
+                currentEdgeCrossingPosition = currentDistanceToFollowedStrip; // also overwrites the variable reference
             }
 
             // crossing loop
@@ -427,22 +547,21 @@ public class PushingPath : IPatchedDrawnsformable
                 path.Add(edgeCrossing);
 
                 if (i == edgesToCross.Count - 1)
-                {
-                    nextStartY = 0f;
                     break; // breaks after continue as well   
-                }
 
                 var nextEdgeToCross = edgesToCross[i + 1];
 
-                var nextEdgeCrossingPosition = new Variable($"Distance along edge {nextEdgeToCross.Name} where it is intersected as the {i + 1}th edge crossed between the {index}th strip {currentlyFollowedStrip.Name} and the {index+1}th strip {nextStrip.Name}"); // new Variable
+                var nextEdgeCrossingPosition = new Variable($"v_{variables.Count} = Distance along edge {nextEdgeToCross.Name} where it is intersected as the {i + 1}th edge crossed between the {index}th strip {currentlyFollowedStrip.Name} and the {index+1}th strip {nextStrip.Name}");
+                variables.Add(nextEdgeCrossingPosition);
 
                 var innerTurn = new CornerSegment(
-                    edgeCrossed,
                     nextEdgeToCross,
-                    currentEdgeCrossingPosition,
+                    edgeCrossed,
                     nextEdgeCrossingPosition,
+                    currentEdgeCrossingPosition,
                     CornerSegment.SegmentType.InnerTurn,
-                    turnAroundClockwise
+                    !turnAroundClockwise,
+                    indexInPath: path.Count
                 );
 
                 cornerPoints.Add(innerTurn);
@@ -451,14 +570,30 @@ public class PushingPath : IPatchedDrawnsformable
 
             }
 
-            var lastFollowedOrCrossedStrip = edgesToCross.Count > 0 ? edgesToCross[^1] : currentlyFollowedStrip;
-            var outgoingSegment = new CornerSegment(
-                lastFollowedOrCrossedStrip,
-                nextStrip,
-                currentEdgeCrossingPosition,
-                nextStartY,
-                CornerSegment.SegmentType.YUpwards, turnAroundClockwise);
+            var crossedStrip = edgesToCross[^1]; // nonempty
+            CornerSegment outgoingSegment;
+            if (index < edgesToFollow.Count - 1)
+                outgoingSegment = new CornerSegment(
+                    nextStrip,
+                    crossedStrip,
+                    0,
+                    currentEdgeCrossingPosition,
+                    CornerSegment.SegmentType.XUpwards,
+                    flip: !turnAroundClockwise,
+                    indexInPath: path.Count
+                );
+            else // connect back to the puncture
+                outgoingSegment = new CornerSegment(
+                    nextStrip,
+                    crossedStrip,
+                    punctureDistanceM,
+                    currentEdgeCrossingPosition,
+                    CornerSegment.SegmentType.YUpwards | CornerSegment.SegmentType.XDownwards,
+                    flip: !turnAroundClockwise,
+                    indexInPath: path.Count
+                );
             cornerPoints.Add(outgoingSegment);
+            currentDistanceToFollowedStrip = currentEdgeCrossingPosition;
         }
 
         return path;
@@ -471,82 +606,48 @@ public class PushingPath : IPatchedDrawnsformable
 
     public void CalculateSelfIntersections() { 
         
-        path = new List<Entry>(pathWithoutSelfIntersections);
+        path = new List<Entry>(pathWithoutSelfIntersections); 
         
         if (!Concrete)
             Debug.LogWarning("Evaluating self-intersections of PushingPath with free variables!");
-        var selfIntersections =
-            new List<(SelfIntersectionSecondTime secondIntersectionTime, float sideDistance)>();
+        int index = 0;
         
-    //     
-    //     for (int i = 0; i < path.Count; i++)
-    //     {
-    //         var currentPoint = cornerList[i];
-    //         for (int j = 0; j < i; j++)
-    //         {
-    //             var earlierPoint = cornerList[j];
-    //             if (!earlierPoint.xAxis.Equals(currentPoint.xAxis))
-    //                 continue;
-    //             var otherEdgeFollowingAlignedStartDistance =
-    //                 otherEdgeFollowing.AlignedStartDistance(edgeCrossed, out var otherEdgeFollowingIsIncoming);
-    //
-    //
-    //             var otherEdgeY = (turnAroundClockwise ? -1 : 1) *
-    //                              otherEdgeFollowing.AlignedDistance(edgeCrossed);
-    //
-    //             var x = (turnAroundClockwise ? -currentDistanceToFollowedStrip : currentDistanceToFollowedStrip);
-    //             if (otherEdgeFollowingAlignedStartDistance > x)
-    //                 continue;
-    //             if (otherEdgeY >
-    //                 currentStartDistanceToCrossedEdge) // we start closer to the crossed edge than the other edge is to it.
-    //                 continue;
-    //
-    //             if (thereIsANextCrossing && -outgoingDistanceThis <= otherEdgeY)
-    //             {
-    //                 // todo: also check for turns
-    //                 outgoingDistanceThis =
-    //                     -0.75f *
-    //                     otherEdgeY; // turn earlier so that we don't intersect it
-    //             }
-    //
-    //             if (otherEdgeY <=
-    //                 -outgoingDistanceThis) // we turn away closer to the crossed edge than the other edge is
-    //                 continue;
-    //             CornerSegment intersection = new CornerSegment(edgeCrossed, otherEdgeFollowing.strip, x,
-    //                 otherEdgeY, (CornerSegment.SegmentType)0, followingLeft); // todo
-    //             // todo: might also cross other turning segments, i.e. consecutive (not separated by EdgeFollowings) EdgeCrossings
-    //             var secondIntersectionTime = new SelfIntersectionSecondTime(intersection);
-    //             selfIntersections.Add((secondIntersectionTime, otherEdgeY));
-    //             var firstIntersectionTime = new SelfIntersection(
-    //                 otherEdgeFollowingIsIncoming == turnAroundClockwise,
-    //                 secondIntersectionTime,
-    //                 intersection
-    //             );
-    //             path.Insert(otherEdgeFollowingIsIncoming ? i + 1 : i, firstIntersectionTime);
-    //         }
-    //     }
-    //         
-    //     var intersectionsBeforeTheCrossing =
-    //         selfIntersections.Where(
-    //             t => t.sideDistance > 0
-    //         ).OrderByDescending(
-    //             t => t.sideDistance
-    //         ).Select(
-    //             t => t.secondIntersectionTime
-    //         );
-    //     path.AddRange(intersectionsBeforeTheCrossing);
-    //
-    //
-    //     var intersectionsAfterTheCrossing =
-    //         selfIntersections.Where(
-    //             t => t.sideDistance < 0
-    //         ).OrderByDescending(
-    //             t => t.sideDistance
-    //         ).Select(
-    //             t => t.secondIntersectionTime
-    //         ); // this is empty because we choose our distance after the crossing so small
-    //     path.AddRange(intersectionsAfterTheCrossing);
-    //
+        List<(Entry, int, float)> entriesToAdd = new(); 
+        for (int i = 0; i < cornerSegments.Count; i++)
+        {
+            var currentPoint = cornerSegments[i];
+            for (int j = i + 1; j < cornerSegments.Count; j++)
+            {
+                var laterPoint = cornerSegments[j];
+                    
+                foreach (var intersection in CornerSegment.CalculateIntersections(currentPoint, laterPoint))
+                {
+                    var name = $"self-int. {index++} at ({intersection.x:0.0}, {intersection.y:0.0}) in ({currentPoint.xAxis.Name}, {currentPoint.yAxis.Name})";
+                    var secondIntersectionTime = new SelfIntersectionSecondTime(name); 
+                    var selfIntersection = new SelfIntersection(
+                        intersection.rightToLeft, 
+                        name,
+                        secondIntersectionTime
+                    );
+                    entriesToAdd.Add((selfIntersection, intersection.self.indexInPath, intersection.timeAlongSelf));
+                    entriesToAdd.Add((secondIntersectionTime, intersection.other.indexInPath, intersection.timeAlongOther));
+                }
+                
+            }
+        }
+        // sort by lexicographic order of (index in path, time along segment), so that we can insert them in the right order
+        entriesToAdd.Sort((tuple1, tuple2) =>
+        {
+            var compare = tuple1.Item2.CompareTo(tuple2.Item2);
+            if (compare != 0)
+                return compare;
+            return tuple1.Item3.CompareTo(tuple2.Item3);
+        });
+
+        var offset = 0;
+        foreach (var (entry, indexInPath, _) in entriesToAdd) 
+            path.Insert(indexInPath + offset++, entry);
+
     }
     #endregion
     
@@ -556,7 +657,7 @@ public class PushingPath : IPatchedDrawnsformable
     
     private EdgePath ConjugationPath(int startTime)
     {
-        return EdgePath.Concatenate(path.Skip(startTime).Select(p => p.AssociatedPath(this)));
+        return EdgePath.Concatenate(path.GetRange(startTime, path.Count - startTime).Select(p => p.AssociatedPath(this)));
     }
 
     public EdgePath Image(UnorientedStrip strip)
