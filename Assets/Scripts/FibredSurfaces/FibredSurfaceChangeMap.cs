@@ -102,4 +102,13 @@ public partial class FibredSurface
         }
     }
 
+    public PushingPath ParsePointPush(string text)
+    {
+        var match = Regex.Match(text, @"p\s*\((.+)\)", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            throw new ArgumentException("The input should be in the form \"Push(a B A), start left\" or \"p_left(a B A)\" or similar.");
+        var startLeft = text.Contains("left", StringComparison.OrdinalIgnoreCase);
+        var edgePath = EdgePath.FromString(match.Groups[1].Value, Strips);
+        return new PushingPath(edgePath, startLeft);
+    }
 }

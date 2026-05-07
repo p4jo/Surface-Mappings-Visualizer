@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class PushingPath : IPatchedDrawnsformable
@@ -73,8 +72,7 @@ public class PushingPath : IPatchedDrawnsformable
             int secondIndex = pushingPath.path.IndexOf(secondTime);
             if (secondIndex <= pushingPath.path.IndexOf(this))
                 throw new InvalidOperationException("The second time of a self-intersection has to be after the first time in the path!");
-            return new ConjugateEdgePath(
-                rightToLeft ? pushingPath.punctureWord : pushingPath.punctureWord.Inverse,
+            return (rightToLeft ? pushingPath.punctureWord : pushingPath.punctureWord.Inverse).Conjugate(
                 pushingPath.ConjugationPath(secondIndex),
                 true
             );

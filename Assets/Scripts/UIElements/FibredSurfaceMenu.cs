@@ -305,11 +305,15 @@ public class FibredSurfaceMenu : MonoBehaviour
             UpdateSelectedSurface(parent);
     }
 
+    // UI called; should be differentiated more than being an overload
     public void UpdateGraphMap(string text, bool reset = false, GraphMapUpdateMode mode = GraphMapUpdateMode.Replace)
     {
         try
         {
-            UpdateGraphMap(FibredSurface.ParseMap(text), reset, mode);
+            if (text.StartsWith("P(") || text.StartsWith("Push(") ||  text.StartsWith("PointPush("))
+                gameObject.AddComponent<PointPushSlider>().Initialize( this, FibredSurface.ParsePointPush(text) );
+            else 
+                UpdateGraphMap(FibredSurface.ParseMap(text), reset, mode);
         }
         catch (Exception e)
         {
