@@ -1,48 +1,48 @@
 using System;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class PointPushSlider : MonoBehaviour
 {
-    [SerializeField] private float t1;
-    [SerializeField] private float t2;
-    [SerializeField] private float t3;
-    [SerializeField] private float t4;
-    [SerializeField] private float t5;
-    [SerializeField] private float t6;
-    [SerializeField] private float t7;
-    [SerializeField] private float t8;
+    [SerializeField] private float v0;
+    [SerializeField] private float v1;
+    [SerializeField] private float v2;
+    [SerializeField] private float v3;
+    [SerializeField] private float v4;
+    [SerializeField] private float v5;
+    [SerializeField] private float v6;
+    [SerializeField] private float v7;
     private PushingPath pushingPath;
     [SerializeField] private FibredSurfaceMenu fibredSurfaceMenu;
-    [SerializeField] private string description;
-    [SerializeField] private string description2;
     [SerializeField] private bool update;
 
     private void Update()
     {
         if (!update) return;
         update = false;
-        if (t1 > 0) pushingPath.variables.ElementAtOrDefault(0)?.SetValue(t1); 
+        if (v0 > 0) pushingPath.variables.ElementAtOrDefault(0)?.SetValue(v0); 
         else pushingPath.variables.ElementAtOrDefault(0)?.FreeVariable();
-        if (t2 > 0) pushingPath.variables.ElementAtOrDefault(1)?.SetValue(t2); 
+        if (v1 > 0) pushingPath.variables.ElementAtOrDefault(1)?.SetValue(v1); 
         else pushingPath.variables.ElementAtOrDefault(1)?.FreeVariable();
-        if (t3 > 0) pushingPath.variables.ElementAtOrDefault(2)?.SetValue(t3); 
+        if (v2 > 0) pushingPath.variables.ElementAtOrDefault(2)?.SetValue(v2); 
         else pushingPath.variables.ElementAtOrDefault(2)?.FreeVariable();
-        if (t4 > 0) pushingPath.variables.ElementAtOrDefault(3)?.SetValue(t4); 
+        if (v3 > 0) pushingPath.variables.ElementAtOrDefault(3)?.SetValue(v3); 
         else pushingPath.variables.ElementAtOrDefault(3)?.FreeVariable();
-        if (t5 > 0) pushingPath.variables.ElementAtOrDefault(4)?.SetValue(t5); 
+        if (v4 > 0) pushingPath.variables.ElementAtOrDefault(4)?.SetValue(v4); 
         else pushingPath.variables.ElementAtOrDefault(4)?.FreeVariable();
-        if (t6 > 0) pushingPath.variables.ElementAtOrDefault(5)?.SetValue(t6);
+        if (v5 > 0) pushingPath.variables.ElementAtOrDefault(5)?.SetValue(v5);
         else pushingPath.variables.ElementAtOrDefault(5)?.FreeVariable();
-        if (t7 > 0) pushingPath.variables.ElementAtOrDefault(6)?.SetValue(t7);
+        if (v6 > 0) pushingPath.variables.ElementAtOrDefault(6)?.SetValue(v6);
         else pushingPath.variables.ElementAtOrDefault(6)?.FreeVariable();
-        if (t8 > 0) pushingPath.variables.ElementAtOrDefault(7)?.SetValue(t8);
+        if (v7 > 0) pushingPath.variables.ElementAtOrDefault(7)?.SetValue(v7);
         else pushingPath.variables.ElementAtOrDefault(7)?.FreeVariable();
         if (pushingPath.Concrete) pushingPath.CalculateSelfIntersections();
         var newGraphMap = fibredSurfaceMenu.FibredSurface.Strips.ToDictionary(s => (Strip) s, s => pushingPath.Image(s));
         fibredSurfaceMenu.UpdateGraphMap(newGraphMap);
-        description = $@"Variables: {pushingPath.variables.ToCommaSeparatedString()} \n Map: {newGraphMap.ToCommaSeparatedString(kv => $"{kv.Key.ColorfulName} -> {kv.Value.ToColorfulString(150, 10)}")}";
-        description2 = pushingPath.ToString();
+        Debug.Log( "Pushing path: " + pushingPath, this);
+        Debug.Log("Variables: " + pushingPath.variables.ToCommaSeparatedString(), this);
+        Debug.Log( "Map: " + newGraphMap.ToCommaSeparatedString(kv => $"{kv.Key.ColorfulName} -> {kv.Value.ToColorfulString(150, 10)}"), this);
     }
 
     public void Initialize(FibredSurfaceMenu fibredSurfaceMenu, PushingPath pushingPath)
