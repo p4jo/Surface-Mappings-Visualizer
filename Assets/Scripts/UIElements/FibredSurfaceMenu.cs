@@ -51,6 +51,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     {
         this.surfaceMenu = surfaceMenu;
         OnFibredSurfaceChanged.AddListener(surfaceMenu.curveEditor.UpdateDropdown);
+        surfaceMenu.curveEditor.FibredSurfaceUpdated += () => UpdateUI();
         MenuVertex vertex = new MenuVertex(fibredSurface, null);
         fibredSurface.OnError += HandleError; // handle errors in the fibred surface
         fibredSurfaces.AddVertex(vertex);

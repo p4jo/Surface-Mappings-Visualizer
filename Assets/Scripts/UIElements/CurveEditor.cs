@@ -7,12 +7,15 @@ using UnityEngine;
 public class CurveEditor : MonoBehaviour
 {
     [SerializeField] private TMP_Text headingText;
+    [SerializeField] private TMP_Text replacementText;
+    [SerializeField] private TMP_InputField newNameInputField;
     private Curve curve;
     private Curve originalCurve;
     [SerializeField] private GameObject sectionEditorPrefab;
     private FibredSurface fibredSurface;
     [SerializeField] private TMP_Dropdown curveDropdown;
     public event Action<Curve> CurveUpdated;
+    public event Action FibredSurfaceUpdated;
     
     private List<Curve> subcurves = new();
     private string colorfulName;
@@ -66,6 +69,7 @@ public class CurveEditor : MonoBehaviour
         i++;
         
         headingText.text = $"Edit {colorfulName}";
+        replacementText.text = colorfulName;
         for (int j = i; j < sectionEditors.Length; j++)
         {
             sectionEditors[j].gameObject.SetActive(false);
@@ -120,5 +124,24 @@ public class CurveEditor : MonoBehaviour
         fibredSurface = newFibredSurface;
         curveDropdown.options = newFibredSurface.graph.Edges.Select(e => new TMP_Dropdown.OptionData(e.ColorfulName, null, e.Color)).ToList();
         Close();
+    }
+
+    public void InvertStrip()
+    {
+        strip.ReplaceWithInverseEdge();
+        UpdateDropdown(fibredSurface);
+        Initialize(strip.Curve, strip.ToColorfulString());
+        FibredSurfaceUpdated.Invoke();
+    }
+
+    public void Rename()
+    {
+        if (string.IsNullOrWhiteSpace(newNameInputField.text))
+            return;
+        curve.Name = newNameInputField.text.ToLower();
+        
+        UpdateDropdown(fibredSurface);
+        Initialize(strip.Curve, strip.ToColorfulString());
+        FibredSurfaceUpdated.Invoke();
     }
 }

@@ -154,11 +154,7 @@ public class UnorientedStrip : Strip
     public override Strip Copy(FibredSurface fibredSurface = null, Curve curve = null, Junction source = null,
         Junction target = null, EdgePath edgePath = null, string name = null, float? orderIndexStart = null, float? orderIndexEnd = null)
         => CopyUnoriented(fibredSurface, curve, source, target, edgePath, name, orderIndexStart, orderIndexEnd);
-
-    /// <summary>
-    /// DO THIS ONLY BEFORE USING THE FIBRED SURFACE!
-    /// This does not update any edge paths!
-    /// </summary>
+    
     public void ReplaceWithInverseEdge()
     {
         var name = Name;
@@ -166,6 +162,9 @@ public class UnorientedStrip : Strip
         Name = name;
         (source, target) = (target, source);
         (OrderIndexStart, OrderIndexEnd) = (OrderIndexEnd, OrderIndexStart);
+        EdgePath = EdgePath.Inverse;
+        foreach (var strip in graph.Edges) 
+            strip.EdgePath = strip.EdgePath.Replace((UnorientedStrip e) => e == this ? Reversed() : e);
     }
 }
 
