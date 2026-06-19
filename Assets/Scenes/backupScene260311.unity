@@ -2152,17 +2152,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e02dd9583e4d3fd4a938945647d63db6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  t1: 0
-  t2: 0
-  t3: 0
-  t4: 0
-  t5: 0
-  t6: 0
-  t7: 0
-  t8: 0
+  v0: 0
+  v1: 0
+  v2: 0
+  v3: 0
+  v4: 0
+  v5: 0
+  v6: 0
+  v7: 0
   fibredSurfaceMenu: {fileID: 0}
-  description: 
-  description2: 
   update: 0
 --- !u!224 &40128546981967425
 RectTransform:
@@ -4883,7 +4881,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 289731908507057997}
   m_Direction: 0
   m_Value: 0
-  m_Size: 0.99999994
+  m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -7142,7 +7140,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 3089033351046365638}
   m_HandleRect: {fileID: 5540772257950407830}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -7907,7 +7905,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 5502132048688507770}
   m_HandleRect: {fileID: 624139829770100325}
   m_Direction: 0
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
